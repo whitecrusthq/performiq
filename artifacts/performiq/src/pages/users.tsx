@@ -8,6 +8,8 @@ import { useAuth } from "@/hooks/use-auth";
 type CustomRole = { id: number; name: string; permissionLevel: string };
 const authHeader = () => ({ Authorization: `Bearer ${localStorage.getItem('token')}`, "Content-Type": "application/json" });
 
+const NEW_DEPT_SENTINEL = "__new__";
+
 export default function Users() {
   const { user } = useAuth();
   const queryClient = useQueryClient();
@@ -20,14 +22,20 @@ export default function Users() {
   const deleteMutation = useDeleteUser({ request: { headers } });
 
   const [customRoles, setCustomRoles] = useState<CustomRole[]>([]);
+  const [departments, setDepartments] = useState<string[]>([]);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
   const [formData, setFormData] = useState({ name: "", email: "", password: "", role: "employee" as any, customRoleId: "", department: "", jobTitle: "" });
+  const [isNewDept, setIsNewDept] = useState(false);
 
   useEffect(() => {
     fetch("/api/custom-roles", { headers: authHeader() })
       .then(r => r.json())
       .then(data => Array.isArray(data) && setCustomRoles(data))
+      .catch(() => {});
+    fetch("/api/departments", { headers: authHeader() })
+      .then(r => r.json())
+      .then(data => Array.isArray(data) && setDepartments(data))
       .catch(() => {});
   }, []);
 
@@ -64,7 +72,7 @@ export default function Users() {
   return (
     <div>
       <PageHeader title="User Management" description="Manage platform access and organizational structure.">
-        <Button onClick={() => { setFormData({ name: "", email: "", password: "", role: "employee", customRoleId: "", department: "", jobTitle: "" }); setEditingId(null); setIsDialogOpen(true); }}>
+        <Button onClick={() => { setFormData({ name: "", email: "", password: "", role: "employee", customRoleId: "", department: "", jobTitle: "" }); setEditingId(null); setIsNewDept(false); setIsDialogOpen(true); }}>
           <Plus className="w-4 h-4 mr-2" /> Add User
         </Button>
       </PageHeader>
@@ -104,7 +112,7 @@ export default function Users() {
                       variant="outline"
                       size="sm"
                       className="gap-1.5"
-                      onClick={() => { setFormData({ name: u.name, email: u.email, password: "", role: u.role, customRoleId: (u as any).customRole?.id?.toString() || "", department: u.department||"", jobTitle: u.jobTitle||"" }); setEditingId(u.id); setIsDialogOpen(true); }}
+                      onClick={() => { setFormData({ name: u.name, email: u.email, password: "", role: u.role, customRoleId: (u as any).customRole?.id?.toString() || "", department: u.department||"", jobTitle: u.jobTitle||"" }); setEditingId(u.id); setIsNewDept(false); setIsDialogOpen(true); }}
                     >
                       <Edit className="w-3.5 h-3.5" /> Edit
                     </Button>
@@ -126,12 +134,12 @@ export default function Users() {
 
       {isDialogOpen && (
         <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
-          <Card className="w-full max-w-md p-6 shadow-2xl">
-            <div className="flex justify-between items-center mb-6">
+          <Card className="w-full max-w-md shadow-2xl flex flex-col max-h-[90vh]">
+            <div className="flex justify-between items-center p-6 pb-4 shrink-0">
               <h2 className="text-xl font-bold">{editingId ? "Edit User" : "Create User"}</h2>
               <button onClick={() => setIsDialogOpen(false)}><X className="w-5 h-5"/></button>
             </div>
-            <form onSubmit={handleSubmit} className="space-y-4">
+            <form onSubmit={handleSubmit} className="space-y-4 overflow-y-auto px-6 pb-6">
               <div><Label>Name</Label><Input value={formData.name} onChange={e=>setFormData({...formData, name: e.target.value})} required /></div>
               <div><Label>Email</Label><Input type="email" value={formData.email} onChange={e=>setFormData({...formData, email: e.target.value})} required /></div>
               <div>
@@ -169,7 +177,45 @@ export default function Users() {
                 )}
               </div>
               <div className="grid grid-cols-2 gap-4">
-                <div><Label>Department</Label><Input value={formData.department} onChange={e=>setFormData({...formData, department: e.target.value})} /></div>
+                <div>
+                  <Label>Department</Label>
+                  {!isNewDept ? (
+                    <select
+                      className="w-full px-4 py-2 border rounded-xl bg-background text-sm"
+                      value={formData.department}
+                      onChange={e => {
+                        if (e.target.value === NEW_DEPT_SENTINEL) {
+                          setIsNewDept(true);
+                          setFormData({ ...formData, department: "" });
+                        } else {
+                          setFormData({ ...formData, department: e.target.value });
+                        }
+                      }}
+                    >
+                      <option value="">— None —</option>
+                      {departments.map(d => (
+                        <option key={d} value={d}>{d}</option>
+                      ))}
+                      <option value={NEW_DEPT_SENTINEL}>＋ Add new department…</option>
+                    </select>
+                  ) : (
+                    <div className="flex gap-1.5">
+                      <Input
+                        autoFocus
+                        placeholder="New department name"
+                        value={formData.department}
+                        onChange={e => setFormData({ ...formData, department: e.target.value })}
+                      />
+                      <button
+                        type="button"
+                        className="text-xs text-muted-foreground underline whitespace-nowrap hover:text-foreground"
+                        onClick={() => { setIsNewDept(false); setFormData({ ...formData, department: "" }); }}
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  )}
+                </div>
                 <div><Label>Job Title</Label><Input value={formData.jobTitle} onChange={e=>setFormData({...formData, jobTitle: e.target.value})} /></div>
               </div>
               <Button className="w-full mt-4" type="submit" isLoading={createMutation.isPending || updateMutation.isPending}>Save User</Button>

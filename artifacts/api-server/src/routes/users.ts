@@ -36,6 +36,18 @@ async function getUserWithRole(userId: number) {
   return formatUser(user, customRole);
 }
 
+router.get("/departments", requireAuth, async (_req, res) => {
+  try {
+    const rows = await db.select({ department: usersTable.department }).from(usersTable);
+    const depts = Array.from(
+      new Set(rows.map(r => r.department).filter(Boolean))
+    ).sort() as string[];
+    res.json(depts);
+  } catch (err) {
+    res.status(500).json({ error: "Server error" });
+  }
+});
+
 router.get("/users", requireAuth, requireRole("admin", "manager"), async (_req, res) => {
   try {
     const users = await db.select().from(usersTable).orderBy(usersTable.name);
