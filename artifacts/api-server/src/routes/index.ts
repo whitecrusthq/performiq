@@ -7,6 +7,7 @@ import criteriaRouter from "./criteria";
 import appraisalsRouter from "./appraisals";
 import goalsRouter from "./goals";
 import dashboardRouter from "./dashboard";
+import customRolesRouter from "./custom-roles";
 
 const router: IRouter = Router();
 
@@ -18,5 +19,6 @@ router.use(criteriaRouter);
 router.use(appraisalsRouter);
 router.use(goalsRouter);
 router.use(dashboardRouter);
+router.use(customRolesRouter);
 
 export default router;

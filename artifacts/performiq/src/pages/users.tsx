@@ -1,9 +1,12 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useListUsers, useCreateUser, useUpdateUser, useDeleteUser } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
-import { PageHeader, Card, Button, Input, Label, StatusBadge } from "@/components/shared";
+import { PageHeader, Card, Button, Input, Label } from "@/components/shared";
 import { Users as UsersIcon, Plus, Edit, Trash2, X } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
+
+type CustomRole = { id: number; name: string; permissionLevel: string };
+const authHeader = () => ({ Authorization: `Bearer ${localStorage.getItem('token')}`, "Content-Type": "application/json" });
 
 export default function Users() {
   const { user } = useAuth();
@@ -16,20 +19,36 @@ export default function Users() {
   const updateMutation = useUpdateUser({ request: { headers } });
   const deleteMutation = useDeleteUser({ request: { headers } });
 
+  const [customRoles, setCustomRoles] = useState<CustomRole[]>([]);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
-  const [formData, setFormData] = useState({ name: "", email: "", password: "", role: "employee" as any, department: "", jobTitle: "" });
+  const [formData, setFormData] = useState({ name: "", email: "", password: "", role: "employee" as any, customRoleId: "", department: "", jobTitle: "" });
+
+  useEffect(() => {
+    fetch("/api/custom-roles", { headers: authHeader() })
+      .then(r => r.json())
+      .then(data => Array.isArray(data) && setCustomRoles(data))
+      .catch(() => {});
+  }, []);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    const base: any = {
+      name: formData.name,
+      email: formData.email,
+      role: formData.role,
+      customRoleId: formData.customRoleId ? parseInt(formData.customRoleId) : null,
+      department: formData.department,
+      jobTitle: formData.jobTitle,
+    };
     if (editingId) {
-      const updateData: any = { name: formData.name, email: formData.email, role: formData.role, department: formData.department, jobTitle: formData.jobTitle };
-      if (formData.password.trim() !== "") updateData.password = formData.password;
-      updateMutation.mutate({ id: editingId, data: updateData }, {
+      if (formData.password.trim() !== "") base.password = formData.password;
+      updateMutation.mutate({ id: editingId, data: base }, {
         onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["/api/users"] }); setIsDialogOpen(false); }
       });
     } else {
-      createMutation.mutate({ data: formData }, {
+      base.password = formData.password;
+      createMutation.mutate({ data: base }, {
         onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["/api/users"] }); setIsDialogOpen(false); }
       });
     }
@@ -45,7 +64,7 @@ export default function Users() {
   return (
     <div>
       <PageHeader title="User Management" description="Manage platform access and organizational structure.">
-        <Button onClick={() => { setFormData({ name: "", email: "", password: "", role: "employee", department: "", jobTitle: "" }); setEditingId(null); setIsDialogOpen(true); }}>
+        <Button onClick={() => { setFormData({ name: "", email: "", password: "", role: "employee", customRoleId: "", department: "", jobTitle: "" }); setEditingId(null); setIsDialogOpen(true); }}>
           <Plus className="w-4 h-4 mr-2" /> Add User
         </Button>
       </PageHeader>
@@ -67,8 +86,13 @@ export default function Users() {
                   <div className="font-semibold text-foreground">{u.name}</div>
                   <div className="text-sm text-muted-foreground">{u.email}</div>
                 </td>
-                <td className="p-4 hidden sm:table-cell capitalize">
-                  <span className={`px-2 py-1 rounded text-xs font-medium ${u.role==='admin'?'bg-purple-100 text-purple-700':u.role==='manager'?'bg-blue-100 text-blue-700':'bg-slate-100 text-slate-700'}`}>{u.role}</span>
+                <td className="p-4 hidden sm:table-cell">
+                  <div className="flex flex-col gap-1">
+                    {(u as any).customRole ? (
+                      <span className="font-medium text-sm">{(u as any).customRole.name}</span>
+                    ) : null}
+                    <span className={`px-2 py-0.5 rounded text-xs font-medium w-fit capitalize ${u.role==='admin'?'bg-purple-100 text-purple-700':u.role==='manager'?'bg-blue-100 text-blue-700':'bg-slate-100 text-slate-700'}`}>{u.role}</span>
+                  </div>
                 </td>
                 <td className="p-4 hidden md:table-cell text-sm">
                   {u.department && <div>{u.department}</div>}
@@ -80,7 +104,7 @@ export default function Users() {
                       variant="outline"
                       size="sm"
                       className="gap-1.5"
-                      onClick={() => { setFormData({ name: u.name, email: u.email, password: "", role: u.role, department: u.department||"", jobTitle: u.jobTitle||"" }); setEditingId(u.id); setIsDialogOpen(true); }}
+                      onClick={() => { setFormData({ name: u.name, email: u.email, password: "", role: u.role, customRoleId: (u as any).customRole?.id?.toString() || "", department: u.department||"", jobTitle: u.jobTitle||"" }); setEditingId(u.id); setIsDialogOpen(true); }}
                     >
                       <Edit className="w-3.5 h-3.5" /> Edit
                     </Button>
@@ -114,9 +138,27 @@ export default function Users() {
                 <Label>{editingId ? "New Password" : "Password"}</Label>
                 <Input type="password" placeholder={editingId ? "Leave blank to keep unchanged" : ""} value={formData.password} onChange={e=>setFormData({...formData, password: e.target.value})} required={!editingId} />
               </div>
+              {customRoles.length > 0 && (
+                <div>
+                  <Label>Custom Role <span className="text-muted-foreground font-normal text-xs">(optional — sets permission level automatically)</span></Label>
+                  <select
+                    className="w-full px-4 py-2 border rounded-xl bg-background"
+                    value={formData.customRoleId}
+                    onChange={e => {
+                      const selected = customRoles.find(r => r.id === parseInt(e.target.value));
+                      setFormData({ ...formData, customRoleId: e.target.value, role: selected ? selected.permissionLevel as any : formData.role });
+                    }}
+                  >
+                    <option value="">— No custom role —</option>
+                    {customRoles.map(r => (
+                      <option key={r.id} value={r.id}>{r.name} ({r.permissionLevel})</option>
+                    ))}
+                  </select>
+                </div>
+              )}
               <div>
-                <Label>Role</Label>
-                <select className="w-full px-4 py-2 border rounded-xl" value={formData.role} onChange={e=>setFormData({...formData, role: e.target.value as any})}>
+                <Label>Permission Level</Label>
+                <select className="w-full px-4 py-2 border rounded-xl bg-background" value={formData.role} onChange={e=>setFormData({...formData, role: e.target.value as any, customRoleId: ""})}>
                   <option value="employee">Employee</option>
                   <option value="manager">Manager</option>
                   <option value="admin">Admin</option>

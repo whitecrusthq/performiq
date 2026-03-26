@@ -8,6 +8,7 @@ import {
   RefreshCcw, 
   ListChecks, 
   Users, 
+  Shield,
   LogOut,
   Menu,
   UserCircle
@@ -29,6 +30,7 @@ export function AppLayout({ children }: { children: ReactNode }) {
     { name: "Cycles", path: "/cycles", icon: RefreshCcw, roles: ["admin", "manager"] },
     { name: "Criteria", path: "/criteria", icon: ListChecks, roles: ["admin"] },
     { name: "Users", path: "/users", icon: Users, roles: ["admin"] },
+    { name: "Roles", path: "/roles", icon: Shield, roles: ["admin"] },
   ];
 
   const visibleNavItems = navItems.filter(item => item.roles.includes(user.role));
