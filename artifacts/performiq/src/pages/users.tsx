@@ -35,7 +35,7 @@ export default function Users() {
       .catch(() => {});
     fetch("/api/departments", { headers: authHeader() })
       .then(r => r.json())
-      .then(data => Array.isArray(data) && setDepartments(data))
+      .then(data => Array.isArray(data) && setDepartments(data.map((d: any) => d.name ?? d)))
       .catch(() => {});
   }, []);
 

@@ -9,6 +9,7 @@ import goalsRouter from "./goals";
 import dashboardRouter from "./dashboard";
 import customRolesRouter from "./custom-roles";
 import reportsRouter from "./reports";
+import departmentsRouter from "./departments";
 
 const router: IRouter = Router();
 
@@ -22,5 +23,6 @@ router.use(goalsRouter);
 router.use(dashboardRouter);
 router.use(customRolesRouter);
 router.use(reportsRouter);
+router.use(departmentsRouter);
 
 export default router;
