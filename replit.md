@@ -34,6 +34,19 @@ A full-featured Employee Performance Appraisal system built with Laravel 12 + PH
 - `routes/web.php` — all routes with auth + admin gates
 - `app/Providers/AppServiceProvider.php` — `admin` and `manager-or-admin` gates
 
+## Pending: Email Notifications
+
+Email notifications are planned but not yet implemented. The feature requires an API key from a transactional email service. When the user provides one, implement notifications for:
+- Appraisal assigned → notify employee
+- Employee submits self-review → notify reviewer (manager)
+- Manager completes review → notify admin/approver
+- Appraisal fully completed → notify employee
+- New user account created → welcome email to new user
+- Goal assigned → notify employee
+
+**Recommended services:** Resend (resend.com) or SendGrid (sendgrid.com)
+**When ready:** Store the key as `RESEND_API_KEY` or `SENDGRID_API_KEY` secret, then add an `artifacts/api-server/src/lib/email.ts` helper and call it from the relevant route handlers (appraisals.ts, users.ts, goals.ts).
+
 ## Stack
 
 - **Monorepo tool**: pnpm workspaces
