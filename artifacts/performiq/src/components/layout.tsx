@@ -9,7 +9,8 @@ import {
   ListChecks, 
   Users, 
   LogOut,
-  Menu
+  Menu,
+  UserCircle
 } from "lucide-react";
 import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
@@ -98,15 +99,16 @@ export function AppLayout({ children }: { children: ReactNode }) {
         </nav>
 
         <div className="pt-6 border-t border-border mt-auto">
-          <div className="flex items-center gap-3 px-3 py-2 mb-4">
-            <div className="w-10 h-10 rounded-full bg-secondary flex items-center justify-center text-secondary-foreground font-bold border border-border">
+          <Link href="/profile" className="flex items-center gap-3 px-3 py-2 mb-2 rounded-xl hover:bg-muted transition-colors cursor-pointer">
+            <div className="w-10 h-10 rounded-full bg-secondary flex items-center justify-center text-secondary-foreground font-bold border border-border shrink-0">
               {user.name.charAt(0).toUpperCase()}
             </div>
-            <div className="overflow-hidden">
+            <div className="overflow-hidden flex-1">
               <p className="text-sm font-semibold text-foreground truncate">{user.name}</p>
               <p className="text-xs text-muted-foreground capitalize truncate">{user.role}</p>
             </div>
-          </div>
+            <UserCircle className="w-4 h-4 text-muted-foreground shrink-0" />
+          </Link>
           <button 
             onClick={logout}
             className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-muted-foreground hover:bg-destructive/10 hover:text-destructive transition-colors duration-200 font-medium"

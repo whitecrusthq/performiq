@@ -15,6 +15,7 @@ import Cycles from "@/pages/cycles";
 import Goals from "@/pages/goals";
 import Criteria from "@/pages/criteria";
 import Users from "@/pages/users";
+import Profile from "@/pages/profile";
 
 const queryClient = new QueryClient();
 
@@ -61,6 +62,9 @@ function Router() {
       </Route>
       <Route path="/users">
         <AppLayout><ProtectedRoute component={Users} /></AppLayout>
+      </Route>
+      <Route path="/profile">
+        <AppLayout><ProtectedRoute component={Profile} /></AppLayout>
       </Route>
 
       <Route component={NotFound} />
