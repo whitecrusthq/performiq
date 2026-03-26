@@ -76,8 +76,22 @@ export default function Users() {
                 </td>
                 <td className="p-4 text-right">
                   <div className="flex justify-end gap-2">
-                    <Button variant="ghost" size="sm" className="h-8 w-8 p-0" onClick={() => { setFormData({ name: u.name, email: u.email, password: "", role: u.role, department: u.department||"", jobTitle: u.jobTitle||"" }); setEditingId(u.id); setIsDialogOpen(true); }}><Edit className="w-4 h-4"/></Button>
-                    <Button variant="ghost" size="sm" className="h-8 w-8 p-0 text-destructive hover:bg-destructive/10" onClick={() => handleDelete(u.id)}><Trash2 className="w-4 h-4"/></Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="gap-1.5"
+                      onClick={() => { setFormData({ name: u.name, email: u.email, password: "", role: u.role, department: u.department||"", jobTitle: u.jobTitle||"" }); setEditingId(u.id); setIsDialogOpen(true); }}
+                    >
+                      <Edit className="w-3.5 h-3.5" /> Edit
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="gap-1.5 text-destructive hover:bg-destructive/10 hover:text-destructive"
+                      onClick={() => handleDelete(u.id)}
+                    >
+                      <Trash2 className="w-3.5 h-3.5" /> Delete
+                    </Button>
                   </div>
                 </td>
               </tr>
