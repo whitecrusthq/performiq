@@ -74,7 +74,7 @@ export default function Dashboard() {
                     <div className="flex flex-col items-end gap-2">
                       <StatusBadge status={app.status} type="appraisal" />
                       {app.overallScore !== null && (
-                        <span className="text-xs font-bold bg-primary/10 text-primary px-2 py-0.5 rounded">Score: {app.overallScore.toFixed(1)}</span>
+                        <span className="text-xs font-bold bg-primary/10 text-primary px-2 py-0.5 rounded">Score: {Number(app.overallScore).toFixed(1)}</span>
                       )}
                     </div>
                   </Link>

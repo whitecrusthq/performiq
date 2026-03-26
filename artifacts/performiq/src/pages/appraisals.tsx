@@ -81,7 +81,7 @@ export default function Appraisals() {
                     <td className="p-4"><StatusBadge status={app.status} type="appraisal" /></td>
                     <td className="p-4">
                       {app.overallScore !== null ? (
-                        <span className="font-bold text-lg">{app.overallScore.toFixed(1)}<span className="text-sm text-muted-foreground font-normal">/5</span></span>
+                        <span className="font-bold text-lg">{Number(app.overallScore).toFixed(1)}<span className="text-sm text-muted-foreground font-normal">/5</span></span>
                       ) : (
                         <span className="text-muted-foreground text-sm">-</span>
                       )}

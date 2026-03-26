@@ -107,7 +107,7 @@ export default function AppraisalDetail() {
               <div className="flex items-center gap-2 mt-1">
                 <span className="text-sm font-medium text-muted-foreground">Final Score:</span>
                 <span className="text-xl font-bold text-primary flex items-center gap-1">
-                  {appraisal.overallScore.toFixed(1)} <Star className="w-5 h-5 fill-primary text-primary" />
+                  {Number(appraisal.overallScore).toFixed(1)} <Star className="w-5 h-5 fill-primary text-primary" />
                 </span>
               </div>
             )}
