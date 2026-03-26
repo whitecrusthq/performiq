@@ -161,7 +161,7 @@ export default function Appraisals() {
                     required={needsReviewer}
                   >
                     <option value="">-- Choose reviewer --</option>
-                    {users?.filter(u => (u.role === 'manager' || u.role === 'admin') && u.id !== parseInt(formData.employeeId)).map(u => (
+                    {users?.filter(u => (u.role === 'manager' || u.role === 'admin' || u.role === 'super_admin') && u.id !== parseInt(formData.employeeId)).map(u => (
                       <option key={u.id} value={u.id}>{u.name} ({u.role})</option>
                     ))}
                   </select>

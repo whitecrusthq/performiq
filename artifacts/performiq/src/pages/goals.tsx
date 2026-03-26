@@ -89,7 +89,7 @@ export default function Goals() {
           <Card key={goal.id} className="p-6 flex flex-col relative group">
             <div className="flex justify-between items-start mb-3">
               <StatusBadge status={goal.status} type="goal" />
-              {(user?.role === 'admin' || user?.id === goal.userId) && (
+              {(user?.role === 'admin' || user?.role === 'super_admin' || user?.id === goal.userId) && (
                 <div className="flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
                   <button onClick={() => openEdit(goal)} className="p-1 text-muted-foreground hover:text-primary"><Edit2 className="w-4 h-4" /></button>
                   <button onClick={() => handleDelete(goal.id)} className="p-1 text-muted-foreground hover:text-destructive"><Trash2 className="w-4 h-4" /></button>

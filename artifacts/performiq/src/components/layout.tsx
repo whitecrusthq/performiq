@@ -9,6 +9,7 @@ import {
   ListChecks, 
   Users, 
   Shield,
+  BarChart3,
   LogOut,
   Menu,
   UserCircle
@@ -23,14 +24,17 @@ export function AppLayout({ children }: { children: ReactNode }) {
 
   if (!user) return <>{children}</>;
 
+  const isAdmin = user.role === "admin" || user.role === "super_admin";
+
   const navItems = [
-    { name: "Dashboard", path: "/dashboard", icon: LayoutDashboard, roles: ["admin", "manager", "employee"] },
-    { name: "Appraisals", path: "/appraisals", icon: ClipboardList, roles: ["admin", "manager", "employee"] },
-    { name: "Goals", path: "/goals", icon: Target, roles: ["admin", "manager", "employee"] },
-    { name: "Cycles", path: "/cycles", icon: RefreshCcw, roles: ["admin", "manager"] },
-    { name: "Criteria", path: "/criteria", icon: ListChecks, roles: ["admin"] },
-    { name: "Users", path: "/users", icon: Users, roles: ["admin"] },
-    { name: "Roles", path: "/roles", icon: Shield, roles: ["admin"] },
+    { name: "Dashboard", path: "/dashboard", icon: LayoutDashboard, roles: ["super_admin", "admin", "manager", "employee"] },
+    { name: "Appraisals", path: "/appraisals", icon: ClipboardList, roles: ["super_admin", "admin", "manager", "employee"] },
+    { name: "Goals", path: "/goals", icon: Target, roles: ["super_admin", "admin", "manager", "employee"] },
+    { name: "Cycles", path: "/cycles", icon: RefreshCcw, roles: ["super_admin", "admin", "manager"] },
+    { name: "Criteria", path: "/criteria", icon: ListChecks, roles: ["super_admin", "admin"] },
+    { name: "Reports", path: "/reports", icon: BarChart3, roles: ["super_admin", "admin"] },
+    { name: "Users", path: "/users", icon: Users, roles: ["super_admin", "admin"] },
+    { name: "Roles", path: "/roles", icon: Shield, roles: ["super_admin", "admin"] },
   ];
 
   const visibleNavItems = navItems.filter(item => item.roles.includes(user.role));
@@ -107,7 +111,11 @@ export function AppLayout({ children }: { children: ReactNode }) {
             </div>
             <div className="overflow-hidden flex-1">
               <p className="text-sm font-semibold text-foreground truncate">{user.name}</p>
-              <p className="text-xs text-muted-foreground capitalize truncate">{user.role}</p>
+              <p className="text-xs text-muted-foreground capitalize truncate">
+                {user.role === "super_admin" ? (
+                  <span className="inline-flex items-center gap-1 text-violet-600 font-semibold">⭐ Super Admin</span>
+                ) : user.role}
+              </p>
             </div>
             <UserCircle className="w-4 h-4 text-muted-foreground shrink-0" />
           </Link>

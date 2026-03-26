@@ -16,6 +16,7 @@ import Goals from "@/pages/goals";
 import Criteria from "@/pages/criteria";
 import Users from "@/pages/users";
 import Roles from "@/pages/roles";
+import Reports from "@/pages/reports";
 import Profile from "@/pages/profile";
 
 const queryClient = new QueryClient();
@@ -66,6 +67,9 @@ function Router() {
       </Route>
       <Route path="/roles">
         <AppLayout><ProtectedRoute component={Roles} /></AppLayout>
+      </Route>
+      <Route path="/reports">
+        <AppLayout><ProtectedRoute component={Reports} /></AppLayout>
       </Route>
       <Route path="/profile">
         <AppLayout><ProtectedRoute component={Profile} /></AppLayout>

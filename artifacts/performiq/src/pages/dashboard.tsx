@@ -35,7 +35,7 @@ export default function Dashboard() {
 
       {/* Role specific stat grids */}
       {/* Admin: Awaiting Approval alert banner */}
-      {user?.role === 'admin' && (stats as any).awaitingApproval > 0 && (
+      {(user?.role === 'admin' || user?.role === 'super_admin') && (stats as any).awaitingApproval > 0 && (
         <Link href="/appraisals" className="block">
           <div className="flex items-center gap-4 p-4 bg-purple-50 border border-purple-200 rounded-2xl cursor-pointer hover:bg-purple-100 transition-colors">
             <div className="w-10 h-10 rounded-xl bg-purple-100 flex items-center justify-center shrink-0">

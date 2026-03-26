@@ -8,6 +8,7 @@ import appraisalsRouter from "./appraisals";
 import goalsRouter from "./goals";
 import dashboardRouter from "./dashboard";
 import customRolesRouter from "./custom-roles";
+import reportsRouter from "./reports";
 
 const router: IRouter = Router();
 
@@ -20,5 +21,6 @@ router.use(appraisalsRouter);
 router.use(goalsRouter);
 router.use(dashboardRouter);
 router.use(customRolesRouter);
+router.use(reportsRouter);
 
 export default router;

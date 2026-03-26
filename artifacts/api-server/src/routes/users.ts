@@ -4,6 +4,12 @@ import { db, usersTable, customRolesTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
 import { requireAuth, requireRole, AuthRequest } from "../middlewares/auth";
 
+const ELEVATED_ROLES = ["admin", "super_admin"];
+function canAssignRole(actorRole: string, targetRole: string): boolean {
+  if (ELEVATED_ROLES.includes(targetRole)) return actorRole === "super_admin";
+  return true;
+}
+
 const router = Router();
 
 const formatUser = (u: typeof usersTable.$inferSelect, customRole?: typeof customRolesTable.$inferSelect | null) => ({
@@ -41,15 +47,18 @@ router.get("/users", requireAuth, requireRole("admin", "manager"), async (_req, 
   }
 });
 
-router.post("/users", requireAuth, requireRole("admin"), async (req, res) => {
+router.post("/users", requireAuth, requireRole("admin"), async (req: AuthRequest, res) => {
   try {
     const { name, email, password, role, customRoleId, managerId, department, jobTitle } = req.body;
     const passwordHash = await bcrypt.hash(password, 10);
-    // If a custom role is assigned, derive the base permission from it
-    let effectiveRole = role;
+    let effectiveRole = role || "employee";
     if (customRoleId) {
       const [cr] = await db.select().from(customRolesTable).where(eq(customRolesTable.id, Number(customRoleId))).limit(1);
       if (cr) effectiveRole = cr.permissionLevel;
+    }
+    if (!canAssignRole(req.user!.role, effectiveRole)) {
+      res.status(403).json({ error: "Only a Super Admin can assign admin or super_admin roles" });
+      return;
     }
     const [user] = await db.insert(usersTable).values({
       name, email, passwordHash, role: effectiveRole, customRoleId: customRoleId ? Number(customRoleId) : null, managerId, department, jobTitle,
@@ -72,7 +81,7 @@ router.get("/users/:id", requireAuth, async (req, res) => {
   }
 });
 
-router.put("/users/:id", requireAuth, requireRole("admin"), async (req, res) => {
+router.put("/users/:id", requireAuth, requireRole("admin"), async (req: AuthRequest, res) => {
   try {
     const { name, email, password, role, customRoleId, managerId, department, jobTitle } = req.body;
     const updates: Record<string, any> = { name, email, managerId, department, jobTitle };
@@ -84,6 +93,11 @@ router.put("/users/:id", requireAuth, requireRole("admin"), async (req, res) => 
       updates.role = cr ? cr.permissionLevel : (role ?? "employee");
     } else {
       updates.role = role ?? "employee";
+    }
+
+    if (!canAssignRole(req.user!.role, updates.role)) {
+      res.status(403).json({ error: "Only a Super Admin can assign admin or super_admin roles" });
+      return;
     }
 
     if (password && password.trim() !== "") {

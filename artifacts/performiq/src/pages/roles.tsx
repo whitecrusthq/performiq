@@ -82,7 +82,7 @@ export default function Roles() {
     refreshRoles();
   };
 
-  if (user?.role !== "admin") return <div className="p-8 text-destructive">Unauthorized</div>;
+  if (user?.role !== "admin" && user?.role !== "super_admin") return <div className="p-8 text-destructive">Unauthorized</div>;
   if (loading) return <div className="p-8 animate-pulse text-muted-foreground">Loading roles...</div>;
 
   return (

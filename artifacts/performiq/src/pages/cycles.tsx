@@ -81,7 +81,7 @@ export default function Cycles() {
   return (
     <div>
       <PageHeader title="Appraisal Cycles" description="Manage performance review periods for the organization.">
-        {user?.role === 'admin' && (
+        {(user?.role === 'admin' || user?.role === 'super_admin') && (
           <Button onClick={openCreate}>
             <Plus className="w-4 h-4 mr-2" /> New Cycle
           </Button>
@@ -89,7 +89,7 @@ export default function Cycles() {
       </PageHeader>
 
       {!cycles?.length ? (
-        <EmptyState title="No cycles found" description="Create an appraisal cycle to start tracking performance." icon={Calendar} action={user?.role === 'admin' && <Button onClick={openCreate}>Create Cycle</Button>} />
+        <EmptyState title="No cycles found" description="Create an appraisal cycle to start tracking performance." icon={Calendar} action={(user?.role === 'admin' || user?.role === 'super_admin') && <Button onClick={openCreate}>Create Cycle</Button>} />
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
           {cycles.map((cycle) => (
@@ -97,7 +97,7 @@ export default function Cycles() {
               <div className="p-6 flex-1">
                 <div className="flex justify-between items-start mb-4">
                   <StatusBadge status={cycle.status} type="cycle" />
-                  {user?.role === 'admin' && (
+                  {(user?.role === 'admin' || user?.role === 'super_admin') && (
                     <div className="flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
                       <button onClick={() => openEdit(cycle)} className="p-1.5 text-muted-foreground hover:text-primary bg-muted rounded-md"><Edit2 className="w-4 h-4" /></button>
                       <button onClick={() => handleDelete(cycle.id)} className="p-1.5 text-muted-foreground hover:text-destructive bg-muted rounded-md"><Trash2 className="w-4 h-4" /></button>

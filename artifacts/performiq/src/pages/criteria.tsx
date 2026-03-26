@@ -39,7 +39,7 @@ export default function Criteria() {
   };
 
   if (isLoading) return <div className="p-8">Loading criteria...</div>;
-  if (user?.role !== 'admin') return <div className="p-8 text-destructive">Unauthorized</div>;
+  if (user?.role !== 'admin' && user?.role !== 'super_admin') return <div className="p-8 text-destructive">Unauthorized</div>;
 
   // Group by category
   const grouped = criteria?.reduce((acc, curr) => {

@@ -23,13 +23,20 @@ export function requireAuth(req: AuthRequest, res: Response, next: NextFunction)
   }
 }
 
+const ROLE_HIERARCHY: Record<string, number> = {
+  super_admin: 4,
+  admin: 3,
+  manager: 2,
+  employee: 1,
+};
+
 export function requireRole(...roles: string[]) {
   return (req: AuthRequest, res: Response, next: NextFunction) => {
-    if (!req.user || !roles.includes(req.user.role)) {
-      res.status(403).json({ error: "Forbidden" });
-      return;
-    }
-    next();
+    if (!req.user) { res.status(403).json({ error: "Forbidden" }); return; }
+    const userLevel = ROLE_HIERARCHY[req.user.role] ?? 0;
+    const minRequired = Math.min(...roles.map(r => ROLE_HIERARCHY[r] ?? 99));
+    if (userLevel >= minRequired) { next(); return; }
+    res.status(403).json({ error: "Forbidden" });
   };
 }
 

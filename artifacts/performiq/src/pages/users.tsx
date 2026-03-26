@@ -59,7 +59,7 @@ export default function Users() {
   };
 
   if (isLoading) return <div className="p-8">Loading users...</div>;
-  if (user?.role !== 'admin') return <div className="p-8 text-destructive">Unauthorized</div>;
+  if (user?.role !== 'admin' && user?.role !== 'super_admin') return <div className="p-8 text-destructive">Unauthorized</div>;
 
   return (
     <div>
@@ -91,7 +91,7 @@ export default function Users() {
                     {(u as any).customRole ? (
                       <span className="font-medium text-sm">{(u as any).customRole.name}</span>
                     ) : null}
-                    <span className={`px-2 py-0.5 rounded text-xs font-medium w-fit capitalize ${u.role==='admin'?'bg-purple-100 text-purple-700':u.role==='manager'?'bg-blue-100 text-blue-700':'bg-slate-100 text-slate-700'}`}>{u.role}</span>
+                    <span className={`px-2 py-0.5 rounded text-xs font-medium w-fit capitalize ${u.role==='super_admin'?'bg-violet-100 text-violet-700':u.role==='admin'?'bg-purple-100 text-purple-700':u.role==='manager'?'bg-blue-100 text-blue-700':'bg-slate-100 text-slate-700'}`}>{u.role === 'super_admin' ? 'Super Admin' : u.role}</span>
                   </div>
                 </td>
                 <td className="p-4 hidden md:table-cell text-sm">
@@ -161,8 +161,12 @@ export default function Users() {
                 <select className="w-full px-4 py-2 border rounded-xl bg-background" value={formData.role} onChange={e=>setFormData({...formData, role: e.target.value as any, customRoleId: ""})}>
                   <option value="employee">Employee</option>
                   <option value="manager">Manager</option>
-                  <option value="admin">Admin</option>
+                  {(user?.role === "admin" || user?.role === "super_admin") && <option value="admin">Admin</option>}
+                  {user?.role === "super_admin" && <option value="super_admin">Super Admin</option>}
                 </select>
+                {(formData.role === "admin" || formData.role === "super_admin") && user?.role !== "super_admin" && (
+                  <p className="text-xs text-amber-600 mt-1">Only a Super Admin can assign admin-level roles.</p>
+                )}
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div><Label>Department</Label><Input value={formData.department} onChange={e=>setFormData({...formData, department: e.target.value})} /></div>
