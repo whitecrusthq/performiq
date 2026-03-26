@@ -1,11 +1,18 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { useListAppraisals, useCreateAppraisal, useListCycles, useListUsers } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { PageHeader, Card, StatusBadge, Button, EmptyState, Label } from "@/components/shared";
 import { format } from "date-fns";
-import { ClipboardList, Plus, X, User as UserIcon } from "lucide-react";
+import { ClipboardList, Plus, X, Search, ChevronDown } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
 import { Link } from "wouter";
+
+const STATUS_OPTIONS = [
+  { value: "self_review",       label: "Self Review" },
+  { value: "manager_review",    label: "Manager Review" },
+  { value: "pending_approval",  label: "Pending Approval" },
+  { value: "completed",         label: "Completed" },
+];
 
 export default function Appraisals() {
   const { user } = useAuth();
@@ -14,12 +21,30 @@ export default function Appraisals() {
   
   const { data: appraisals, isLoading } = useListAppraisals({}, { request: { headers } });
   const { data: cycles } = useListCycles({ request: { headers } });
-  const { data: users } = useListUsers({ request: { headers } }); // Admin only endpoint usually, but we need it to select employee
+  const { data: users } = useListUsers({ request: { headers } });
 
   const createMutation = useCreateAppraisal({ request: { headers } });
 
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [formData, setFormData] = useState({ cycleId: "", employeeId: "", reviewerId: "", workflowType: "admin_approval" });
+
+  // Filters
+  const [search, setSearch] = useState("");
+  const [filterStatus, setFilterStatus] = useState("");
+  const [filterCycle, setFilterCycle] = useState("");
+
+  const filteredAppraisals = useMemo(() => {
+    if (!appraisals) return [];
+    return appraisals.filter(a => {
+      const q = search.toLowerCase();
+      const matchSearch = !q || a.employee.name.toLowerCase().includes(q) || (a.employee.department ?? "").toLowerCase().includes(q);
+      const matchStatus = !filterStatus || a.status === filterStatus;
+      const matchCycle = !filterCycle || String(a.cycleId) === filterCycle;
+      return matchSearch && matchStatus && matchCycle;
+    });
+  }, [appraisals, search, filterStatus, filterCycle]);
+
+  const activeFilters = search || filterStatus || filterCycle;
 
   const WORKFLOW_OPTIONS = [
     { value: "self_only",      label: "Self Only",           desc: "Employee self-review → Completed" },
@@ -61,9 +86,61 @@ export default function Appraisals() {
         )}
       </PageHeader>
 
+      {/* Filter bar */}
+      <div className="flex flex-wrap gap-3 mb-4">
+        <div className="relative flex-1 min-w-[180px]">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none" />
+          <input
+            className="w-full pl-9 pr-4 py-2 rounded-xl border border-border bg-card text-sm focus:outline-none focus:ring-2 focus:ring-primary/20"
+            placeholder="Search employee or department…"
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+          />
+        </div>
+        <div className="relative">
+          <select
+            className="pl-3 pr-8 py-2 rounded-xl border border-border bg-card text-sm appearance-none cursor-pointer focus:outline-none focus:ring-2 focus:ring-primary/20"
+            value={filterStatus}
+            onChange={e => setFilterStatus(e.target.value)}
+          >
+            <option value="">All Statuses</option>
+            {STATUS_OPTIONS.map(s => <option key={s.value} value={s.value}>{s.label}</option>)}
+          </select>
+          <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground pointer-events-none" />
+        </div>
+        <div className="relative">
+          <select
+            className="pl-3 pr-8 py-2 rounded-xl border border-border bg-card text-sm appearance-none cursor-pointer focus:outline-none focus:ring-2 focus:ring-primary/20"
+            value={filterCycle}
+            onChange={e => setFilterCycle(e.target.value)}
+          >
+            <option value="">All Cycles</option>
+            {cycles?.map(c => <option key={c.id} value={String(c.id)}>{c.name}</option>)}
+          </select>
+          <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground pointer-events-none" />
+        </div>
+        {activeFilters && (
+          <button
+            className="px-3 py-2 text-xs text-muted-foreground underline hover:text-foreground"
+            onClick={() => { setSearch(""); setFilterStatus(""); setFilterCycle(""); }}
+          >
+            Clear filters
+          </button>
+        )}
+      </div>
+
+      {/* Result count */}
+      {activeFilters && (
+        <p className="text-sm text-muted-foreground mb-3">
+          Showing {filteredAppraisals.length} of {appraisals?.length ?? 0} appraisals
+        </p>
+      )}
+
       <Card className="overflow-hidden">
         {appraisals?.length === 0 ? (
           <EmptyState title="No appraisals found" description="There are no active appraisals right now." icon={ClipboardList} />
+        ) : filteredAppraisals.length === 0 ? (
+          <div className="p-10 text-center text-muted-foreground text-sm">No appraisals match the current filters.</div>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-left border-collapse">
@@ -78,7 +155,7 @@ export default function Appraisals() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-border">
-                {appraisals?.map((app) => (
+                {filteredAppraisals.map((app) => (
                   <tr key={app.id} className="hover:bg-muted/30 transition-colors">
                     <td className="p-4">
                       <div className="flex items-center gap-3">

@@ -1,8 +1,8 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useListUsers, useCreateUser, useUpdateUser, useDeleteUser } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { PageHeader, Card, Button, Input, Label } from "@/components/shared";
-import { Users as UsersIcon, Plus, Edit, Trash2, X } from "lucide-react";
+import { Users as UsersIcon, Plus, Edit, Trash2, X, Search, ChevronDown } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
 
 type CustomRole = { id: number; name: string; permissionLevel: string };
@@ -27,6 +27,22 @@ export default function Users() {
   const [editingId, setEditingId] = useState<number | null>(null);
   const [formData, setFormData] = useState({ name: "", email: "", password: "", role: "employee" as any, customRoleId: "", department: "", jobTitle: "" });
   const [isNewDept, setIsNewDept] = useState(false);
+
+  // Filters
+  const [search, setSearch] = useState("");
+  const [filterRole, setFilterRole] = useState("");
+  const [filterDept, setFilterDept] = useState("");
+
+  const filteredUsers = useMemo(() => {
+    if (!users) return [];
+    return users.filter(u => {
+      const q = search.toLowerCase();
+      const matchSearch = !q || u.name.toLowerCase().includes(q) || u.email.toLowerCase().includes(q);
+      const matchRole = !filterRole || u.role === filterRole;
+      const matchDept = !filterDept || (u.department ?? "") === filterDept;
+      return matchSearch && matchRole && matchDept;
+    });
+  }, [users, search, filterRole, filterDept]);
 
   useEffect(() => {
     fetch("/api/custom-roles", { headers: authHeader() })
@@ -77,6 +93,52 @@ export default function Users() {
         </Button>
       </PageHeader>
 
+      {/* Filter bar */}
+      <div className="flex flex-wrap gap-3 mb-4">
+        <div className="relative flex-1 min-w-[180px]">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none" />
+          <input
+            className="w-full pl-9 pr-4 py-2 rounded-xl border border-border bg-card text-sm focus:outline-none focus:ring-2 focus:ring-primary/20"
+            placeholder="Search name or email…"
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+          />
+        </div>
+        <div className="relative">
+          <select
+            className="pl-3 pr-8 py-2 rounded-xl border border-border bg-card text-sm appearance-none cursor-pointer focus:outline-none focus:ring-2 focus:ring-primary/20"
+            value={filterRole}
+            onChange={e => setFilterRole(e.target.value)}
+          >
+            <option value="">All Roles</option>
+            <option value="employee">Employee</option>
+            <option value="manager">Manager</option>
+            <option value="admin">Admin</option>
+            <option value="super_admin">Super Admin</option>
+          </select>
+          <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground pointer-events-none" />
+        </div>
+        <div className="relative">
+          <select
+            className="pl-3 pr-8 py-2 rounded-xl border border-border bg-card text-sm appearance-none cursor-pointer focus:outline-none focus:ring-2 focus:ring-primary/20"
+            value={filterDept}
+            onChange={e => setFilterDept(e.target.value)}
+          >
+            <option value="">All Departments</option>
+            {departments.map(d => <option key={d} value={d}>{d}</option>)}
+          </select>
+          <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground pointer-events-none" />
+        </div>
+        {(search || filterRole || filterDept) && (
+          <button
+            className="px-3 py-2 text-xs text-muted-foreground underline hover:text-foreground"
+            onClick={() => { setSearch(""); setFilterRole(""); setFilterDept(""); }}
+          >
+            Clear filters
+          </button>
+        )}
+      </div>
+
       <Card className="overflow-hidden">
         <table className="w-full text-left border-collapse">
           <thead>
@@ -88,7 +150,10 @@ export default function Users() {
             </tr>
           </thead>
           <tbody className="divide-y divide-border">
-            {users?.map(u => (
+            {filteredUsers.length === 0 && (
+              <tr><td colSpan={4} className="p-8 text-center text-muted-foreground text-sm">No users match the current filters.</td></tr>
+            )}
+            {filteredUsers.map(u => (
               <tr key={u.id} className="hover:bg-muted/30">
                 <td className="p-4">
                   <div className="font-semibold text-foreground">{u.name}</div>
