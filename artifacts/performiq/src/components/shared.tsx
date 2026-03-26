@@ -1,28 +1,16 @@
 import { ReactNode } from "react";
 import { motion } from "framer-motion";
 import { Link } from "wouter";
-import { Loader2, ChevronLeft } from "lucide-react";
+import { Loader2 } from "lucide-react";
 
 export function PageHeader({ title, description, children }: { title: string, description?: string, children?: ReactNode }) {
-  const canGoBack = typeof window !== "undefined" && window.history.length > 1;
   return (
-    <div className="flex flex-col gap-2 mb-8">
-      {canGoBack && (
-        <button
-          onClick={() => window.history.back()}
-          className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground transition-colors w-fit -ml-1 group"
-        >
-          <ChevronLeft className="w-4 h-4 group-hover:-translate-x-0.5 transition-transform" />
-          Back
-        </button>
-      )}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div>
-          <h1 className="text-3xl font-bold text-foreground">{title}</h1>
-          {description && <p className="text-muted-foreground mt-1 text-sm md:text-base">{description}</p>}
-        </div>
-        {children && <div className="flex items-center gap-3">{children}</div>}
+    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-8">
+      <div>
+        <h1 className="text-3xl font-bold text-foreground">{title}</h1>
+        {description && <p className="text-muted-foreground mt-1 text-sm md:text-base">{description}</p>}
       </div>
+      {children && <div className="flex items-center gap-3">{children}</div>}
     </div>
   );
 }

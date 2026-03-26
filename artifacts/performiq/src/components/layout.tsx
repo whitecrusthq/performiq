@@ -146,24 +146,24 @@ export function AppLayout({ children }: { children: ReactNode }) {
         </div>
 
         {/* Sticky footer navigation */}
-        <div className="sticky bottom-0 z-20 border-t border-border bg-card/80 backdrop-blur-md px-4 py-2.5">
+        <div className="sticky bottom-0 z-20 border-t border-border bg-card/80 backdrop-blur-md px-4 py-3">
           <div className="max-w-6xl mx-auto flex items-center justify-between gap-2">
-            <div className="flex items-center gap-1">
+            <div className="flex items-center gap-2">
               <button
                 onClick={() => window.history.back()}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-sm font-medium text-muted-foreground hover:bg-muted hover:text-foreground transition-all duration-200 active:scale-95"
+                className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-medium bg-primary text-primary-foreground hover:bg-primary/90 shadow-sm hover:shadow transition-all duration-200 active:scale-95"
               >
                 <ChevronLeft className="w-4 h-4" /> Back
               </button>
               <button
                 onClick={() => window.history.forward()}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-sm font-medium text-muted-foreground hover:bg-muted hover:text-foreground transition-all duration-200 active:scale-95"
+                className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-medium bg-primary text-primary-foreground hover:bg-primary/90 shadow-sm hover:shadow transition-all duration-200 active:scale-95"
               >
                 Forward <ChevronRight className="w-4 h-4" />
               </button>
             </div>
             <Link href="/dashboard">
-              <button className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-sm font-medium text-muted-foreground hover:bg-muted hover:text-foreground transition-all duration-200 active:scale-95">
+              <button className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-medium bg-primary text-primary-foreground hover:bg-primary/90 shadow-sm hover:shadow transition-all duration-200 active:scale-95">
                 <Home className="w-4 h-4" /> Home
               </button>
             </Link>
