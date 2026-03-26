@@ -13,7 +13,10 @@ import {
   Building2,
   LogOut,
   Menu,
-  UserCircle
+  UserCircle,
+  ChevronLeft,
+  ChevronRight,
+  Home
 } from "lucide-react";
 import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
@@ -136,10 +139,35 @@ export function AppLayout({ children }: { children: ReactNode }) {
         <div className="flex-1 overflow-y-auto p-4 sm:p-6 lg:p-8 relative">
           <motion.div 
             initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3 }}
-            className="max-w-6xl mx-auto pb-20"
+            className="max-w-6xl mx-auto pb-24"
           >
             {children}
           </motion.div>
+        </div>
+
+        {/* Sticky footer navigation */}
+        <div className="sticky bottom-0 z-20 border-t border-border bg-card/80 backdrop-blur-md px-4 py-2.5">
+          <div className="max-w-6xl mx-auto flex items-center justify-between gap-2">
+            <div className="flex items-center gap-1">
+              <button
+                onClick={() => window.history.back()}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-sm font-medium text-muted-foreground hover:bg-muted hover:text-foreground transition-all duration-200 active:scale-95"
+              >
+                <ChevronLeft className="w-4 h-4" /> Back
+              </button>
+              <button
+                onClick={() => window.history.forward()}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-sm font-medium text-muted-foreground hover:bg-muted hover:text-foreground transition-all duration-200 active:scale-95"
+              >
+                Forward <ChevronRight className="w-4 h-4" />
+              </button>
+            </div>
+            <Link href="/dashboard">
+              <button className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-sm font-medium text-muted-foreground hover:bg-muted hover:text-foreground transition-all duration-200 active:scale-95">
+                <Home className="w-4 h-4" /> Home
+              </button>
+            </Link>
+          </div>
         </div>
       </main>
     </div>
