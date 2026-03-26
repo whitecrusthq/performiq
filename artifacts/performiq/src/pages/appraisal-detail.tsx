@@ -4,7 +4,13 @@ import { useGetAppraisal, useUpdateAppraisal } from "@workspace/api-client-react
 import { useQueryClient } from "@tanstack/react-query";
 import { PageHeader, Card, StatusBadge, Button, Label } from "@/components/shared";
 import { useAuth } from "@/hooks/use-auth";
-import { CheckCircle2, User, Star, FileText, ShieldCheck, ThumbsUp } from "lucide-react";
+import { CheckCircle2, User, Star, FileText, ShieldCheck, ThumbsUp, ArrowRight } from "lucide-react";
+
+const WORKFLOW_ROUTES: Record<string, { label: string; steps: string[] }> = {
+  self_only:       { label: "Self Only",              steps: ["Self Review", "Completed"] },
+  manager_review:  { label: "Employee → Manager",     steps: ["Self Review", "Manager Review", "Completed"] },
+  admin_approval:  { label: "Full Approval",          steps: ["Self Review", "Manager Review", "Admin Approval", "Completed"] },
+};
 
 export default function AppraisalDetail() {
   const [, params] = useRoute("/appraisals/:id");
@@ -61,15 +67,9 @@ export default function AppraisalDetail() {
       return { ...base, managerScore: data.score, managerNote: data.note };
     });
 
-    const payload: any = { scores: scoresArray };
-    
-    if (isSelfReviewActive) {
-      payload.selfComment = generalComment;
-      if (action === 'submit') payload.status = 'manager_review';
-    } else {
-      payload.managerComment = generalComment;
-      if (action === 'submit') payload.status = 'pending_approval';
-    }
+    const payload: any = { action, scores: scoresArray };
+    if (isSelfReviewActive) payload.selfComment = generalComment;
+    else payload.managerComment = generalComment;
 
     updateMutation.mutate(
       { id: appraisalId, data: payload },
@@ -104,6 +104,20 @@ export default function AppraisalDetail() {
               <span className="text-sm font-medium text-muted-foreground">Status:</span>
               <StatusBadge status={appraisal.status} type="appraisal" />
             </div>
+            {appraisal.workflowType && (() => {
+              const wf = WORKFLOW_ROUTES[(appraisal as any).workflowType] ?? WORKFLOW_ROUTES.admin_approval;
+              return (
+                <div className="flex items-center gap-1 mt-1 flex-wrap">
+                  <span className="text-xs text-muted-foreground mr-1">Route:</span>
+                  {wf.steps.map((step, i) => (
+                    <span key={step} className="flex items-center gap-1">
+                      <span className="text-xs font-medium text-muted-foreground">{step}</span>
+                      {i < wf.steps.length - 1 && <ArrowRight className="w-3 h-3 text-muted-foreground/50" />}
+                    </span>
+                  ))}
+                </div>
+              );
+            })()}
             {appraisal.overallScore !== null && (
               <div className="flex items-center gap-2 mt-1">
                 <span className="text-sm font-medium text-muted-foreground">Final Score:</span>
@@ -278,7 +292,7 @@ export default function AppraisalDetail() {
               onClick={() => {
                 if (confirm('Approve this appraisal? This will mark it as completed.')) {
                   updateMutation.mutate(
-                    { id: appraisalId, data: { status: 'completed' } as any },
+                    { id: appraisalId, data: { action: 'submit' } as any },
                     { onSuccess: () => queryClient.invalidateQueries({ queryKey: [`/api/appraisals/${appraisalId}`] }) }
                   );
                 }

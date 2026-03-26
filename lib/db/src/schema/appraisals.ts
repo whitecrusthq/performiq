@@ -10,12 +10,19 @@ export const appraisalStatusEnum = pgEnum("appraisal_status", [
   "completed",
 ]);
 
+export const workflowTypeEnum = pgEnum("workflow_type", [
+  "self_only",
+  "manager_review",
+  "admin_approval",
+]);
+
 export const appraisalsTable = pgTable("appraisals", {
   id: serial("id").primaryKey(),
   cycleId: integer("cycle_id").notNull(),
   employeeId: integer("employee_id").notNull(),
   reviewerId: integer("reviewer_id"),
   status: appraisalStatusEnum("status").notNull().default("pending"),
+  workflowType: workflowTypeEnum("workflow_type").notNull().default("admin_approval"),
   selfComment: text("self_comment"),
   managerComment: text("manager_comment"),
   overallScore: numeric("overall_score", { precision: 5, scale: 2 }),

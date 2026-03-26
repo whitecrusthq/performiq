@@ -19,12 +19,18 @@ export default function Appraisals() {
   const createMutation = useCreateAppraisal({ request: { headers } });
 
   const [isDialogOpen, setIsDialogOpen] = useState(false);
-  const [formData, setFormData] = useState({ cycleId: "", employeeId: "" });
+  const [formData, setFormData] = useState({ cycleId: "", employeeId: "", workflowType: "admin_approval" });
+
+  const WORKFLOW_OPTIONS = [
+    { value: "self_only",      label: "Self Only",           desc: "Employee self-review → Completed" },
+    { value: "manager_review", label: "Employee → Manager",  desc: "Self-review → Manager review → Completed" },
+    { value: "admin_approval", label: "Full Approval",       desc: "Self-review → Manager review → Admin approval → Completed" },
+  ];
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     createMutation.mutate(
-      { data: { cycleId: parseInt(formData.cycleId), employeeId: parseInt(formData.employeeId) } },
+      { data: { cycleId: parseInt(formData.cycleId), employeeId: parseInt(formData.employeeId), workflowType: formData.workflowType } as any },
       {
         onSuccess: () => {
           queryClient.invalidateQueries({ queryKey: ["/api/appraisals"] });
@@ -135,6 +141,27 @@ export default function Appraisals() {
                     <option key={c.id} value={c.id}>{c.name}</option>
                   ))}
                 </select>
+              </div>
+              <div>
+                <Label>Review Route</Label>
+                <div className="space-y-2 mt-1">
+                  {WORKFLOW_OPTIONS.map(opt => (
+                    <label key={opt.value} className={`flex items-start gap-3 p-3 rounded-xl border cursor-pointer transition-colors ${formData.workflowType === opt.value ? 'border-primary bg-primary/5' : 'border-border hover:bg-muted/40'}`}>
+                      <input
+                        type="radio"
+                        name="workflowType"
+                        value={opt.value}
+                        checked={formData.workflowType === opt.value}
+                        onChange={() => setFormData({ ...formData, workflowType: opt.value })}
+                        className="mt-0.5 accent-primary"
+                      />
+                      <div>
+                        <p className="font-medium text-sm">{opt.label}</p>
+                        <p className="text-xs text-muted-foreground">{opt.desc}</p>
+                      </div>
+                    </label>
+                  ))}
+                </div>
               </div>
               <div className="pt-4 flex justify-end gap-3">
                 <Button type="button" variant="ghost" onClick={() => setIsDialogOpen(false)}>Cancel</Button>

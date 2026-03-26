@@ -54,14 +54,28 @@ router.get("/appraisals", requireAuth, async (req: AuthRequest, res) => {
   }
 });
 
+// Determine next status based on current status + workflow type
+function nextStatus(current: string, workflowType: string): string | null {
+  if (current === "self_review") {
+    if (workflowType === "self_only") return "completed";
+    return "manager_review";
+  }
+  if (current === "manager_review") {
+    if (workflowType === "admin_approval") return "pending_approval";
+    return "completed";
+  }
+  if (current === "pending_approval") return "completed";
+  return null;
+}
+
 router.post("/appraisals", requireAuth, async (req: AuthRequest, res) => {
   try {
     if (!["admin", "manager"].includes(req.user!.role)) {
       res.status(403).json({ error: "Forbidden" }); return;
     }
-    const { cycleId, employeeId, reviewerId } = req.body;
+    const { cycleId, employeeId, reviewerId, workflowType } = req.body;
     const [appraisal] = await db.insert(appraisalsTable)
-      .values({ cycleId, employeeId, reviewerId: reviewerId ?? req.user!.id })
+      .values({ cycleId, employeeId, reviewerId: reviewerId ?? req.user!.id, workflowType: workflowType ?? "admin_approval", status: "self_review" })
       .returning();
 
     const criteria = await db.select().from(criteriaTable);
@@ -100,9 +114,22 @@ router.get("/appraisals/:id", requireAuth, async (req: AuthRequest, res) => {
 
 router.put("/appraisals/:id", requireAuth, async (req: AuthRequest, res) => {
   try {
-    const { status, selfComment, managerComment, scores } = req.body;
+    const { action, selfComment, managerComment, scores } = req.body;
+
+    // Fetch the current appraisal to determine workflow routing
+    const [current] = await db.select().from(appraisalsTable).where(eq(appraisalsTable.id, Number(req.params.id))).limit(1);
+    if (!current) { res.status(404).json({ error: "Not found" }); return; }
+
     const updates: Partial<typeof appraisalsTable.$inferInsert> = {};
-    if (status !== undefined) updates.status = status;
+
+    // Route to next status dynamically if submitting
+    if (action === "submit") {
+      const next = nextStatus(current.status, current.workflowType);
+      if (next) updates.status = next as any;
+    } else if (action === "save") {
+      // keep status as-is (draft save)
+    }
+
     if (selfComment !== undefined) updates.selfComment = selfComment;
     if (managerComment !== undefined) updates.managerComment = managerComment;
 
@@ -117,10 +144,23 @@ router.put("/appraisals/:id", requireAuth, async (req: AuthRequest, res) => {
             .where(eq(appraisalScoresTable.id, existing[0].id));
         }
       }
+      // Calculate overall score from manager scores when reaching pending_approval or completed
+      const targetStatus = updates.status ?? current.status;
+      if (targetStatus === "pending_approval" || targetStatus === "completed") {
+        const allScores = await db.select().from(appraisalScoresTable).where(eq(appraisalScoresTable.appraisalId, Number(req.params.id)));
+        const mgScores = allScores.filter(s => s.managerScore != null).map(s => Number(s.managerScore));
+        if (mgScores.length > 0) {
+          updates.overallScore = String(mgScores.reduce((a, b) => a + b, 0) / mgScores.length);
+        }
+      }
+    }
+
+    // Admin approving from pending_approval (no scores submitted)
+    if (action === "submit" && current.status === "pending_approval" && !scores) {
       const allScores = await db.select().from(appraisalScoresTable).where(eq(appraisalScoresTable.appraisalId, Number(req.params.id)));
-      const managerScores = allScores.filter(s => s.managerScore != null).map(s => Number(s.managerScore));
-      if (managerScores.length > 0 && (status === "pending_approval" || status === "completed")) {
-        updates.overallScore = String(managerScores.reduce((a, b) => a + b, 0) / managerScores.length);
+      const mgScores = allScores.filter(s => s.managerScore != null).map(s => Number(s.managerScore));
+      if (mgScores.length > 0 && !current.overallScore) {
+        updates.overallScore = String(mgScores.reduce((a, b) => a + b, 0) / mgScores.length);
       }
     }
 
