@@ -24,7 +24,7 @@ router.post("/auth/login", async (req, res) => {
       return;
     }
 
-    const [user] = await db.select().from(usersTable).where(eq(usersTable.email, email)).limit(1);
+    const [user] = await db.select().from(usersTable).where(eq(usersTable.email, email.toLowerCase().trim())).limit(1);
     if (!user) { res.status(401).json({ error: "Invalid credentials" }); return; }
 
     const valid = await bcrypt.compare(password, user.passwordHash);
@@ -71,7 +71,7 @@ router.post("/auth/verify-otp", async (req, res) => {
       res.status(401).json({ error: "Invalid verification code." });
       return;
     }
-    const [user] = await db.select().from(usersTable).where(eq(usersTable.email, email)).limit(1);
+    const [user] = await db.select().from(usersTable).where(eq(usersTable.email, email.toLowerCase().trim())).limit(1);
     if (!user) { res.status(404).json({ error: "User not found" }); return; }
     const token = generateToken({ id: user.id, role: user.role, email: user.email });
     res.json({ token, user: formatAuthUser(user) });

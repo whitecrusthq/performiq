@@ -232,7 +232,7 @@ export default function Leave() {
                 </div>
                 <div>
                   <Label>End Date</Label>
-                  <Input type="date" value={form.endDate} min={form.startDate} onChange={e => setForm({ ...form, endDate: e.target.value })} required />
+                  <Input type="date" value={form.endDate} onChange={e => setForm({ ...form, endDate: e.target.value })} required />
                 </div>
               </div>
               {form.startDate && form.endDate && days > 0 && (
