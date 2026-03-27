@@ -32,18 +32,20 @@ Email notifications are planned but not yet implemented. The feature requires an
 ## Structure
 
 ```text
-artifacts-monorepo/
-├── artifacts/              # Deployable applications
-│   └── api-server/         # Express API server
+performiq/
+├── frontend/               # React + Vite web application (@workspace/performiq)
+├── backend/                # Express API server (@workspace/api-server)
 ├── lib/                    # Shared libraries
 │   ├── api-spec/           # OpenAPI spec + Orval codegen config
 │   ├── api-client-react/   # Generated React Query hooks
 │   ├── api-zod/            # Generated Zod schemas from OpenAPI
 │   └── db/                 # Drizzle ORM schema + DB connection
-├── scripts/                # Utility scripts (single workspace package)
-│   └── src/                # Individual .ts scripts, run via `pnpm --filter @workspace/scripts run <script>`
-├── pnpm-workspace.yaml     # pnpm workspace (artifacts/*, lib/*, lib/integrations/*, scripts)
-├── tsconfig.base.json      # Shared TS options (composite, bundler resolution, es2022)
+├── scripts/                # Utility scripts
+├── artifacts/              # Dev tooling only (mockup-sandbox)
+├── README.md               # Project documentation
+├── .gitignore
+├── pnpm-workspace.yaml     # pnpm workspace (frontend, backend, artifacts/*, lib/*, scripts)
+├── tsconfig.base.json      # Shared TS options
 ├── tsconfig.json           # Root TS project references
 └── package.json            # Root package with hoisted devDeps
 ```
