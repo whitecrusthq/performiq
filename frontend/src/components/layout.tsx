@@ -11,6 +11,7 @@ import {
   Shield,
   BarChart3,
   Building2,
+  MapPin,
   LogOut,
   Menu,
   X,
@@ -29,6 +30,7 @@ const NAV_ITEMS = [
   { name: "Reports",     path: "/reports",      icon: BarChart3,       roles: ["super_admin", "admin"] },
   { name: "Users",       path: "/users",        icon: Users,           roles: ["super_admin", "admin"] },
   { name: "Departments", path: "/departments",  icon: Building2,       roles: ["super_admin", "admin"] },
+  { name: "Sites",       path: "/sites",        icon: MapPin,          roles: ["super_admin", "admin"] },
   { name: "Roles",       path: "/roles",        icon: Shield,          roles: ["super_admin", "admin"] },
 ];
 

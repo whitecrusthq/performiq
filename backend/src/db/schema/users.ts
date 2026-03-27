@@ -1,4 +1,4 @@
-import { pgTable, serial, text, integer, timestamp, pgEnum } from "drizzle-orm/pg-core";
+import { pgTable, serial, text, integer, timestamp, pgEnum, unique } from "drizzle-orm/pg-core";
 
 export const roleEnum = pgEnum("role", ["super_admin", "admin", "manager", "employee"]);
 
@@ -18,6 +18,7 @@ export const usersTable = pgTable("users", {
   role: roleEnum("role").notNull().default("employee"),
   customRoleId: integer("custom_role_id"),
   managerId: integer("manager_id"),
+  siteId: integer("site_id"),
   department: text("department"),
   jobTitle: text("job_title"),
   phone: text("phone"),

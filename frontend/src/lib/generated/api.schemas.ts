@@ -31,6 +31,16 @@ export const UserRole = {
   employee: "employee",
 } as const;
 
+export interface Site {
+  id: number;
+  name: string;
+  address?: string | null;
+  city?: string | null;
+  country?: string | null;
+  description?: string | null;
+  createdAt: string;
+}
+
 export interface User {
   id: number;
   name: string;
@@ -39,6 +49,7 @@ export interface User {
   managerId?: number | null;
   customRoleId?: number | null;
   customRole?: { id: number; name: string; permissionLevel: string } | null;
+  siteId?: number | null;
   department?: string | null;
   jobTitle?: string | null;
   phone?: string | null;
@@ -68,6 +79,7 @@ export interface CreateUserRequest {
   role: CreateUserRequestRole;
   customRoleId?: number | null;
   managerId?: number | null;
+  siteId?: number | null;
   department?: string | null;
   jobTitle?: string | null;
   phone?: string | null;
@@ -91,6 +103,7 @@ export interface UpdateUserRequest {
   role?: UpdateUserRequestRole;
   customRoleId?: number | null;
   managerId?: number | null;
+  siteId?: number | null;
   department?: string | null;
   jobTitle?: string | null;
   phone?: string | null;

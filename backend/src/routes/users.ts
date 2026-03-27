@@ -20,6 +20,7 @@ const formatUser = (u: typeof usersTable.$inferSelect, customRole?: typeof custo
   customRoleId: u.customRoleId,
   customRole: customRole ? { id: customRole.id, name: customRole.name, permissionLevel: customRole.permissionLevel } : null,
   managerId: u.managerId,
+  siteId: u.siteId,
   department: u.department,
   jobTitle: u.jobTitle,
   phone: u.phone,
@@ -52,7 +53,11 @@ router.get("/users", requireAuth, requireRole("admin", "manager"), async (_req, 
 
 router.post("/users", requireAuth, requireRole("admin"), async (req: AuthRequest, res) => {
   try {
-    const { name, email, password, role, customRoleId, managerId, department, jobTitle, phone, staffId } = req.body;
+    const { name, email, password, role, customRoleId, managerId, siteId, department, jobTitle, phone, staffId } = req.body;
+    if (!siteId) {
+      res.status(400).json({ error: "Site is required" });
+      return;
+    }
     const passwordHash = await bcrypt.hash(password, 10);
     let effectiveRole = role || "employee";
     if (customRoleId) {
@@ -64,7 +69,7 @@ router.post("/users", requireAuth, requireRole("admin"), async (req: AuthRequest
       return;
     }
     const [user] = await db.insert(usersTable).values({
-      name, email, passwordHash, role: effectiveRole, customRoleId: customRoleId ? Number(customRoleId) : null, managerId, department, jobTitle, phone: phone || null, staffId: staffId || null,
+      name, email, passwordHash, role: effectiveRole, customRoleId: customRoleId ? Number(customRoleId) : null, managerId, siteId: Number(siteId), department, jobTitle, phone: phone || null, staffId: staffId || null,
     }).returning();
     const result = await getUserWithRole(user.id);
     res.status(201).json(result);
@@ -86,8 +91,8 @@ router.get("/users/:id", requireAuth, async (req, res) => {
 
 router.put("/users/:id", requireAuth, requireRole("admin"), async (req: AuthRequest, res) => {
   try {
-    const { name, email, password, role, customRoleId, managerId, department, jobTitle, phone, staffId } = req.body;
-    const updates: Record<string, any> = { name, email, managerId, department, jobTitle, phone: phone || null, staffId: staffId || null };
+    const { name, email, password, role, customRoleId, managerId, siteId, department, jobTitle, phone, staffId } = req.body;
+    const updates: Record<string, any> = { name, email, managerId, siteId: siteId ? Number(siteId) : null, department, jobTitle, phone: phone || null, staffId: staffId || null };
     updates.customRoleId = customRoleId ? Number(customRoleId) : null;
 
     // Derive effective permission level from custom role if assigned

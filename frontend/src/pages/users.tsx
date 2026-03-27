@@ -5,6 +5,8 @@ import { PageHeader, Card, Button, Input, Label } from "@/components/shared";
 import { Users as UsersIcon, Plus, Edit, Trash2, X, Search, ChevronDown, AlertCircle } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
 
+interface Site { id: number; name: string; city?: string | null; country?: string | null; }
+
 const authHeader = () => ({ Authorization: `Bearer ${localStorage.getItem('token')}`, "Content-Type": "application/json" });
 
 const NEW_DEPT_SENTINEL = "__new__";
@@ -22,9 +24,10 @@ export default function Users() {
 
   const [customRoles, setCustomRoles] = useState<{ id: number; name: string; permissionLevel: string }[]>([]);
   const [departments, setDepartments] = useState<string[]>([]);
+  const [sites, setSites] = useState<Site[]>([]);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
-  const [formData, setFormData] = useState({ name: "", email: "", password: "", role: "employee" as any, customRoleId: "", department: "", jobTitle: "", phone: "", staffId: "" });
+  const [formData, setFormData] = useState({ name: "", email: "", password: "", role: "employee" as any, customRoleId: "", siteId: "", department: "", jobTitle: "", phone: "", staffId: "" });
   const [isNewDept, setIsNewDept] = useState(false);
   const [mutationError, setMutationError] = useState<string | null>(null);
 
@@ -53,6 +56,10 @@ export default function Users() {
       .then(r => r.json())
       .then(data => Array.isArray(data) && setDepartments(data.map((d: any) => d.name ?? d)))
       .catch(() => {});
+    fetch("/api/sites", { headers: authHeader() })
+      .then(r => r.json())
+      .then(data => Array.isArray(data) && setSites(data))
+      .catch(() => {});
   }, []);
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -63,6 +70,7 @@ export default function Users() {
       email: formData.email,
       role: formData.role,
       customRoleId: formData.customRoleId ? parseInt(formData.customRoleId) : null,
+      siteId: formData.siteId ? parseInt(formData.siteId) : null,
       department: formData.department || null,
       jobTitle: formData.jobTitle || null,
       phone: formData.phone || null,
@@ -97,7 +105,7 @@ export default function Users() {
   return (
     <div>
       <PageHeader title="User Management" description="Manage platform access and organizational structure.">
-        <Button onClick={() => { setMutationError(null); setFormData({ name: "", email: "", password: "", role: "employee", customRoleId: "", department: "", jobTitle: "", phone: "", staffId: "" }); setEditingId(null); setIsNewDept(false); setIsDialogOpen(true); }}>
+        <Button onClick={() => { setMutationError(null); setFormData({ name: "", email: "", password: "", role: "employee", customRoleId: "", siteId: "", department: "", jobTitle: "", phone: "", staffId: "" }); setEditingId(null); setIsNewDept(false); setIsDialogOpen(true); }}>
           <Plus className="w-4 h-4 mr-2" /> Add User
         </Button>
       </PageHeader>
@@ -191,7 +199,7 @@ export default function Users() {
                       variant="outline"
                       size="sm"
                       className="gap-1.5"
-                      onClick={() => { setMutationError(null); setFormData({ name: u.name, email: u.email, password: "", role: u.role, customRoleId: u.customRole?.id?.toString() || "", department: u.department||"", jobTitle: u.jobTitle||"", phone: u.phone||"", staffId: u.staffId||"" }); setEditingId(u.id); setIsNewDept(false); setIsDialogOpen(true); }}
+                      onClick={() => { setMutationError(null); setFormData({ name: u.name, email: u.email, password: "", role: u.role, customRoleId: u.customRole?.id?.toString() || "", siteId: (u as any).siteId?.toString() || "", department: u.department||"", jobTitle: u.jobTitle||"", phone: u.phone||"", staffId: u.staffId||"" }); setEditingId(u.id); setIsNewDept(false); setIsDialogOpen(true); }}
                     >
                       <Edit className="w-3.5 h-3.5" /> Edit
                     </Button>
@@ -224,6 +232,24 @@ export default function Users() {
               <div>
                 <Label>{editingId ? "New Password" : "Password"}</Label>
                 <Input type="password" placeholder={editingId ? "Leave blank to keep unchanged" : ""} value={formData.password} onChange={e=>setFormData({...formData, password: e.target.value})} required={!editingId} />
+              </div>
+              <div>
+                <Label>Site <span className="text-destructive">*</span></Label>
+                {sites.length === 0 ? (
+                  <p className="text-sm text-amber-600 mt-1">No sites available. <a href="/sites" className="underline">Create a site</a> first.</p>
+                ) : (
+                  <select
+                    className="w-full px-4 py-2 border rounded-xl bg-background text-sm"
+                    value={formData.siteId}
+                    onChange={e => setFormData({ ...formData, siteId: e.target.value })}
+                    required
+                  >
+                    <option value="">— Select site —</option>
+                    {sites.map(s => (
+                      <option key={s.id} value={s.id}>{s.name}{s.city ? ` (${s.city})` : ""}</option>
+                    ))}
+                  </select>
+                )}
               </div>
               {customRoles.length > 0 && (
                 <div>

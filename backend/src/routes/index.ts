@@ -10,6 +10,7 @@ import dashboardRouter from "./dashboard";
 import customRolesRouter from "./custom-roles";
 import reportsRouter from "./reports";
 import departmentsRouter from "./departments";
+import sitesRouter from "./sites";
 
 const router: IRouter = Router();
 
@@ -24,5 +25,6 @@ router.use(dashboardRouter);
 router.use(customRolesRouter);
 router.use(reportsRouter);
 router.use(departmentsRouter);
+router.use(sitesRouter);
 
 export default router;
