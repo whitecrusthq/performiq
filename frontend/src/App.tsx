@@ -19,6 +19,7 @@ import Roles from "@/pages/roles";
 import Reports from "@/pages/reports";
 import Departments from "@/pages/departments";
 import Sites from "@/pages/sites";
+import Leave from "@/pages/leave";
 import Profile from "@/pages/profile";
 
 const queryClient = new QueryClient();
@@ -78,6 +79,9 @@ function Router() {
       </Route>
       <Route path="/sites">
         <AppLayout><ProtectedRoute component={Sites} /></AppLayout>
+      </Route>
+      <Route path="/leave">
+        <AppLayout><ProtectedRoute component={Leave} /></AppLayout>
       </Route>
       <Route path="/profile">
         <AppLayout><ProtectedRoute component={Profile} /></AppLayout>

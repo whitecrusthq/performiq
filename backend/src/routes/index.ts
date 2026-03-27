@@ -11,6 +11,7 @@ import customRolesRouter from "./custom-roles";
 import reportsRouter from "./reports";
 import departmentsRouter from "./departments";
 import sitesRouter from "./sites";
+import leaveRouter from "./leave";
 
 const router: IRouter = Router();
 
@@ -26,5 +27,6 @@ router.use(customRolesRouter);
 router.use(reportsRouter);
 router.use(departmentsRouter);
 router.use(sitesRouter);
+router.use(leaveRouter);
 
 export default router;
