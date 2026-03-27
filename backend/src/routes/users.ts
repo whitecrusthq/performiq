@@ -22,6 +22,8 @@ const formatUser = (u: typeof usersTable.$inferSelect, customRole?: typeof custo
   managerId: u.managerId,
   department: u.department,
   jobTitle: u.jobTitle,
+  phone: u.phone,
+  staffId: u.staffId,
   createdAt: u.createdAt,
 });
 
@@ -50,7 +52,7 @@ router.get("/users", requireAuth, requireRole("admin", "manager"), async (_req, 
 
 router.post("/users", requireAuth, requireRole("admin"), async (req: AuthRequest, res) => {
   try {
-    const { name, email, password, role, customRoleId, managerId, department, jobTitle } = req.body;
+    const { name, email, password, role, customRoleId, managerId, department, jobTitle, phone, staffId } = req.body;
     const passwordHash = await bcrypt.hash(password, 10);
     let effectiveRole = role || "employee";
     if (customRoleId) {
@@ -62,7 +64,7 @@ router.post("/users", requireAuth, requireRole("admin"), async (req: AuthRequest
       return;
     }
     const [user] = await db.insert(usersTable).values({
-      name, email, passwordHash, role: effectiveRole, customRoleId: customRoleId ? Number(customRoleId) : null, managerId, department, jobTitle,
+      name, email, passwordHash, role: effectiveRole, customRoleId: customRoleId ? Number(customRoleId) : null, managerId, department, jobTitle, phone: phone || null, staffId: staffId || null,
     }).returning();
     const result = await getUserWithRole(user.id);
     res.status(201).json(result);
@@ -84,8 +86,8 @@ router.get("/users/:id", requireAuth, async (req, res) => {
 
 router.put("/users/:id", requireAuth, requireRole("admin"), async (req: AuthRequest, res) => {
   try {
-    const { name, email, password, role, customRoleId, managerId, department, jobTitle } = req.body;
-    const updates: Record<string, any> = { name, email, managerId, department, jobTitle };
+    const { name, email, password, role, customRoleId, managerId, department, jobTitle, phone, staffId } = req.body;
+    const updates: Record<string, any> = { name, email, managerId, department, jobTitle, phone: phone || null, staffId: staffId || null };
     updates.customRoleId = customRoleId ? Number(customRoleId) : null;
 
     // Derive effective permission level from custom role if assigned

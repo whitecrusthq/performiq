@@ -24,7 +24,7 @@ export default function Users() {
   const [departments, setDepartments] = useState<string[]>([]);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
-  const [formData, setFormData] = useState({ name: "", email: "", password: "", role: "employee" as any, customRoleId: "", department: "", jobTitle: "" });
+  const [formData, setFormData] = useState({ name: "", email: "", password: "", role: "employee" as any, customRoleId: "", department: "", jobTitle: "", phone: "", staffId: "" });
   const [isNewDept, setIsNewDept] = useState(false);
   const [mutationError, setMutationError] = useState<string | null>(null);
 
@@ -65,6 +65,8 @@ export default function Users() {
       customRoleId: formData.customRoleId ? parseInt(formData.customRoleId) : null,
       department: formData.department || null,
       jobTitle: formData.jobTitle || null,
+      phone: formData.phone || null,
+      staffId: formData.staffId || null,
     };
     if (editingId) {
       const updateData = formData.password.trim() !== "" ? { ...base, password: formData.password } : base;
@@ -95,7 +97,7 @@ export default function Users() {
   return (
     <div>
       <PageHeader title="User Management" description="Manage platform access and organizational structure.">
-        <Button onClick={() => { setMutationError(null); setFormData({ name: "", email: "", password: "", role: "employee", customRoleId: "", department: "", jobTitle: "" }); setEditingId(null); setIsNewDept(false); setIsDialogOpen(true); }}>
+        <Button onClick={() => { setMutationError(null); setFormData({ name: "", email: "", password: "", role: "employee", customRoleId: "", department: "", jobTitle: "", phone: "", staffId: "" }); setEditingId(null); setIsNewDept(false); setIsDialogOpen(true); }}>
           <Plus className="w-4 h-4 mr-2" /> Add User
         </Button>
       </PageHeader>
@@ -153,12 +155,13 @@ export default function Users() {
               <th className="p-4">Name</th>
               <th className="p-4 hidden sm:table-cell">Role</th>
               <th className="p-4 hidden md:table-cell">Department / Title</th>
+              <th className="p-4 hidden lg:table-cell">Phone / Staff ID</th>
               <th className="p-4 text-right">Actions</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-border">
             {filteredUsers.length === 0 && (
-              <tr><td colSpan={4} className="p-8 text-center text-muted-foreground text-sm">No users match the current filters.</td></tr>
+              <tr><td colSpan={5} className="p-8 text-center text-muted-foreground text-sm">No users match the current filters.</td></tr>
             )}
             {filteredUsers.map(u => (
               <tr key={u.id} className="hover:bg-muted/30">
@@ -178,13 +181,17 @@ export default function Users() {
                   {u.department && <div>{u.department}</div>}
                   {u.jobTitle && <div className="text-muted-foreground">{u.jobTitle}</div>}
                 </td>
+                <td className="p-4 hidden lg:table-cell text-sm">
+                  {u.phone && <div>{u.phone}</div>}
+                  {u.staffId && <div className="text-muted-foreground font-mono text-xs">{u.staffId}</div>}
+                </td>
                 <td className="p-4 text-right">
                   <div className="flex justify-end gap-2">
                     <Button
                       variant="outline"
                       size="sm"
                       className="gap-1.5"
-                      onClick={() => { setMutationError(null); setFormData({ name: u.name, email: u.email, password: "", role: u.role, customRoleId: u.customRole?.id?.toString() || "", department: u.department||"", jobTitle: u.jobTitle||"" }); setEditingId(u.id); setIsNewDept(false); setIsDialogOpen(true); }}
+                      onClick={() => { setMutationError(null); setFormData({ name: u.name, email: u.email, password: "", role: u.role, customRoleId: u.customRole?.id?.toString() || "", department: u.department||"", jobTitle: u.jobTitle||"", phone: u.phone||"", staffId: u.staffId||"" }); setEditingId(u.id); setIsNewDept(false); setIsDialogOpen(true); }}
                     >
                       <Edit className="w-3.5 h-3.5" /> Edit
                     </Button>
@@ -289,6 +296,10 @@ export default function Users() {
                   )}
                 </div>
                 <div><Label>Job Title</Label><Input value={formData.jobTitle} onChange={e=>setFormData({...formData, jobTitle: e.target.value})} /></div>
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div><Label>Phone Number</Label><Input type="tel" placeholder="e.g. +1 555 000 0000" value={formData.phone} onChange={e=>setFormData({...formData, phone: e.target.value})} /></div>
+                <div><Label>Staff ID</Label><Input placeholder="e.g. EMP-0042" value={formData.staffId} onChange={e=>setFormData({...formData, staffId: e.target.value})} /></div>
               </div>
               {mutationError && (
                 <div className="flex items-start gap-2 rounded-xl bg-destructive/10 border border-destructive/20 text-destructive px-4 py-3 text-sm">

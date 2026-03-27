@@ -20,6 +20,8 @@ export const usersTable = pgTable("users", {
   managerId: integer("manager_id"),
   department: text("department"),
   jobTitle: text("job_title"),
+  phone: text("phone"),
+  staffId: text("staff_id"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 

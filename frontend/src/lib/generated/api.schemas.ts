@@ -41,6 +41,8 @@ export interface User {
   customRole?: { id: number; name: string; permissionLevel: string } | null;
   department?: string | null;
   jobTitle?: string | null;
+  phone?: string | null;
+  staffId?: string | null;
   createdAt: string;
 }
 
@@ -68,6 +70,8 @@ export interface CreateUserRequest {
   managerId?: number | null;
   department?: string | null;
   jobTitle?: string | null;
+  phone?: string | null;
+  staffId?: string | null;
 }
 
 export type UpdateUserRequestRole =
@@ -89,6 +93,8 @@ export interface UpdateUserRequest {
   managerId?: number | null;
   department?: string | null;
   jobTitle?: string | null;
+  phone?: string | null;
+  staffId?: string | null;
 }
 
 export type AppraisalCycleStatus =
