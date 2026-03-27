@@ -4,36 +4,6 @@
 
 pnpm workspace monorepo using TypeScript. Each package manages its own dependencies.
 
-## Laravel Employee Performance Appraisal App
-
-A full-featured Employee Performance Appraisal system built with Laravel 12 + PHP 8.2 + Breeze (Blade + Tailwind CSS).
-
-**Location:** `artifacts/laravel-app/`  
-**Workflow:** "Laravel App" — runs `php artisan serve --host=0.0.0.0 --port=8000`  
-**Database:** SQLite (dev) at `artifacts/laravel-app/database/database.sqlite`
-
-### Roles
-- **Admin** (`admin@example.com` / `password`) — full access
-- **Manager** (`sarah@example.com`, `mark@example.com` / `password`) — team appraisals
-- **Employee** (`alice@example.com`, `bob@example.com`, `carol@example.com`, `david@example.com` / `password`) — self-review
-
-### Features
-- Role-based dashboard (admin stats, manager team view, employee history)
-- Appraisal Cycles (create, manage, close)
-- Rating Criteria/Competencies (categories, weights, max scores)
-- Appraisals with self-review + manager review workflow
-- Competency scoring with comments
-- Goal tracking (weight, achievement %, status)
-- User management
-
-### Key Files
-- `app/Models/` — User, AppraisalCycle, Criteria, Appraisal, AppraisalScore, Goal
-- `app/Http/Controllers/` — DashboardController, AppraisalController, AppraisalCycleController, CriteriaController, UserController, GoalController
-- `resources/views/` — layouts/app.blade.php (sidebar), dashboard/, cycles/, criteria/, appraisals/, users/
-- `database/seeders/DatabaseSeeder.php` — seeds users, cycle, and 7 criteria
-- `routes/web.php` — all routes with auth + admin gates
-- `app/Providers/AppServiceProvider.php` — `admin` and `manager-or-admin` gates
-
 ## Pending: Email Notifications
 
 Email notifications are planned but not yet implemented. The feature requires an API key from a transactional email service. When the user provides one, implement notifications for:
@@ -62,18 +32,20 @@ Email notifications are planned but not yet implemented. The feature requires an
 ## Structure
 
 ```text
-artifacts-monorepo/
-├── artifacts/              # Deployable applications
-│   └── api-server/         # Express API server
+performiq/
+├── frontend/               # React + Vite web application (@workspace/performiq)
+├── backend/                # Express API server (@workspace/api-server)
 ├── lib/                    # Shared libraries
 │   ├── api-spec/           # OpenAPI spec + Orval codegen config
 │   ├── api-client-react/   # Generated React Query hooks
 │   ├── api-zod/            # Generated Zod schemas from OpenAPI
 │   └── db/                 # Drizzle ORM schema + DB connection
-├── scripts/                # Utility scripts (single workspace package)
-│   └── src/                # Individual .ts scripts, run via `pnpm --filter @workspace/scripts run <script>`
-├── pnpm-workspace.yaml     # pnpm workspace (artifacts/*, lib/*, lib/integrations/*, scripts)
-├── tsconfig.base.json      # Shared TS options (composite, bundler resolution, es2022)
+├── scripts/                # Utility scripts
+├── artifacts/              # Dev tooling only (mockup-sandbox)
+├── README.md               # Project documentation
+├── .gitignore
+├── pnpm-workspace.yaml     # pnpm workspace (frontend, backend, artifacts/*, lib/*, scripts)
+├── tsconfig.base.json      # Shared TS options
 ├── tsconfig.json           # Root TS project references
 └── package.json            # Root package with hoisted devDeps
 ```
