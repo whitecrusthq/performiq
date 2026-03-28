@@ -1,17 +1,73 @@
 import { createRequire } from 'module';
+import fs from 'node:fs';
 import { fileURLToPath } from 'url';
-import { dirname, join } from 'path';
+import path, { dirname } from 'path';
+import 'dotenv/config';
 
 const require = createRequire(import.meta.url);
 const bcrypt = require('bcryptjs');
 const { Pool } = require('pg');
 
-if (!process.env.DATABASE_URL) {
-  console.error('❌ DATABASE_URL environment variable is required');
+const getRequiredDbEnv = (name) => {
+  const value = process.env[name];
+  if (!value) {
+    console.error(`${name} environment variable is required`);
+    process.exit(1);
+  }
+
+  return value;
+};
+
+const dbHost = getRequiredDbEnv('DB_HOST');
+const dbPortRaw = process.env.DB_PORT || '5432';
+const dbPort = Number(dbPortRaw);
+const dbUser = getRequiredDbEnv('DB_USER');
+const dbPassword = process.env.DB_PASSWORD;
+const dbName = getRequiredDbEnv('DB_NAME');
+const dbSslMode = process.env.DB_SSL_MODE || 'disable';
+const dbSslEnabled = dbSslMode !== 'disable';
+const dbSslCaPath = process.env.DB_SSL_CA_PATH;
+
+if (Number.isNaN(dbPort) || dbPort <= 0) {
+  console.error(`DB_PORT must be a positive number. Received: "${dbPortRaw}"`);
   process.exit(1);
 }
 
-const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+const resolveCaPath = (certificatePath) => {
+  if (path.isAbsolute(certificatePath)) {
+    return certificatePath;
+  }
+
+  const scriptDir = dirname(fileURLToPath(import.meta.url));
+  const candidates = [
+    path.resolve(process.cwd(), certificatePath),
+    path.resolve(scriptDir, '..', certificatePath),
+    path.resolve(scriptDir, certificatePath),
+  ];
+
+  return candidates.find((candidate) => fs.existsSync(candidate));
+};
+
+const resolvedDbSslCaPath = dbSslCaPath
+  ? resolveCaPath(dbSslCaPath) || dbSslCaPath
+  : undefined;
+const dbSslCa = resolvedDbSslCaPath
+  ? fs.readFileSync(resolvedDbSslCaPath, 'utf8')
+  : undefined;
+
+const pool = new Pool({
+  host: dbHost,
+  port: dbPort,
+  user: dbUser,
+  password: dbPassword,
+  database: dbName,
+  ssl: dbSslEnabled
+    ? {
+        ca: dbSslCa,
+        rejectUnauthorized: dbSslMode === 'verify-full' || Boolean(dbSslCa),
+      }
+    : undefined,
+});
 
 async function seed() {
   try {

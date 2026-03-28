@@ -8,15 +8,28 @@ import * as schema from "./schema";
 
 const { Pool } = pg;
 
-if (!process.env.DATABASE_URL) {
-  throw new Error(
-    "DATABASE_URL must be set. Did you forget to provision a database?",
-  );
-}
+const getRequiredDbEnv = (name: string) => {
+  const value = process.env[name];
+  if (!value) {
+    throw new Error(`${name} must be set for database connectivity.`);
+  }
 
-const databaseUrl = process.env.DATABASE_URL;
-const dbSslEnabled = databaseUrl.includes("sslmode=require");
+  return value;
+};
+
+const dbHost = getRequiredDbEnv("DB_HOST");
+const dbPortRaw = process.env.DB_PORT ?? "5432";
+const dbPort = Number(dbPortRaw);
+const dbUser = getRequiredDbEnv("DB_USER");
+const dbPassword = process.env.DB_PASSWORD;
+const dbName = getRequiredDbEnv("DB_NAME");
+const dbSslMode = process.env.DB_SSL_MODE ?? "disable";
+const dbSslEnabled = dbSslMode !== "disable";
 const dbSslCaPath = process.env.DB_SSL_CA_PATH;
+
+if (Number.isNaN(dbPort) || dbPort <= 0) {
+  throw new Error(`DB_PORT must be a positive number. Received: "${dbPortRaw}"`);
+}
 
 const resolveCaPath = (certificatePath: string) => {
   if (path.isAbsolute(certificatePath)) {
@@ -39,22 +52,16 @@ const dbSslCa = resolvedDbSslCaPath
   ? fs.readFileSync(resolvedDbSslCaPath, "utf8")
   : undefined;
 
-logger.info(
-  {
-    dbSslEnabled,
-    dbSslCaPath,
-    resolvedDbSslCaPath,
-    dbSslCa,
-  },
-  "Loaded database SSL certificate",
-);
-
 export const pool = new Pool({
-  connectionString: databaseUrl,
+  host: dbHost,
+  port: dbPort,
+  user: dbUser,
+  password: dbPassword,
+  database: dbName,
   ssl: dbSslEnabled
     ? {
         ca: dbSslCa,
-        rejectUnauthorized: !!dbSslCa
+        rejectUnauthorized: dbSslMode === "verify-full" || Boolean(dbSslCa),
       }
     : undefined,
 });

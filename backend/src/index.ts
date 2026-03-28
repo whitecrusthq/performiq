@@ -1,6 +1,7 @@
 import "dotenv/config";
 import app from "./app";
 import { logger } from "./lib/logger";
+import { pool } from "./db";
 
 const rawPort = process.env["PORT"];
 
@@ -23,4 +24,13 @@ app.listen(port, (err) => {
   }
 
   logger.info({ port }, "Server listening");
+
+  pool
+    .query("select 1")
+    .then(() => {
+      logger.info("Database connection check passed");
+    })
+    .catch((dbErr) => {
+      logger.error({ err: dbErr }, "Database connection check failed");
+    });
 });
