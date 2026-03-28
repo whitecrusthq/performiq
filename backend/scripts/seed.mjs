@@ -24,7 +24,10 @@ const dbPort = Number(dbPortRaw);
 const dbUser = getRequiredDbEnv('DB_USER');
 const dbPassword = process.env.DB_PASSWORD;
 const dbName = getRequiredDbEnv('DB_NAME');
-const dbSslMode = process.env.DB_SSL_MODE || 'disable';
+const dbSslModeRaw = process.env.DB_SSL_MODE || 'disable';
+const dbSslMode = ['prefer', 'require', 'verify-ca'].includes(dbSslModeRaw)
+  ? 'verify-full'
+  : dbSslModeRaw;
 const dbSslEnabled = dbSslMode !== 'disable';
 const dbSslCaPath = process.env.DB_SSL_CA_PATH;
 

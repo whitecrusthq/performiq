@@ -15,7 +15,10 @@ const dbPort = process.env.DB_PORT ?? "5432";
 const dbUser = getRequiredDbEnv("DB_USER");
 const dbPassword = process.env.DB_PASSWORD as string;
 const dbName = getRequiredDbEnv("DB_NAME");
-const dbSslMode = process.env.DB_SSL_MODE ?? "disable";
+const dbSslModeRaw = process.env.DB_SSL_MODE ?? "disable";
+const dbSslMode = ["prefer", "require", "verify-ca"].includes(dbSslModeRaw)
+  ? "verify-full"
+  : dbSslModeRaw;
 
 const drizzleDatabaseUrl = new URL(`postgresql://${dbHost}:${dbPort}/${dbName}`);
 drizzleDatabaseUrl.username = dbUser;
