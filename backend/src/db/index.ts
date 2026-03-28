@@ -24,6 +24,7 @@ export const pool = new Pool({
   ssl: dbSslEnabled
     ? {
         ca: dbSslCa,
+        rejectUnauthorized: !!dbSslCa
       }
     : undefined,
 });
