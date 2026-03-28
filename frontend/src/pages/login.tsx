@@ -115,16 +115,6 @@ export default function Login() {
                   Sign In
                 </Button>
               </form>
-
-              <div className="mt-10 pt-8 border-t border-border/50 text-center">
-                <p className="text-sm text-muted-foreground">Demo Accounts:</p>
-                <div className="mt-3 flex flex-wrap justify-center gap-2">
-                  <span className="px-3 py-1 bg-secondary rounded-full text-xs font-medium">admin@performiq.com</span>
-                  <span className="px-3 py-1 bg-secondary rounded-full text-xs font-medium">johnme@performiq.com (Mgr)</span>
-                  <span className="px-3 py-1 bg-secondary rounded-full text-xs font-medium">alice@performiq.com (Emp)</span>
-                </div>
-                <p className="text-xs text-muted-foreground mt-3">Password for all: <code className="bg-muted px-1.5 py-0.5 rounded">password</code></p>
-              </div>
             </motion.div>
           ) : (
             <motion.div
