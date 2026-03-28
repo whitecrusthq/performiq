@@ -24,10 +24,7 @@ const dbUser = getRequiredDbEnv("DB_USER");
 const dbPassword = process.env.DB_PASSWORD;
 const dbName = getRequiredDbEnv("DB_NAME");
 const dbSslModeRaw = process.env.DB_SSL_MODE ?? "disable";
-const dbSslMode = ["prefer", "require", "verify-ca"].includes(dbSslModeRaw)
-  ? "verify-full"
-  : dbSslModeRaw;
-const dbSslEnabled = dbSslMode !== "disable";
+const dbSslEnabled = dbSslModeRaw === "require";
 const dbSslCaPath = process.env.DB_SSL_CA_PATH;
 
 if (Number.isNaN(dbPort) || dbPort <= 0) {
@@ -64,7 +61,7 @@ export const pool = new Pool({
   ssl: dbSslEnabled
     ? {
         ca: dbSslCa,
-        rejectUnauthorized: dbSslMode === "verify-full" || Boolean(dbSslCa),
+        rejectUnauthorized: Boolean(dbSslCa),
       }
     : undefined,
 });
