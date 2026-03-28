@@ -1,6 +1,8 @@
 import "dotenv/config";
 import { defineConfig } from "drizzle-kit";
 
+type DrizzleSslMode = "allow" | "prefer" | "require" | "verify-full" | undefined;
+
 const getRequiredDbEnv = (name: string) => {
   const value = process.env[name];
   if (!value) {
@@ -13,26 +15,24 @@ const getRequiredDbEnv = (name: string) => {
 const dbHost = getRequiredDbEnv("DB_HOST");
 const dbPort = process.env.DB_PORT ?? "5432";
 const dbUser = getRequiredDbEnv("DB_USER");
-const dbPassword = process.env.DB_PASSWORD as string;
 const dbName = getRequiredDbEnv("DB_NAME");
 const dbSslModeRaw = process.env.DB_SSL_MODE ?? "disable";
-const dbSslMode = ["prefer", "require", "verify-ca"].includes(dbSslModeRaw)
+const dbSslMode: DrizzleSslMode = ["prefer", "require", "verify-ca"].includes(dbSslModeRaw)
   ? "verify-full"
-  : dbSslModeRaw;
-
-const drizzleDatabaseUrl = new URL(`postgresql://${dbHost}:${dbPort}/${dbName}`);
-drizzleDatabaseUrl.username = dbUser;
-drizzleDatabaseUrl.password = dbPassword;
-
-if (dbSslMode !== "disable") {
-  drizzleDatabaseUrl.searchParams.set("sslmode", dbSslMode);
-}
+  : dbSslModeRaw === "allow"
+    ? "allow"
+    : undefined;
 
 export default defineConfig({
   schema: "./src/db/schema/index.ts",
   out: "./drizzle",
   dialect: "postgresql",
   dbCredentials: {
-    url: drizzleDatabaseUrl.toString(),
+    host: dbHost,
+    port: Number(dbPort),
+    user: dbUser,
+    password: process.env.DB_PASSWORD?.trim() || undefined,
+    database: dbName,
+    ssl: dbSslMode,
   },
 });
