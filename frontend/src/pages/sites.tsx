@@ -3,6 +3,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { PageHeader, Card, Button, Input, Label } from "@/components/shared";
 import { MapPin, Plus, Edit, Trash2, X, AlertCircle, Globe } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
+import { apiFetch } from "@/lib/utils";
 
 interface Site {
   id: number;
@@ -23,7 +24,7 @@ function useSites() {
   const refresh = async () => {
     setIsLoading(true);
     try {
-      const r = await fetch("/api/sites", { headers: authHeader() });
+      const r = await apiFetch("/api/sites", { headers: authHeader() });
       const data = await r.json();
       if (Array.isArray(data)) setSites(data);
     } finally {
@@ -70,7 +71,7 @@ export default function Sites() {
     try {
       const url = editingId ? `/api/sites/${editingId}` : "/api/sites";
       const method = editingId ? "PUT" : "POST";
-      const r = await fetch(url, { method, headers: authHeader(), body: JSON.stringify(formData) });
+      const r = await apiFetch(url, { method, headers: authHeader(), body: JSON.stringify(formData) });
       const data = await r.json();
       if (!r.ok) { setError(data.error || "Failed to save site."); return; }
       await refresh();
@@ -86,7 +87,7 @@ export default function Sites() {
   const handleDelete = async (id: number, name: string) => {
     if (!confirm(`Delete site "${name}"? Users assigned to this site will be unlinked.`)) return;
     try {
-      await fetch(`/api/sites/${id}`, { method: "DELETE", headers: authHeader() });
+      await apiFetch(`/api/sites/${id}`, { method: "DELETE", headers: authHeader() });
       await refresh();
       queryClient.invalidateQueries({ queryKey: ["/api/sites"] });
     } catch {

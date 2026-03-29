@@ -2,6 +2,7 @@ import { useState } from "react";
 import { PageHeader, Card, Button, Input, Label } from "@/components/shared";
 import { useAuth } from "@/hooks/use-auth";
 import { User, Lock, CheckCircle } from "lucide-react";
+import { apiFetch } from "@/lib/utils";
 
 export default function Profile() {
   const { user } = useAuth();
@@ -26,7 +27,7 @@ export default function Profile() {
 
     setStatus("loading");
     try {
-      const res = await fetch(`${import.meta.env.BASE_URL}api/auth/change-password`, {
+      const res = await apiFetch(`/api/auth/change-password`, {
         method: "POST",
         headers: { "Content-Type": "application/json", ...headers },
         body: JSON.stringify({ currentPassword: pwForm.currentPassword, newPassword: pwForm.newPassword }),
