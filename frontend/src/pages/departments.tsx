@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { PageHeader, Card, Button, Input, Label } from "@/components/shared";
 import { Building2, Plus, Edit, Trash2, X, Users } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
+import { apiFetch } from "@/lib/utils";
 
 type Department = { id: number; name: string; description: string | null; employeeCount: number };
 
@@ -22,7 +23,7 @@ export default function Departments() {
 
   const fetchDepartments = () => {
     setLoading(true);
-    fetch("/api/departments", { headers: authHeader() })
+    apiFetch("/api/departments", { headers: authHeader() })
       .then(r => r.json())
       .then(data => { setDepartments(Array.isArray(data) ? data : []); setLoading(false); })
       .catch(() => { setError("Failed to load departments."); setLoading(false); });
@@ -54,7 +55,7 @@ export default function Departments() {
     const method = editingId ? "PUT" : "POST";
 
     try {
-      const r = await fetch(url, {
+      const r = await apiFetch(url, {
         method,
         headers: authHeader(),
         body: JSON.stringify({ name: formData.name.trim(), description: formData.description.trim() || null }),
@@ -73,7 +74,7 @@ export default function Departments() {
   const handleDelete = async (d: Department) => {
     if (!confirm(`Delete "${d.name}"? This won't affect users already assigned to it.`)) return;
     try {
-      const r = await fetch(`/api/departments/${d.id}`, { method: "DELETE", headers: authHeader() });
+      const r = await apiFetch(`/api/departments/${d.id}`, { method: "DELETE", headers: authHeader() });
       if (r.ok) fetchDepartments();
     } catch {}
   };
