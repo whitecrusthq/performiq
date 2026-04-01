@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { db, usersTable, appraisalsTable, cyclesTable, criteriaTable, appraisalScoresTable } from "../db/index.js";
+import { db, usersTable, appraisalsTable, cyclesTable, criteriaTable, appraisalScoresTable, attendanceLogsTable, timesheetsTable } from "../db/index.js";
 import { eq, inArray } from "drizzle-orm";
 import { requireAuth, requireRole, AuthRequest } from "../middlewares/auth";
 
@@ -172,6 +172,133 @@ router.get("/reports", requireAuth, requireRole("admin"), async (req: AuthReques
     });
   } catch (err) {
     console.error("GET /reports error:", err);
+    res.status(500).json({ error: "Server error" });
+  }
+});
+
+// ─── Attendance Summary Report ────────────────────────────────────────────────
+// GET /api/reports/attendance-summary?from=&to=&userId=
+router.get("/reports/attendance-summary", requireAuth, requireRole("admin"), async (req: AuthRequest, res) => {
+  try {
+    const { from, to, userId } = req.query as Record<string, string | undefined>;
+
+    const allUsers = await db.select({
+      id: usersTable.id,
+      name: usersTable.name,
+      email: usersTable.email,
+      department: usersTable.department,
+    }).from(usersTable);
+    const userMap = new Map(allUsers.map(u => [u.id, u]));
+
+    let logs = await db.select().from(attendanceLogsTable);
+    if (from) logs = logs.filter(l => l.date >= from);
+    if (to)   logs = logs.filter(l => l.date <= to);
+    if (userId) logs = logs.filter(l => l.userId === Number(userId));
+
+    // Aggregate per user
+    const byUser = new Map<number, { daysPresent: number; totalMinutes: number }>();
+    for (const log of logs) {
+      const existing = byUser.get(log.userId) ?? { daysPresent: 0, totalMinutes: 0 };
+      byUser.set(log.userId, {
+        daysPresent: existing.daysPresent + 1,
+        totalMinutes: existing.totalMinutes + (log.durationMinutes ?? 0),
+      });
+    }
+
+    const rows = Array.from(byUser.entries()).map(([uid, stats]) => {
+      const user = userMap.get(uid);
+      const avgMins = stats.daysPresent > 0 ? Math.round(stats.totalMinutes / stats.daysPresent) : 0;
+      return {
+        userId: uid,
+        name: user?.name ?? "Unknown",
+        email: user?.email ?? "",
+        department: user?.department ?? "Unassigned",
+        daysPresent: stats.daysPresent,
+        totalMinutes: stats.totalMinutes,
+        totalHours: Number((stats.totalMinutes / 60).toFixed(1)),
+        avgMinutesPerDay: avgMins,
+        avgHoursPerDay: Number((avgMins / 60).toFixed(1)),
+      };
+    }).sort((a, b) => a.name.localeCompare(b.name));
+
+    const totalMinutes = rows.reduce((s, r) => s + r.totalMinutes, 0);
+    const totalDays = rows.reduce((s, r) => s + r.daysPresent, 0);
+
+    res.json({
+      summary: {
+        totalRecords: logs.length,
+        uniqueEmployees: rows.length,
+        totalDays,
+        totalMinutes,
+        totalHours: Number((totalMinutes / 60).toFixed(1)),
+        avgHoursPerDay: totalDays > 0 ? Number((totalMinutes / 60 / totalDays).toFixed(1)) : 0,
+      },
+      rows,
+    });
+  } catch (err) {
+    console.error("GET /reports/attendance-summary error:", err);
+    res.status(500).json({ error: "Server error" });
+  }
+});
+
+// ─── Timesheets Summary Report ────────────────────────────────────────────────
+// GET /api/reports/timesheets-summary?from=&to=&status=&userId=
+router.get("/reports/timesheets-summary", requireAuth, requireRole("admin"), async (req: AuthRequest, res) => {
+  try {
+    const { from, to, status, userId } = req.query as Record<string, string | undefined>;
+
+    const allUsers = await db.select({
+      id: usersTable.id,
+      name: usersTable.name,
+      email: usersTable.email,
+      department: usersTable.department,
+    }).from(usersTable);
+    const userMap = new Map(allUsers.map(u => [u.id, u]));
+
+    let sheets = await db.select().from(timesheetsTable);
+    if (from)   sheets = sheets.filter(s => s.weekStart >= from);
+    if (to)     sheets = sheets.filter(s => s.weekStart <= to);
+    if (status) sheets = sheets.filter(s => s.status === status);
+    if (userId) sheets = sheets.filter(s => s.userId === Number(userId));
+
+    const rows = sheets.map(s => {
+      const user = userMap.get(s.userId);
+      return {
+        id: s.id,
+        userId: s.userId,
+        name: user?.name ?? "Unknown",
+        email: user?.email ?? "",
+        department: user?.department ?? "Unassigned",
+        weekStart: s.weekStart,
+        weekEnd: s.weekEnd,
+        totalMinutes: s.totalMinutes,
+        totalHours: Number((s.totalMinutes / 60).toFixed(1)),
+        status: s.status,
+        submittedAt: s.submittedAt,
+        approvedAt: s.approvedAt,
+      };
+    }).sort((a, b) => b.weekStart.localeCompare(a.weekStart) || a.name.localeCompare(b.name));
+
+    const totalMinutes = rows.reduce((s, r) => s + r.totalMinutes, 0);
+    const statusCounts = rows.reduce<Record<string, number>>((acc, r) => {
+      acc[r.status] = (acc[r.status] ?? 0) + 1;
+      return acc;
+    }, {});
+
+    res.json({
+      summary: {
+        total: rows.length,
+        approved: statusCounts["approved"] ?? 0,
+        submitted: statusCounts["submitted"] ?? 0,
+        rejected: statusCounts["rejected"] ?? 0,
+        draft: statusCounts["draft"] ?? 0,
+        totalMinutes,
+        totalHours: Number((totalMinutes / 60).toFixed(1)),
+      },
+      rows,
+    });
+  } catch (err) {
+    console.error("GET /reports/timesheets-summary error:", err);
     res.status(500).json({ error: "Server error" });
   }
 });
