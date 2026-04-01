@@ -5,10 +5,10 @@ import { requireAuth, requireRole, AuthRequest } from "../middlewares/auth.js";
 
 const router = Router();
 
-const formatUser = (u: typeof usersTable.$inferSelect) => ({
+const formatUser = (u: typeof usersTable.$inferSelect | undefined | null) => u ? ({
   id: u.id, name: u.name, email: u.email, role: u.role,
   managerId: u.managerId, department: u.department, jobTitle: u.jobTitle, createdAt: u.createdAt,
-});
+}) : null;
 
 async function getReviewersForAppraisal(appraisalId: number) {
   const rows = await db.select().from(appraisalReviewersTable)
@@ -18,7 +18,7 @@ async function getReviewersForAppraisal(appraisalId: number) {
   const reviewerUsers = await db.select().from(usersTable).where(inArray(usersTable.id, rows.map(r => r.reviewerId)));
   const userMap = Object.fromEntries(reviewerUsers.map(u => [u.id, u]));
   return rows.map(row => ({
-    ...formatUser(userMap[row.reviewerId]),
+    ...(formatUser(userMap[row.reviewerId]) ?? { id: row.reviewerId, name: 'Unknown', email: '', role: 'employee', managerId: null, department: null, jobTitle: null, createdAt: null }),
     stepStatus: row.status,
     orderIndex: row.orderIndex,
     managerComment: row.managerComment,

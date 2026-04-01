@@ -9,7 +9,7 @@ async function enrichGoal(goal: typeof goalsTable.$inferSelect) {
   const [user] = await db.select().from(usersTable).where(eq(usersTable.id, goal.userId)).limit(1);
   return {
     ...goal,
-    user: { id: user.id, name: user.name, email: user.email, role: user.role, managerId: user.managerId, department: user.department, jobTitle: user.jobTitle, createdAt: user.createdAt },
+    user: user ? { id: user.id, name: user.name, email: user.email, role: user.role, managerId: user.managerId, department: user.department, jobTitle: user.jobTitle, createdAt: user.createdAt } : null,
   };
 }
 
