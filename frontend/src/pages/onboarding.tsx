@@ -696,7 +696,9 @@ export default function Onboarding() {
   const [showTemplates, setShowTemplates] = useState(false);
   const [selectedWorkflow, setSelectedWorkflow] = useState<any | null>(null);
 
-  const canManage = user?.role !== "employee";
+  const userCustomRoleName = (user as any)?.customRole?.name?.toLowerCase() ?? null;
+  const canManage = user?.role === "super_admin" || user?.role === "admin"
+    || userCustomRoleName === "hr manager";
 
   const loadData = useCallback(async () => {
     setLoading(true);

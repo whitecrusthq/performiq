@@ -25,14 +25,14 @@ import {
 import { motion, AnimatePresence } from "framer-motion";
 import { User } from "@/lib";
 
-const NAV_ITEMS = [
+const NAV_ITEMS: { name: string; path: string; icon: any; roles: string[]; customRoles?: string[] }[] = [
   { name: "Dashboard",   path: "/dashboard",   icon: LayoutDashboard, roles: ["super_admin", "admin", "manager", "employee"] },
   { name: "Appraisals",  path: "/appraisals",  icon: ClipboardList,   roles: ["super_admin", "admin", "manager", "employee"] },
   { name: "Goals",       path: "/goals",        icon: Target,          roles: ["super_admin", "admin", "manager", "employee"] },
   { name: "Leave",       path: "/leave",        icon: CalendarDays,    roles: ["super_admin", "admin", "manager", "employee"] },
   { name: "Attendance",  path: "/attendance",   icon: Clock,           roles: ["super_admin", "admin", "manager", "employee"] },
   { name: "Timesheets",  path: "/timesheets",   icon: ClipboardCheck,  roles: ["super_admin", "admin", "manager", "employee"] },
-  { name: "Onboarding", path: "/onboarding",   icon: UserPlus,        roles: ["super_admin", "admin", "manager"] },
+  { name: "Onboarding",  path: "/onboarding",   icon: UserPlus,        roles: ["super_admin", "admin"], customRoles: ["hr manager"] },
   { name: "Cycles",      path: "/cycles",       icon: RefreshCcw,      roles: ["super_admin", "admin", "manager"] },
   { name: "Criteria",    path: "/criteria",     icon: ListChecks,      roles: ["super_admin", "admin"] },
   { name: "Reports",     path: "/reports",      icon: BarChart3,       roles: ["super_admin", "admin"] },
@@ -49,7 +49,13 @@ interface NavLinksProps {
 
 function NavLinks({ user, onNavigate }: NavLinksProps) {
   const [location] = useLocation();
-  const visibleItems = NAV_ITEMS.filter(item => item.roles.includes(user.role));
+  const userCustomRoleName = (user as any).customRole?.name?.toLowerCase() ?? null;
+  const visibleItems = NAV_ITEMS.filter(item => {
+    if (item.roles.includes(user.role)) return true;
+    if (item.customRoles && userCustomRoleName)
+      return item.customRoles.some(cr => cr.toLowerCase() === userCustomRoleName);
+    return false;
+  });
 
   return (
     <nav className="flex-1 space-y-1">

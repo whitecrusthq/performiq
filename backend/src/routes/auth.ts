@@ -1,6 +1,6 @@
 import { Router } from "express";
 import bcrypt from "bcryptjs";
-import { db, usersTable } from "../db/index.js";
+import { db, usersTable, customRolesTable } from "../db/index.js";
 import { eq } from "drizzle-orm";
 import { requireAuth, generateToken, AuthRequest } from "../middlewares/auth";
 import { sendOtpEmail } from "../lib/mailgun.js";
@@ -10,11 +10,19 @@ const router = Router();
 
 const OTP_ENABLED = !!(process.env.MAILGUN_API_KEY && process.env.MAILGUN_DOMAIN);
 
-const formatAuthUser = (user: typeof usersTable.$inferSelect) => ({
+const formatAuthUser = (user: typeof usersTable.$inferSelect, customRole?: typeof customRolesTable.$inferSelect | null) => ({
   id: user.id, name: user.name, email: user.email, role: user.role,
   managerId: user.managerId, siteId: user.siteId, department: user.department,
   jobTitle: user.jobTitle, phone: user.phone, staffId: user.staffId, createdAt: user.createdAt,
+  customRoleId: user.customRoleId ?? null,
+  customRole: customRole ? { id: customRole.id, name: customRole.name, permissionLevel: customRole.permissionLevel } : null,
 });
+
+async function getCustomRole(user: typeof usersTable.$inferSelect) {
+  if (!user.customRoleId) return null;
+  const [cr] = await db.select().from(customRolesTable).where(eq(customRolesTable.id, user.customRoleId)).limit(1);
+  return cr ?? null;
+}
 
 router.post("/auth/login", async (req, res) => {
   try {
@@ -43,8 +51,9 @@ router.post("/auth/login", async (req, res) => {
       return;
     }
 
-    const token = generateToken({ id: user.id, role: user.role, email: user.email });
-    res.json({ token, user: formatAuthUser(user) });
+    const customRole = await getCustomRole(user);
+    const token = generateToken({ id: user.id, role: user.role, email: user.email, customRoleName: customRole?.name ?? null });
+    res.json({ token, user: formatAuthUser(user, customRole) });
   } catch (err) {
     console.error("Login error:", err);
     res.status(500).json({ error: "Server error" });
@@ -73,8 +82,9 @@ router.post("/auth/verify-otp", async (req, res) => {
     }
     const [user] = await db.select().from(usersTable).where(eq(usersTable.email, email.toLowerCase().trim())).limit(1);
     if (!user) { res.status(404).json({ error: "User not found" }); return; }
-    const token = generateToken({ id: user.id, role: user.role, email: user.email });
-    res.json({ token, user: formatAuthUser(user) });
+    const customRole = await getCustomRole(user);
+    const token = generateToken({ id: user.id, role: user.role, email: user.email, customRoleName: customRole?.name ?? null });
+    res.json({ token, user: formatAuthUser(user, customRole) });
   } catch (err) {
     console.error("Verify OTP error:", err);
     res.status(500).json({ error: "Server error" });
@@ -114,20 +124,9 @@ router.post("/auth/change-password", requireAuth, async (req: AuthRequest, res) 
 router.get("/auth/me", requireAuth, async (req: AuthRequest, res) => {
   try {
     const [user] = await db.select().from(usersTable).where(eq(usersTable.id, req.user!.id)).limit(1);
-    if (!user) {
-      res.status(404).json({ error: "User not found" });
-      return;
-    }
-    res.json({
-      id: user.id,
-      name: user.name,
-      email: user.email,
-      role: user.role,
-      managerId: user.managerId,
-      department: user.department,
-      jobTitle: user.jobTitle,
-      createdAt: user.createdAt,
-    });
+    if (!user) { res.status(404).json({ error: "User not found" }); return; }
+    const customRole = await getCustomRole(user);
+    res.json(formatAuthUser(user, customRole));
   } catch {
     res.status(500).json({ error: "Server error" });
   }

@@ -1,11 +1,9 @@
 import { Router } from "express";
 import { db, workflowTemplatesTable, templateTasksTable, workflowsTable, workflowTasksTable, usersTable } from "../db/index.js";
 import { eq, and, asc, inArray } from "drizzle-orm";
-import { requireAuth, requireRole, AuthRequest } from "../middlewares/auth.js";
+import { requireAuth, requireHRAccess, AuthRequest } from "../middlewares/auth.js";
 
 const router = Router();
-
-const canManage = requireRole(["super_admin", "admin", "manager"]);
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -72,7 +70,7 @@ router.get("/onboarding/templates", requireAuth, async (req, res) => {
 });
 
 // POST /api/onboarding/templates
-router.post("/onboarding/templates", requireAuth, canManage, async (req: AuthRequest, res) => {
+router.post("/onboarding/templates", requireAuth, requireHRAccess, async (req: AuthRequest, res) => {
   try {
     const { name, type, description, tasks = [] } = req.body;
     if (!name || !type) { res.status(400).json({ error: "name and type required" }); return; }
@@ -104,7 +102,7 @@ router.post("/onboarding/templates", requireAuth, canManage, async (req: AuthReq
 });
 
 // PUT /api/onboarding/templates/:id
-router.put("/onboarding/templates/:id", requireAuth, canManage, async (req: AuthRequest, res) => {
+router.put("/onboarding/templates/:id", requireAuth, requireHRAccess, async (req: AuthRequest, res) => {
   try {
     const id = parseInt(req.params.id);
     const { name, description, tasks } = req.body;
@@ -142,7 +140,7 @@ router.put("/onboarding/templates/:id", requireAuth, canManage, async (req: Auth
 });
 
 // DELETE /api/onboarding/templates/:id
-router.delete("/onboarding/templates/:id", requireAuth, canManage, async (req, res) => {
+router.delete("/onboarding/templates/:id", requireAuth, requireHRAccess, async (req, res) => {
   try {
     const id = parseInt(req.params.id);
     await db.delete(workflowTemplatesTable).where(eq(workflowTemplatesTable.id, id));
@@ -178,7 +176,7 @@ router.get("/onboarding/workflows", requireAuth, async (req: AuthRequest, res) =
 });
 
 // POST /api/onboarding/workflows  — start a workflow
-router.post("/onboarding/workflows", requireAuth, canManage, async (req: AuthRequest, res) => {
+router.post("/onboarding/workflows", requireAuth, requireHRAccess, async (req: AuthRequest, res) => {
   try {
     const { employeeId, templateId, type, title, notes, targetCompletionDate, tasks = [] } = req.body;
     if (!employeeId || !type || !title) {
@@ -252,7 +250,7 @@ router.get("/onboarding/workflows/:id", requireAuth, async (req: AuthRequest, re
 });
 
 // PUT /api/onboarding/workflows/:id — update workflow meta (title, notes, status, targetCompletionDate)
-router.put("/onboarding/workflows/:id", requireAuth, canManage, async (req: AuthRequest, res) => {
+router.put("/onboarding/workflows/:id", requireAuth, requireHRAccess, async (req: AuthRequest, res) => {
   try {
     const id = parseInt(req.params.id);
     const { title, notes, status, targetCompletionDate } = req.body;
@@ -276,7 +274,7 @@ router.put("/onboarding/workflows/:id", requireAuth, canManage, async (req: Auth
 });
 
 // DELETE /api/onboarding/workflows/:id
-router.delete("/onboarding/workflows/:id", requireAuth, canManage, async (req, res) => {
+router.delete("/onboarding/workflows/:id", requireAuth, requireHRAccess, async (req, res) => {
   try {
     const id = parseInt(req.params.id);
     await db.delete(workflowsTable).where(eq(workflowsTable.id, id));
@@ -334,7 +332,7 @@ router.patch("/onboarding/tasks/:id", requireAuth, async (req: AuthRequest, res)
 });
 
 // POST /api/onboarding/workflows/:id/tasks — add a custom task to a workflow
-router.post("/onboarding/workflows/:id/tasks", requireAuth, canManage, async (req: AuthRequest, res) => {
+router.post("/onboarding/workflows/:id/tasks", requireAuth, requireHRAccess, async (req: AuthRequest, res) => {
   try {
     const workflowId = parseInt(req.params.id);
     const { title, description, category, assigneeId, dueDate, notes } = req.body;
@@ -367,7 +365,7 @@ router.post("/onboarding/workflows/:id/tasks", requireAuth, canManage, async (re
 });
 
 // DELETE /api/onboarding/tasks/:id
-router.delete("/onboarding/tasks/:id", requireAuth, canManage, async (req, res) => {
+router.delete("/onboarding/tasks/:id", requireAuth, requireHRAccess, async (req, res) => {
   try {
     const id = parseInt(req.params.id);
     const [task] = await db.select().from(workflowTasksTable).where(eq(workflowTasksTable.id, id)).limit(1);
