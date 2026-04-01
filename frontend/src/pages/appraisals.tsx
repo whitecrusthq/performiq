@@ -1,11 +1,13 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { useListAppraisals, useCreateAppraisal, useListCycles, useListUsers } from "../lib";
 import { useQueryClient } from "@tanstack/react-query";
 import { PageHeader, Card, StatusBadge, Button, EmptyState, Label } from "@/components/shared";
 import { format } from "date-fns";
-import { ClipboardList, Plus, X, Search, ChevronDown, GripVertical, ArrowUp, ArrowDown, UserPlus } from "lucide-react";
+import { ClipboardList, Plus, X, Search, ChevronDown, ArrowUp, ArrowDown, UserPlus } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
 import { Link } from "wouter";
+
+const authHeader = () => ({ Authorization: `Bearer ${localStorage.getItem("token")}` });
 
 const STATUS_OPTIONS = [
   { value: "self_review",       label: "Self Review" },
@@ -26,9 +28,17 @@ export default function Appraisals() {
   const createMutation = useCreateAppraisal({ request: { headers } });
 
   const [isDialogOpen, setIsDialogOpen] = useState(false);
-  const [formData, setFormData] = useState({ cycleId: "", employeeId: "", workflowType: "admin_approval" });
-  // Each entry is a reviewer step in sequential order
+  const [formData, setFormData] = useState({ cycleId: "", employeeId: "", workflowType: "admin_approval", criteriaGroupId: "" });
   const [reviewerSteps, setReviewerSteps] = useState<string[]>([""]); // array of user id strings
+
+  // Criteria groups
+  const [criteriaGroups, setCriteriaGroups] = useState<any[]>([]);
+  useEffect(() => {
+    fetch("/api/criteria-groups", { headers: authHeader() })
+      .then(r => r.json())
+      .then(setCriteriaGroups)
+      .catch(() => {});
+  }, []);
 
   // Filters
   const [search, setSearch] = useState("");
@@ -76,6 +86,7 @@ export default function Appraisals() {
       employeeId: parseInt(formData.employeeId),
       workflowType: formData.workflowType,
       reviewerIds,
+      criteriaGroupId: formData.criteriaGroupId ? parseInt(formData.criteriaGroupId) : undefined,
     };
     createMutation.mutate(
       { data: payload },
@@ -83,7 +94,7 @@ export default function Appraisals() {
         onSuccess: () => {
           queryClient.invalidateQueries({ queryKey: ["/api/appraisals"] });
           setIsDialogOpen(false);
-          setFormData({ cycleId: "", employeeId: "", workflowType: "admin_approval" });
+          setFormData({ cycleId: "", employeeId: "", workflowType: "admin_approval", criteriaGroupId: "" });
           setReviewerSteps([""]);
         }
       }
@@ -245,6 +256,19 @@ export default function Appraisals() {
                   <option value="">-- Choose cycle --</option>
                   {cycles?.filter(c => c.status === 'active').map(c => (
                     <option key={c.id} value={c.id}>{c.name}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <Label>Criteria Group <span className="text-muted-foreground font-normal text-xs">(optional — uses all criteria if not selected)</span></Label>
+                <select
+                  className="w-full px-4 py-2.5 rounded-xl bg-background border border-border outline-none focus:ring-2 focus:ring-primary/20"
+                  value={formData.criteriaGroupId}
+                  onChange={e => setFormData({...formData, criteriaGroupId: e.target.value})}
+                >
+                  <option value="">-- All criteria --</option>
+                  {criteriaGroups.map((g: any) => (
+                    <option key={g.id} value={g.id}>{g.name} ({g.criteria?.length ?? 0} criteria)</option>
                   ))}
                 </select>
               </div>

@@ -27,18 +27,19 @@ export default function AppraisalDetail() {
   const updateMutation = useUpdateAppraisal({ request: { headers } });
 
   // Local form state for scores
-  const [scores, setScores] = useState<Record<number, { score: number, note: string }>>({});
+  const [scores, setScores] = useState<Record<number, { score: number, note: string, actualValue?: number }>>({});
   const [generalComment, setGeneralComment] = useState("");
 
   useEffect(() => {
     if (appraisal) {
-      const initialScores: Record<number, { score: number, note: string }> = {};
+      const initialScores: Record<number, { score: number, note: string, actualValue?: number }> = {};
       const isSelf = appraisal.status === 'self_review';
-      
+
       appraisal.scores.forEach(s => {
         initialScores[s.criterionId] = {
-          score: (isSelf ? s.selfScore : s.managerScore) || 3,
-          note: (isSelf ? s.selfNote : s.managerNote) || ""
+          score: Number((isSelf ? s.selfScore : s.managerScore) ?? 3) || 3,
+          note: (isSelf ? s.selfNote : s.managerNote) || "",
+          actualValue: s.actualValue ? Number(s.actualValue) : undefined,
         };
       });
       setScores(initialScores);
@@ -56,16 +57,24 @@ export default function AppraisalDetail() {
   const isPendingAdminApproval = appraisal.status === 'pending_approval' && (user?.role === 'admin' || user?.role === 'super_admin');
   const canEdit = isSelfReviewActive || isManagerReviewActive;
 
-  const handleScoreChange = (criterionId: number, field: 'score' | 'note', value: any) => {
+  const handleScoreChange = (criterionId: number, field: 'score' | 'note' | 'actualValue', value: any) => {
     setScores(prev => ({
       ...prev,
       [criterionId]: { ...prev[criterionId], [field]: value }
     }));
   };
 
+  const handleActualValueChange = (criterionId: number, actualVal: number, targetVal: number) => {
+    const computed = targetVal > 0 ? Math.min(5, (actualVal / targetVal) * 5) : 0;
+    setScores(prev => ({
+      ...prev,
+      [criterionId]: { ...prev[criterionId], actualValue: actualVal, score: Math.round(computed * 10) / 10 }
+    }));
+  };
+
   const handleSubmit = (action: 'save' | 'submit') => {
     const scoresArray = Object.entries(scores).map(([critId, data]) => {
-      const base = { criterionId: parseInt(critId) };
+      const base = { criterionId: parseInt(critId), actualValue: data.actualValue ?? null };
       if (isSelfReviewActive) return { ...base, selfScore: data.score, selfNote: data.note };
       return { ...base, managerScore: data.score, managerNote: data.note };
     });
@@ -208,89 +217,138 @@ export default function AppraisalDetail() {
                   <div className="flex items-center gap-2 mb-1">
                     <span className="text-xs font-bold uppercase tracking-wider text-primary bg-primary/10 px-2 py-0.5 rounded">{crit.category}</span>
                     <span className="text-xs font-medium text-muted-foreground">Weight: {crit.weight}%</span>
+                    {crit.type && crit.type !== "rating" && (
+                      <span className={`text-xs font-semibold px-2 py-0.5 rounded capitalize ${crit.type === "percentage" ? "bg-amber-100 text-amber-700" : "bg-emerald-100 text-emerald-700"}`}>
+                        {crit.type}{crit.targetValue || (crit as any).target_value ? ` · Target: ${crit.targetValue ?? (crit as any).target_value}${crit.unit ? ` ${crit.unit}` : ""}` : ""}
+                      </span>
+                    )}
                   </div>
                   <h4 className="text-lg font-semibold">{crit.name}</h4>
                   <p className="text-muted-foreground text-sm mt-1">{crit.description}</p>
                 </div>
               </div>
 
-              <div className="grid md:grid-cols-2 gap-8 mt-6 pt-6 border-t border-border">
-                {/* Self Review Column */}
-                <div className={`p-4 rounded-xl ${isSelfReviewActive ? 'bg-amber-50/50 border border-amber-200' : 'bg-muted/30'}`}>
-                  <h5 className="font-semibold text-sm mb-4 flex items-center gap-2">
-                    <User className="w-4 h-4 text-amber-600" /> Self Evaluation
-                  </h5>
-                  
-                  {isSelfReviewActive ? (
-                    <div className="space-y-4">
-                      <div>
-                        <div className="flex justify-between mb-2">
-                          <Label>Rating (1-5)</Label>
-                          <span className="font-bold text-amber-700">{myVal.score}</span>
-                        </div>
-                        <input 
-                          type="range" min="1" max="5" step="1" 
-                          value={myVal.score} 
-                          onChange={(e) => handleScoreChange(crit.id, 'score', parseInt(e.target.value))}
-                          className="w-full accent-amber-600" 
-                        />
-                      </div>
-                      <div>
-                        <Label>Comments</Label>
-                        <textarea 
-                          value={myVal.note}
-                          onChange={(e) => handleScoreChange(crit.id, 'note', e.target.value)}
-                          className="w-full mt-1 px-3 py-2 rounded-lg border border-border text-sm min-h-[80px]"
-                          placeholder="Provide evidence or examples..."
-                        />
-                      </div>
-                    </div>
-                  ) : (
-                    <div>
-                      <div className="text-3xl font-bold text-foreground mb-2">{scoreItem.selfScore || '-'}</div>
-                      <p className="text-sm text-muted-foreground italic">{scoreItem.selfNote || 'No comments provided.'}</p>
-                    </div>
-                  )}
-                </div>
+              {/* Helper: render score input based on type */}
+              {(() => {
+                const critType: string = crit.type ?? "rating";
+                const target = Number(crit.targetValue ?? (crit as any).target_value ?? 0);
+                const unit: string = crit.unit ?? "";
 
-                {/* Manager Review Column */}
-                <div className={`p-4 rounded-xl ${(isManagerReviewActive || appraisal.status === 'completed') ? 'bg-blue-50/50 border border-blue-200' : 'bg-muted/30 opacity-50'}`}>
-                  <h5 className="font-semibold text-sm mb-4 flex items-center gap-2">
-                    <CheckCircle2 className="w-4 h-4 text-blue-600" /> Manager Evaluation
-                  </h5>
-                  
-                  {isManagerReviewActive ? (
+                const ScoreInput = ({ color, isActive, isSelf }: { color: string; isActive: boolean; isSelf: boolean }) => {
+                  if (!isActive) return null;
+                  if (critType === "percentage" || critType === "value") {
+                    const computedPct = target > 0 && myVal.actualValue != null ? Math.min(100, (myVal.actualValue / target) * 100) : null;
+                    return (
+                      <div className="space-y-3">
+                        <div>
+                          <Label>{critType === "percentage" ? `Actual %${unit ? ` (${unit})` : ""}` : `Actual Value${unit ? ` (${unit})` : ""}`}</Label>
+                          <div className="flex items-center gap-2 mt-1">
+                            <input
+                              type="number" min="0" step="0.01"
+                              value={myVal.actualValue ?? ""}
+                              onChange={e => handleActualValueChange(crit.id, parseFloat(e.target.value) || 0, target)}
+                              className="flex-1 px-3 py-2 rounded-lg border border-border text-sm outline-none focus:ring-2 focus:ring-primary/20"
+                              placeholder={critType === "percentage" ? `e.g. 85 (target: ${target}%)` : `e.g. ${target * 0.8} (target: ${target}${unit ? ` ${unit}` : ""})`}
+                            />
+                            {unit && <span className="text-sm text-muted-foreground font-medium shrink-0">{unit}</span>}
+                          </div>
+                          {myVal.actualValue != null && target > 0 && (
+                            <div className="mt-2 flex items-center gap-3">
+                              <div className="flex-1 bg-muted rounded-full h-2">
+                                <div
+                                  className={`h-2 rounded-full transition-all ${color === 'amber' ? 'bg-amber-500' : 'bg-blue-500'}`}
+                                  style={{ width: `${Math.min(100, computedPct ?? 0)}%` }}
+                                />
+                              </div>
+                              <span className={`text-xs font-bold ${color === 'amber' ? 'text-amber-700' : 'text-blue-700'}`}>
+                                {computedPct?.toFixed(0)}% → Score: {myVal.score.toFixed(1)}/5
+                              </span>
+                            </div>
+                          )}
+                        </div>
+                        <div>
+                          <Label>Comments</Label>
+                          <textarea
+                            value={myVal.note}
+                            onChange={e => handleScoreChange(crit.id, 'note', e.target.value)}
+                            className="w-full mt-1 px-3 py-2 rounded-lg border border-border text-sm min-h-[70px]"
+                            placeholder={isSelf ? "Provide evidence or examples..." : "Provide managerial feedback..."}
+                          />
+                        </div>
+                      </div>
+                    );
+                  }
+                  // Default: rating (1-5 slider)
+                  return (
                     <div className="space-y-4">
                       <div>
                         <div className="flex justify-between mb-2">
-                          <Label>Rating (1-5)</Label>
-                          <span className="font-bold text-blue-700">{myVal.score}</span>
+                          <Label>Rating (1–5)</Label>
+                          <span className={`font-bold ${color === 'amber' ? 'text-amber-700' : 'text-blue-700'}`}>{myVal.score}</span>
                         </div>
-                        <input 
-                          type="range" min="1" max="5" step="1" 
-                          value={myVal.score} 
-                          onChange={(e) => handleScoreChange(crit.id, 'score', parseInt(e.target.value))}
-                          className="w-full accent-blue-600" 
+                        <input
+                          type="range" min="1" max="5" step="1"
+                          value={myVal.score}
+                          onChange={e => handleScoreChange(crit.id, 'score', parseInt(e.target.value))}
+                          className={`w-full ${color === 'amber' ? 'accent-amber-600' : 'accent-blue-600'}`}
                         />
+                        <div className="flex justify-between text-xs text-muted-foreground mt-1">
+                          <span>Needs Improvement</span><span>Exceptional</span>
+                        </div>
                       </div>
                       <div>
                         <Label>Comments</Label>
-                        <textarea 
+                        <textarea
                           value={myVal.note}
-                          onChange={(e) => handleScoreChange(crit.id, 'note', e.target.value)}
+                          onChange={e => handleScoreChange(crit.id, 'note', e.target.value)}
                           className="w-full mt-1 px-3 py-2 rounded-lg border border-border text-sm min-h-[80px]"
-                          placeholder="Provide managerial feedback..."
+                          placeholder={isSelf ? "Provide evidence or examples..." : "Provide managerial feedback..."}
                         />
                       </div>
                     </div>
-                  ) : (
-                    <div>
-                      <div className="text-3xl font-bold text-foreground mb-2">{scoreItem.managerScore || '-'}</div>
-                      <p className="text-sm text-muted-foreground italic">{scoreItem.managerNote || 'Waiting for manager review.'}</p>
+                  );
+                };
+
+                const ScoreDisplay = ({ scoreVal, noteVal, waitingMsg }: { scoreVal: any; noteVal: any; waitingMsg?: string }) => (
+                  <div>
+                    {(critType === "percentage" || critType === "value") && scoreItem.actualValue != null ? (
+                      <div className="mb-2">
+                        <span className="text-xs text-muted-foreground">Actual: </span>
+                        <span className="font-semibold">{Number(scoreItem.actualValue).toLocaleString()}{unit ? ` ${unit}` : ""}</span>
+                        {target > 0 && <span className="text-xs text-muted-foreground ml-1">/ {target.toLocaleString()}{unit ? ` ${unit}` : ""} target</span>}
+                      </div>
+                    ) : null}
+                    <div className="text-3xl font-bold text-foreground mb-2">{scoreVal != null ? `${Number(scoreVal).toFixed(1)}/5` : '-'}</div>
+                    <p className="text-sm text-muted-foreground italic">{noteVal || waitingMsg || 'No comments provided.'}</p>
+                  </div>
+                );
+
+                return (
+                  <div className="grid md:grid-cols-2 gap-8 mt-6 pt-6 border-t border-border">
+                    {/* Self Review Column */}
+                    <div className={`p-4 rounded-xl ${isSelfReviewActive ? 'bg-amber-50/50 border border-amber-200' : 'bg-muted/30'}`}>
+                      <h5 className="font-semibold text-sm mb-4 flex items-center gap-2">
+                        <User className="w-4 h-4 text-amber-600" /> Self Evaluation
+                      </h5>
+                      {isSelfReviewActive
+                        ? <ScoreInput color="amber" isActive={true} isSelf={true} />
+                        : <ScoreDisplay scoreVal={scoreItem.selfScore} noteVal={scoreItem.selfNote} waitingMsg="No comments provided." />
+                      }
                     </div>
-                  )}
-                </div>
-              </div>
+
+                    {/* Manager Review Column */}
+                    <div className={`p-4 rounded-xl ${(isManagerReviewActive || appraisal.status === 'completed') ? 'bg-blue-50/50 border border-blue-200' : 'bg-muted/30 opacity-50'}`}>
+                      <h5 className="font-semibold text-sm mb-4 flex items-center gap-2">
+                        <CheckCircle2 className="w-4 h-4 text-blue-600" /> Manager Evaluation
+                      </h5>
+                      {isManagerReviewActive
+                        ? <ScoreInput color="blue" isActive={true} isSelf={false} />
+                        : <ScoreDisplay scoreVal={scoreItem.managerScore} noteVal={scoreItem.managerNote} waitingMsg="Waiting for manager review." />
+                      }
+                    </div>
+                  </div>
+                );
+              })()}
             </Card>
           );
         })}

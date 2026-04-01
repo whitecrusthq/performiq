@@ -24,6 +24,7 @@ export const appraisalsTable = pgTable("appraisals", {
   selfComment: text("self_comment"),
   managerComment: text("manager_comment"),
   overallScore: numeric("overall_score", { precision: 5, scale: 2 }),
+  criteriaGroupId: integer("criteria_group_id"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 
@@ -31,10 +32,11 @@ export const appraisalScoresTable = pgTable("appraisal_scores", {
   id: serial("id").primaryKey(),
   appraisalId: integer("appraisal_id").notNull(),
   criterionId: integer("criterion_id").notNull(),
-  selfScore: numeric("self_score", { precision: 3, scale: 1 }),
-  managerScore: numeric("manager_score", { precision: 3, scale: 1 }),
+  selfScore: numeric("self_score", { precision: 5, scale: 2 }),
+  managerScore: numeric("manager_score", { precision: 5, scale: 2 }),
   selfNote: text("self_note"),
   managerNote: text("manager_note"),
+  actualValue: numeric("actual_value", { precision: 15, scale: 2 }),
 });
 
 export const appraisalReviewersTable = pgTable("appraisal_reviewers", {

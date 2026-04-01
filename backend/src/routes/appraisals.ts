@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { db, appraisalsTable, appraisalScoresTable, appraisalReviewersTable, usersTable, cyclesTable, criteriaTable } from "../db/index.js";
+import { db, appraisalsTable, appraisalScoresTable, appraisalReviewersTable, usersTable, cyclesTable, criteriaTable, criteriaGroupItemsTable } from "../db/index.js";
 import { eq, and, inArray, or, asc } from "drizzle-orm";
 import { requireAuth, requireRole, AuthRequest } from "../middlewares/auth.js";
 
@@ -110,6 +110,8 @@ router.post("/appraisals", requireAuth, async (req: AuthRequest, res) => {
       ? reviewerIds.map(Number)
       : (req.user!.role !== "employee" ? [req.user!.id] : []);
 
+    const { criteriaGroupId } = req.body;
+
     const [appraisal] = await db.insert(appraisalsTable)
       .values({
         cycleId,
@@ -117,6 +119,7 @@ router.post("/appraisals", requireAuth, async (req: AuthRequest, res) => {
         reviewerId: orderedIds[0] ?? null,
         workflowType: workflowType ?? "admin_approval",
         status: "self_review",
+        criteriaGroupId: criteriaGroupId ? Number(criteriaGroupId) : null,
       })
       .returning();
 
@@ -131,10 +134,18 @@ router.post("/appraisals", requireAuth, async (req: AuthRequest, res) => {
       ).onConflictDoNothing();
     }
 
-    const criteria = await db.select().from(criteriaTable);
-    if (criteria.length > 0) {
+    // If a criteria group is specified, only score criteria in that group; otherwise all criteria
+    let criteriaToScore = await db.select().from(criteriaTable);
+    if (criteriaGroupId) {
+      const groupItems = await db.select().from(criteriaGroupItemsTable)
+        .where(eq(criteriaGroupItemsTable.groupId, Number(criteriaGroupId)));
+      const groupCriterionIds = new Set(groupItems.map(i => i.criterionId));
+      criteriaToScore = criteriaToScore.filter(c => groupCriterionIds.has(c.id));
+    }
+
+    if (criteriaToScore.length > 0) {
       await db.insert(appraisalScoresTable).values(
-        criteria.map(c => ({ appraisalId: appraisal.id, criterionId: c.id }))
+        criteriaToScore.map(c => ({ appraisalId: appraisal.id, criterionId: c.id }))
       );
     }
 
@@ -218,7 +229,13 @@ router.put("/appraisals/:id", requireAuth, async (req: AuthRequest, res) => {
           .limit(1);
         if (existing.length > 0) {
           await db.update(appraisalScoresTable)
-            .set({ selfScore: score.selfScore, managerScore: score.managerScore, selfNote: score.selfNote, managerNote: score.managerNote })
+            .set({
+              selfScore: score.selfScore,
+              managerScore: score.managerScore,
+              selfNote: score.selfNote,
+              managerNote: score.managerNote,
+              actualValue: score.actualValue ?? existing[0].actualValue,
+            })
             .where(eq(appraisalScoresTable.id, existing[0].id));
         }
       }
