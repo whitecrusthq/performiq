@@ -1,6 +1,6 @@
 import { Router } from "express";
-import { db, attendanceLogsTable, usersTable } from "../db/index.js";
-import { eq, and, desc, gte, lte, inArray } from "drizzle-orm";
+import { db, attendanceLogsTable, attendanceLocationPingsTable, usersTable } from "../db/index.js";
+import { eq, and, desc, inArray } from "drizzle-orm";
 import { requireAuth, AuthRequest } from "../middlewares/auth.js";
 
 const router = Router();
@@ -109,6 +109,48 @@ router.get("/attendance", requireAuth, async (req: AuthRequest, res) => {
     res.json(rows.map(r => ({ ...r, user: userMap[r.userId] ?? null })));
   } catch (err) {
     res.status(500).json({ error: "Failed to fetch attendance logs" });
+  }
+});
+
+// POST /attendance/location-ping — periodic location update while clocked in
+router.post("/attendance/location-ping", requireAuth, async (req: AuthRequest, res) => {
+  try {
+    const userId = req.user!.id;
+    const { lat, lng } = req.body;
+    if (lat == null || lng == null) return res.status(400).json({ error: "lat and lng are required" });
+    const today = new Date().toISOString().split("T")[0];
+    const [active] = await db.select().from(attendanceLogsTable)
+      .where(and(eq(attendanceLogsTable.userId, userId), eq(attendanceLogsTable.date, today)))
+      .orderBy(desc(attendanceLogsTable.clockIn)).limit(1);
+    if (!active || !active.clockIn || active.clockOut) {
+      return res.status(400).json({ error: "Not currently clocked in" });
+    }
+    const [ping] = await db.insert(attendanceLocationPingsTable).values({
+      attendanceLogId: active.id,
+      userId,
+      lat: String(lat),
+      lng: String(lng),
+    }).returning();
+    res.json(ping);
+  } catch (err) {
+    res.status(500).json({ error: "Failed to save location ping" });
+  }
+});
+
+// GET /attendance/:id/pings — get all location pings for a log entry
+router.get("/attendance/:id/pings", requireAuth, async (req: AuthRequest, res) => {
+  try {
+    const { role, id: userId } = req.user!;
+    const logId = parseInt(req.params.id);
+    const [log] = await db.select().from(attendanceLogsTable).where(eq(attendanceLogsTable.id, logId)).limit(1);
+    if (!log) return res.status(404).json({ error: "Not found" });
+    if (role === "employee" && log.userId !== userId) return res.status(403).json({ error: "Forbidden" });
+    const pings = await db.select().from(attendanceLocationPingsTable)
+      .where(eq(attendanceLocationPingsTable.attendanceLogId, logId))
+      .orderBy(attendanceLocationPingsTable.recordedAt);
+    res.json(pings);
+  } catch (err) {
+    res.status(500).json({ error: "Failed to fetch pings" });
   }
 });
 

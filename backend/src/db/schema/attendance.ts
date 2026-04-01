@@ -44,6 +44,16 @@ export const timesheetEntriesTable = pgTable("timesheet_entries", {
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 
+export const attendanceLocationPingsTable = pgTable("attendance_location_pings", {
+  id: serial("id").primaryKey(),
+  attendanceLogId: integer("attendance_log_id").notNull(),
+  userId: integer("user_id").notNull(),
+  lat: decimal("lat", { precision: 10, scale: 7 }).notNull(),
+  lng: decimal("lng", { precision: 10, scale: 7 }).notNull(),
+  recordedAt: timestamp("recorded_at").notNull().defaultNow(),
+});
+
 export type AttendanceLog = typeof attendanceLogsTable.$inferSelect;
+export type AttendanceLocationPing = typeof attendanceLocationPingsTable.$inferSelect;
 export type Timesheet = typeof timesheetsTable.$inferSelect;
 export type TimesheetEntry = typeof timesheetEntriesTable.$inferSelect;

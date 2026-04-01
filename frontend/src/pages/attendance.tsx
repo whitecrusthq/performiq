@@ -1,12 +1,17 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@/hooks/use-auth";
 import { useToast } from "@/hooks/use-toast";
-import { Clock, LogIn, LogOut, CalendarDays, Users, Timer, MapPin, AlertCircle } from "lucide-react";
+import {
+  Clock, LogIn, LogOut, CalendarDays, Users, Timer,
+  MapPin, AlertCircle, Radio, ChevronDown, ChevronUp,
+} from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
+
+const PING_INTERVAL_MS = 30 * 60 * 1000; // 30 minutes
 
 const authHeader = () => ({
   Authorization: `Bearer ${localStorage.getItem("token")}`,
@@ -30,7 +35,7 @@ function getLocation(): Promise<LatLng> {
     navigator.geolocation.getCurrentPosition(
       pos => resolve({ lat: pos.coords.latitude, lng: pos.coords.longitude }),
       () => resolve(null),
-      { timeout: 8000, maximumAge: 60000 }
+      { timeout: 8000, maximumAge: 30000 }
     );
   });
 }
@@ -53,35 +58,11 @@ function fmtDate(d: string) {
 
 function fmtCoords(lat?: string | null, lng?: string | null) {
   if (!lat || !lng) return null;
-  const la = parseFloat(lat).toFixed(4);
-  const lo = parseFloat(lng).toFixed(4);
-  return `${la}, ${lo}`;
+  return `${parseFloat(lat).toFixed(4)}, ${parseFloat(lng).toFixed(4)}`;
 }
 
-function mapsUrl(lat: string, lng: string) {
+function mapsUrl(lat: string | number, lng: string | number) {
   return `https://www.google.com/maps?q=${lat},${lng}`;
-}
-
-function LocationCell({ inLat, inLng, outLat, outLng }: { inLat?: string | null; inLng?: string | null; outLat?: string | null; outLng?: string | null }) {
-  const inCoords = fmtCoords(inLat, inLng);
-  const outCoords = fmtCoords(outLat, outLng);
-  if (!inCoords && !outCoords) return <span className="text-muted-foreground text-xs">—</span>;
-  return (
-    <div className="flex flex-col gap-1 text-xs">
-      {inCoords && (
-        <a href={mapsUrl(inLat!, inLng!)} target="_blank" rel="noopener noreferrer"
-          className="flex items-center gap-1 text-green-600 dark:text-green-400 hover:underline">
-          <MapPin className="w-3 h-3" /> In: {inCoords}
-        </a>
-      )}
-      {outCoords && (
-        <a href={mapsUrl(outLat!, outLng!)} target="_blank" rel="noopener noreferrer"
-          className="flex items-center gap-1 text-orange-600 dark:text-orange-400 hover:underline">
-          <MapPin className="w-3 h-3" /> Out: {outCoords}
-        </a>
-      )}
-    </div>
-  );
 }
 
 function StatusBadge({ log }: { log: any }) {
@@ -89,6 +70,70 @@ function StatusBadge({ log }: { log: any }) {
   if (log.clockIn && !log.clockOut) return <Badge className="bg-green-500 text-white">Clocked In</Badge>;
   if (log.clockOut) return <Badge variant="secondary">Clocked Out</Badge>;
   return <Badge variant="outline">—</Badge>;
+}
+
+function PingsCell({ logId }: { logId: number }) {
+  const [open, setOpen] = useState(false);
+  const { data: pings = [] } = useQuery({
+    queryKey: ["pings", logId],
+    queryFn: () => apiFetch(`/api/attendance/${logId}/pings`),
+    enabled: open,
+  });
+
+  return (
+    <div>
+      <button
+        className="text-xs flex items-center gap-1 text-primary hover:underline"
+        onClick={() => setOpen(o => !o)}
+      >
+        <Radio className="w-3 h-3" />
+        {open ? "Hide" : "Show"} pings
+        {open ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
+      </button>
+      {open && (
+        <div className="mt-2 space-y-1 max-h-32 overflow-y-auto pr-1">
+          {(pings as any[]).length === 0
+            ? <p className="text-xs text-muted-foreground">No pings recorded</p>
+            : (pings as any[]).map((p: any) => (
+              <a key={p.id} href={mapsUrl(p.lat, p.lng)} target="_blank" rel="noopener noreferrer"
+                className="flex items-center gap-1 text-xs text-blue-600 dark:text-blue-400 hover:underline">
+                <MapPin className="w-3 h-3 shrink-0" />
+                {new Date(p.recordedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                {" — "}{parseFloat(p.lat).toFixed(4)}, {parseFloat(p.lng).toFixed(4)}
+              </a>
+            ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function LocationCell({ log }: { log: any }) {
+  const inCoords = fmtCoords(log.clockInLat, log.clockInLng);
+  const outCoords = fmtCoords(log.clockOutLat, log.clockOutLng);
+  return (
+    <div className="flex flex-col gap-1.5">
+      <div className="flex flex-col gap-0.5">
+        {inCoords ? (
+          <a href={mapsUrl(log.clockInLat, log.clockInLng)} target="_blank" rel="noopener noreferrer"
+            className="flex items-center gap-1 text-xs text-green-600 dark:text-green-400 hover:underline">
+            <MapPin className="w-3 h-3" /> In: {inCoords}
+          </a>
+        ) : (
+          <span className="text-xs text-muted-foreground">In: —</span>
+        )}
+        {outCoords ? (
+          <a href={mapsUrl(log.clockOutLat, log.clockOutLng)} target="_blank" rel="noopener noreferrer"
+            className="flex items-center gap-1 text-xs text-orange-600 dark:text-orange-400 hover:underline">
+            <MapPin className="w-3 h-3" /> Out: {outCoords}
+          </a>
+        ) : log.clockOut ? (
+          <span className="text-xs text-muted-foreground">Out: —</span>
+        ) : null}
+      </div>
+      <PingsCell logId={log.id} />
+    </div>
+  );
 }
 
 export default function Attendance() {
@@ -103,6 +148,13 @@ export default function Attendance() {
   const [locStatus, setLocStatus] = useState<"idle" | "requesting" | "granted" | "denied">("idle");
   const locStatusRef = useRef(locStatus);
   locStatusRef.current = locStatus;
+
+  // Ping tracking state
+  const [pingCount, setPingCount] = useState(0);
+  const [nextPingIn, setNextPingIn] = useState<number | null>(null); // seconds until next ping
+  const pingIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const pingCountdownRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const lastPingTimeRef = useRef<number | null>(null);
 
   const { data: today, isLoading: todayLoading } = useQuery({
     queryKey: ["attendance-today"],
@@ -126,6 +178,59 @@ export default function Attendance() {
     enabled: isManager,
   });
 
+  // Send a location ping silently
+  const sendPing = useCallback(async () => {
+    const loc = await getLocation();
+    if (!loc) return;
+    try {
+      await apiFetch("/api/attendance/location-ping", {
+        method: "POST",
+        body: JSON.stringify({ lat: loc.lat, lng: loc.lng }),
+      });
+      setPingCount(c => c + 1);
+      lastPingTimeRef.current = Date.now();
+      qc.invalidateQueries({ queryKey: ["attendance-today"] });
+      qc.invalidateQueries({ queryKey: ["attendance"] });
+    } catch { /* silent — don't bother user */ }
+  }, [qc]);
+
+  // Start/stop the ping interval based on clock-in status
+  const isClockedIn = today?.clockIn && !today?.clockOut;
+
+  const startPingSchedule = useCallback(() => {
+    if (pingIntervalRef.current) return; // already running
+
+    // Set up the 30-minute ping interval
+    pingIntervalRef.current = setInterval(() => {
+      sendPing();
+    }, PING_INTERVAL_MS);
+
+    // Countdown display (updates every second)
+    lastPingTimeRef.current = Date.now();
+    setNextPingIn(PING_INTERVAL_MS / 1000);
+    pingCountdownRef.current = setInterval(() => {
+      const elapsed = lastPingTimeRef.current ? (Date.now() - lastPingTimeRef.current) / 1000 : 0;
+      const remaining = Math.max(0, PING_INTERVAL_MS / 1000 - elapsed);
+      setNextPingIn(Math.round(remaining));
+    }, 1000);
+  }, [sendPing]);
+
+  const stopPingSchedule = useCallback(() => {
+    if (pingIntervalRef.current) { clearInterval(pingIntervalRef.current); pingIntervalRef.current = null; }
+    if (pingCountdownRef.current) { clearInterval(pingCountdownRef.current); pingCountdownRef.current = null; }
+    setNextPingIn(null);
+  }, []);
+
+  useEffect(() => {
+    if (isClockedIn) {
+      startPingSchedule();
+    } else {
+      stopPingSchedule();
+      setPingCount(0);
+    }
+    return stopPingSchedule;
+  }, [isClockedIn, startPingSchedule, stopPingSchedule]);
+
   const clockIn = useMutation({
     mutationFn: async () => {
       setLocStatus("requesting");
@@ -136,11 +241,13 @@ export default function Attendance() {
         body: JSON.stringify(loc ? { lat: loc.lat, lng: loc.lng } : {}),
       });
     },
-    onSuccess: (_, __, ___) => {
+    onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["attendance-today"] });
       qc.invalidateQueries({ queryKey: ["attendance"] });
-      const locMsg = locStatusRef.current === "granted" ? " Location recorded." : " Location unavailable — clocked in without coordinates.";
-      toast({ title: "Clocked in", description: `Welcome! Recorded at ${new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}.${locMsg}` });
+      const locMsg = locStatusRef.current === "granted"
+        ? " Location captured. Updates every 30 min."
+        : " Clocked in without location.";
+      toast({ title: "Clocked in", description: `Recorded at ${new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}.${locMsg}` });
       setLocStatus("idle");
     },
     onError: (e: any) => { setLocStatus("idle"); toast({ title: "Error", description: e.message, variant: "destructive" }); },
@@ -159,8 +266,7 @@ export default function Attendance() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["attendance-today"] });
       qc.invalidateQueries({ queryKey: ["attendance"] });
-      const locMsg = locStatusRef.current === "granted" ? " Location recorded." : "";
-      toast({ title: "Clocked out", description: `Have a great rest of your day!${locMsg}` });
+      toast({ title: "Clocked out", description: "Have a great rest of your day!" });
       setLocStatus("idle");
     },
     onError: (e: any) => { setLocStatus("idle"); toast({ title: "Error", description: e.message, variant: "destructive" }); },
@@ -181,8 +287,13 @@ export default function Attendance() {
     return () => clearInterval(id);
   }, [today]);
 
-  const isClockedIn = today?.clockIn && !today?.clockOut;
   const isBusy = clockIn.isPending || clockOut.isPending;
+
+  function fmtCountdown(secs: number) {
+    const m = Math.floor(secs / 60);
+    const s = secs % 60;
+    return m > 0 ? `${m}m ${String(s).padStart(2, "0")}s` : `${s}s`;
+  }
 
   return (
     <div className="space-y-6">
@@ -191,11 +302,11 @@ export default function Attendance() {
         <p className="text-muted-foreground text-sm mt-1">Track your daily clock-in and clock-out</p>
       </div>
 
-      {/* Location permission notice */}
+      {/* Location denied notice */}
       {locStatus === "denied" && (
         <div className="flex items-start gap-2 rounded-lg border border-yellow-300 bg-yellow-50 dark:bg-yellow-900/20 dark:border-yellow-700 px-4 py-3 text-sm text-yellow-800 dark:text-yellow-200">
           <AlertCircle className="w-4 h-4 mt-0.5 shrink-0" />
-          <span>Location permission was denied. Your clock event was recorded without coordinates. You can enable location access in your browser settings to capture it next time.</span>
+          <span>Location permission was denied. Clock event recorded without coordinates. Enable location access in browser settings to capture it next time.</span>
         </div>
       )}
 
@@ -207,6 +318,7 @@ export default function Attendance() {
         {elapsed && (
           <div className="text-4xl font-mono font-bold tracking-widest text-green-600 dark:text-green-400">{elapsed}</div>
         )}
+
         <div className="text-center">
           <p className="text-lg font-semibold">
             {todayLoading ? "Loading…" : isClockedIn
@@ -217,7 +329,8 @@ export default function Attendance() {
           {today?.clockOut && (
             <p className="text-sm text-muted-foreground mt-1">Duration: {fmtDuration(today?.durationMinutes)}</p>
           )}
-          {/* Show captured locations for today */}
+
+          {/* Today's captured locations */}
           {(today?.clockInLat || today?.clockOutLat) && (
             <div className="mt-2 flex flex-col items-center gap-1 text-xs">
               {today.clockInLat && (
@@ -235,6 +348,23 @@ export default function Attendance() {
             </div>
           )}
         </div>
+
+        {/* Tracking status pill */}
+        {isClockedIn && (
+          <div className="flex items-center gap-4 flex-wrap justify-center">
+            <div className="flex items-center gap-2 rounded-full border border-green-300 bg-green-50 dark:bg-green-900/30 dark:border-green-700 px-3 py-1.5 text-xs text-green-700 dark:text-green-300 font-medium">
+              <Radio className="w-3.5 h-3.5 animate-pulse" />
+              Location tracking active
+              {pingCount > 0 && <span className="ml-1 opacity-70">· {pingCount} update{pingCount !== 1 ? "s" : ""}</span>}
+            </div>
+            {nextPingIn !== null && (
+              <span className="text-xs text-muted-foreground">
+                Next update in {fmtCountdown(nextPingIn)}
+              </span>
+            )}
+          </div>
+        )}
+
         <div className="flex flex-col items-center gap-2">
           {!today?.clockOut && (
             <Button
@@ -252,7 +382,7 @@ export default function Attendance() {
           )}
           {!isBusy && !today?.clockOut && (
             <p className="text-xs text-muted-foreground flex items-center gap-1">
-              <MapPin className="w-3 h-3" /> Location will be captured automatically
+              <MapPin className="w-3 h-3" /> Location captured at clock-in/out and every 30 min
             </p>
           )}
           {today?.clockOut && (
@@ -265,10 +395,7 @@ export default function Attendance() {
       <div className="flex flex-wrap gap-3 items-center">
         <div className="flex items-center gap-2">
           <CalendarDays className="w-4 h-4 text-muted-foreground" />
-          <Input
-            type="date" className="w-40 h-9 text-sm"
-            value={filterDate} onChange={e => setFilterDate(e.target.value)}
-          />
+          <Input type="date" className="w-40 h-9 text-sm" value={filterDate} onChange={e => setFilterDate(e.target.value)} />
           {filterDate && (
             <Button variant="ghost" size="sm" className="h-9 px-2 text-xs" onClick={() => setFilterDate("")}>Clear</Button>
           )}
@@ -315,15 +442,13 @@ export default function Attendance() {
                   </td>
                 </tr>
               ) : (logs as any[]).map((log: any) => (
-                <tr key={log.id} className="hover:bg-muted/30 transition-colors">
+                <tr key={log.id} className="hover:bg-muted/30 transition-colors align-top">
                   <td className="px-4 py-3 font-medium">{fmtDate(log.date)}</td>
                   {isManager && <td className="px-4 py-3 text-muted-foreground">{log.user?.name ?? log.user?.email ?? "—"}</td>}
                   <td className="px-4 py-3">{fmtTime(log.clockIn)}</td>
                   <td className="px-4 py-3">{fmtTime(log.clockOut)}</td>
                   <td className="px-4 py-3">{fmtDuration(log.durationMinutes)}</td>
-                  <td className="px-4 py-3">
-                    <LocationCell inLat={log.clockInLat} inLng={log.clockInLng} outLat={log.clockOutLat} outLng={log.clockOutLng} />
-                  </td>
+                  <td className="px-4 py-3"><LocationCell log={log} /></td>
                   <td className="px-4 py-3"><StatusBadge log={log} /></td>
                 </tr>
               ))}
