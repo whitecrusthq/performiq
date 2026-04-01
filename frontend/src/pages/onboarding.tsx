@@ -17,17 +17,15 @@ function authHeader(): HeadersInit {
 }
 
 const CATEGORY_COLORS: Record<string, string> = {
-  "Documents": "bg-purple-100 text-purple-700",
-  "IT Setup": "bg-blue-100 text-blue-700",
-  "Equipment": "bg-orange-100 text-orange-700",
-  "Equipment Return": "bg-red-100 text-red-700",
-  "Orientation": "bg-green-100 text-green-700",
-  "Training": "bg-yellow-100 text-yellow-700",
-  "Exit Interview": "bg-pink-100 text-pink-700",
-  "Access Revocation": "bg-red-100 text-red-700",
-  "Final Pay": "bg-emerald-100 text-emerald-700",
-  "Handover": "bg-indigo-100 text-indigo-700",
-  "Admin": "bg-gray-100 text-gray-700",
+  "Pre-boarding & Documentation":    "bg-purple-100 text-purple-700",
+  "IT & Asset Setup":                "bg-blue-100 text-blue-700",
+  "Orientation & Training":          "bg-green-100 text-green-700",
+  "Welcome & Engagement":            "bg-yellow-100 text-yellow-700",
+  "Resignation/Termination Processing": "bg-orange-100 text-orange-700",
+  "Asset & Access Management":       "bg-red-100 text-red-700",
+  "Knowledge Transfer & Transition": "bg-indigo-100 text-indigo-700",
+  "Finalization & Exit":             "bg-emerald-100 text-emerald-700",
+  "General":                         "bg-gray-100 text-gray-700",
 };
 
 const TASK_STATUS_CONFIG = {
