@@ -652,10 +652,10 @@ export default function Attendance() {
         {isManager && (
           <div className="flex items-center gap-2">
             <Users className="w-4 h-4 text-muted-foreground" />
-            <Select value={filterUserId} onValueChange={setFilterUserId}>
+            <Select value={filterUserId || "all"} onValueChange={v => setFilterUserId(v === "all" ? "" : v)}>
               <SelectTrigger className="w-44 h-9 text-sm"><SelectValue placeholder="All employees" /></SelectTrigger>
               <SelectContent>
-                <SelectItem value="">All employees</SelectItem>
+                <SelectItem value="all">All employees</SelectItem>
                 {(users as any[]).map((u: any) => (
                   <SelectItem key={u.id} value={String(u.id)}>{u.name ?? u.email}</SelectItem>
                 ))}
