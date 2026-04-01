@@ -12,6 +12,8 @@ import reportsRouter from "./reports";
 import departmentsRouter from "./departments";
 import sitesRouter from "./sites";
 import leaveRouter from "./leave";
+import attendanceRouter from "./attendance";
+import timesheetsRouter from "./timesheets";
 
 const router: IRouter = Router();
 
@@ -28,5 +30,7 @@ router.use(reportsRouter);
 router.use(departmentsRouter);
 router.use(sitesRouter);
 router.use(leaveRouter);
+router.use(attendanceRouter);
+router.use(timesheetsRouter);
 
 export default router;

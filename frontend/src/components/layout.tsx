@@ -18,6 +18,8 @@ import {
   X,
   UserCircle,
   ChevronLeft,
+  Clock,
+  ClipboardCheck,
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { User } from "@/lib";
@@ -27,6 +29,8 @@ const NAV_ITEMS = [
   { name: "Appraisals",  path: "/appraisals",  icon: ClipboardList,   roles: ["super_admin", "admin", "manager", "employee"] },
   { name: "Goals",       path: "/goals",        icon: Target,          roles: ["super_admin", "admin", "manager", "employee"] },
   { name: "Leave",       path: "/leave",        icon: CalendarDays,    roles: ["super_admin", "admin", "manager", "employee"] },
+  { name: "Attendance",  path: "/attendance",   icon: Clock,           roles: ["super_admin", "admin", "manager", "employee"] },
+  { name: "Timesheets",  path: "/timesheets",   icon: ClipboardCheck,  roles: ["super_admin", "admin", "manager", "employee"] },
   { name: "Cycles",      path: "/cycles",       icon: RefreshCcw,      roles: ["super_admin", "admin", "manager"] },
   { name: "Criteria",    path: "/criteria",     icon: ListChecks,      roles: ["super_admin", "admin"] },
   { name: "Reports",     path: "/reports",      icon: BarChart3,       roles: ["super_admin", "admin"] },

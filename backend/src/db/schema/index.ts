@@ -6,3 +6,4 @@ export * from "./goals";
 export * from "./departments";
 export * from "./sites";
 export * from "./leave";
+export * from "./attendance";

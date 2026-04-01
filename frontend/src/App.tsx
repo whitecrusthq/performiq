@@ -20,6 +20,8 @@ import Reports from "@/pages/reports";
 import Departments from "@/pages/departments";
 import Sites from "@/pages/sites";
 import Leave from "@/pages/leave";
+import Attendance from "@/pages/attendance";
+import Timesheets from "@/pages/timesheets";
 import Profile from "@/pages/profile";
 
 const queryClient = new QueryClient();
@@ -82,6 +84,12 @@ function Router() {
       </Route>
       <Route path="/leave">
         <AppLayout><ProtectedRoute component={Leave} /></AppLayout>
+      </Route>
+      <Route path="/attendance">
+        <AppLayout><ProtectedRoute component={Attendance} /></AppLayout>
+      </Route>
+      <Route path="/timesheets">
+        <AppLayout><ProtectedRoute component={Timesheets} /></AppLayout>
       </Route>
       <Route path="/profile">
         <AppLayout><ProtectedRoute component={Profile} /></AppLayout>
