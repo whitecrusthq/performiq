@@ -5,6 +5,7 @@ import { useToast } from "@/hooks/use-toast";
 import {
   Clock, LogIn, LogOut, CalendarDays, Users, Timer,
   MapPin, AlertCircle, Radio, ChevronDown, ChevronUp,
+  WifiOff, Wifi, CloudUpload,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -12,6 +13,29 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Input } from "@/components/ui/input";
 
 const PING_INTERVAL_MS = 30 * 60 * 1000; // 30 minutes
+const QUEUE_KEY = "attendance_ping_queue";
+
+// ─── Types ────────────────────────────────────────────────────────────────────
+
+type LatLng = { lat: number; lng: number } | null;
+interface QueuedPing { lat: number; lng: number; recordedAt: string }
+
+// ─── Offline queue helpers (localStorage) ─────────────────────────────────────
+
+function readQueue(): QueuedPing[] {
+  try { return JSON.parse(localStorage.getItem(QUEUE_KEY) ?? "[]"); } catch { return []; }
+}
+function writeQueue(q: QueuedPing[]) {
+  localStorage.setItem(QUEUE_KEY, JSON.stringify(q));
+}
+function enqueuePing(ping: QueuedPing) {
+  writeQueue([...readQueue(), ping]);
+}
+function clearQueue() {
+  localStorage.removeItem(QUEUE_KEY);
+}
+
+// ─── API ──────────────────────────────────────────────────────────────────────
 
 const authHeader = () => ({
   Authorization: `Bearer ${localStorage.getItem("token")}`,
@@ -27,7 +51,7 @@ async function apiFetch(url: string, opts: RequestInit = {}) {
   return r.json();
 }
 
-type LatLng = { lat: number; lng: number } | null;
+// ─── Geolocation ──────────────────────────────────────────────────────────────
 
 function getLocation(): Promise<LatLng> {
   return new Promise(resolve => {
@@ -40,30 +64,33 @@ function getLocation(): Promise<LatLng> {
   });
 }
 
+// ─── Formatters ───────────────────────────────────────────────────────────────
+
 function fmtTime(ts: string | null | undefined) {
   if (!ts) return "—";
   return new Date(ts).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 }
-
 function fmtDuration(mins: number | null | undefined) {
   if (!mins) return "—";
-  const h = Math.floor(mins / 60);
-  const m = mins % 60;
+  const h = Math.floor(mins / 60); const m = mins % 60;
   return h > 0 ? `${h}h ${m}m` : `${m}m`;
 }
-
 function fmtDate(d: string) {
   return new Date(d + "T00:00:00").toLocaleDateString([], { weekday: "short", month: "short", day: "numeric" });
 }
-
 function fmtCoords(lat?: string | null, lng?: string | null) {
   if (!lat || !lng) return null;
   return `${parseFloat(lat).toFixed(4)}, ${parseFloat(lng).toFixed(4)}`;
 }
-
 function mapsUrl(lat: string | number, lng: string | number) {
   return `https://www.google.com/maps?q=${lat},${lng}`;
 }
+function fmtCountdown(secs: number) {
+  const m = Math.floor(secs / 60); const s = secs % 60;
+  return m > 0 ? `${m}m ${String(s).padStart(2, "0")}s` : `${s}s`;
+}
+
+// ─── Sub-components ───────────────────────────────────────────────────────────
 
 function StatusBadge({ log }: { log: any }) {
   if (!log) return <Badge variant="outline">Not clocked in</Badge>;
@@ -79,29 +106,40 @@ function PingsCell({ logId }: { logId: number }) {
     queryFn: () => apiFetch(`/api/attendance/${logId}/pings`),
     enabled: open,
   });
-
   return (
     <div>
-      <button
-        className="text-xs flex items-center gap-1 text-primary hover:underline"
-        onClick={() => setOpen(o => !o)}
-      >
+      <button className="text-xs flex items-center gap-1 text-primary hover:underline" onClick={() => setOpen(o => !o)}>
         <Radio className="w-3 h-3" />
         {open ? "Hide" : "Show"} pings
         {open ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
       </button>
       {open && (
-        <div className="mt-2 space-y-1 max-h-32 overflow-y-auto pr-1">
+        <div className="mt-2 space-y-1 max-h-36 overflow-y-auto pr-1">
           {(pings as any[]).length === 0
-            ? <p className="text-xs text-muted-foreground">No pings recorded</p>
-            : (pings as any[]).map((p: any) => (
-              <a key={p.id} href={mapsUrl(p.lat, p.lng)} target="_blank" rel="noopener noreferrer"
-                className="flex items-center gap-1 text-xs text-blue-600 dark:text-blue-400 hover:underline">
-                <MapPin className="w-3 h-3 shrink-0" />
-                {new Date(p.recordedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
-                {" — "}{parseFloat(p.lat).toFixed(4)}, {parseFloat(p.lng).toFixed(4)}
-              </a>
-            ))}
+            ? <p className="text-xs text-muted-foreground">No periodic pings recorded</p>
+            : (pings as any[]).map((p: any, i: number) => {
+              const prev = i > 0 ? pings[i - 1] : null;
+              const gapMins = prev
+                ? Math.round((new Date(p.recordedAt).getTime() - new Date(prev.recordedAt).getTime()) / 60000)
+                : null;
+              const isLargeGap = gapMins !== null && gapMins > 60;
+              return (
+                <div key={p.id}>
+                  {isLargeGap && (
+                    <div className="flex items-center gap-1 text-xs text-yellow-600 dark:text-yellow-400 py-0.5">
+                      <AlertCircle className="w-3 h-3" />
+                      {Math.round(gapMins / 60)}h gap — possible offline period
+                    </div>
+                  )}
+                  <a href={mapsUrl(p.lat, p.lng)} target="_blank" rel="noopener noreferrer"
+                    className="flex items-center gap-1 text-xs text-blue-600 dark:text-blue-400 hover:underline">
+                    <MapPin className="w-3 h-3 shrink-0" />
+                    {new Date(p.recordedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                    {" — "}{parseFloat(p.lat).toFixed(4)}, {parseFloat(p.lng).toFixed(4)}
+                  </a>
+                </div>
+              );
+            })}
         </div>
       )}
     </div>
@@ -114,27 +152,25 @@ function LocationCell({ log }: { log: any }) {
   return (
     <div className="flex flex-col gap-1.5">
       <div className="flex flex-col gap-0.5">
-        {inCoords ? (
-          <a href={mapsUrl(log.clockInLat, log.clockInLng)} target="_blank" rel="noopener noreferrer"
-            className="flex items-center gap-1 text-xs text-green-600 dark:text-green-400 hover:underline">
-            <MapPin className="w-3 h-3" /> In: {inCoords}
-          </a>
-        ) : (
-          <span className="text-xs text-muted-foreground">In: —</span>
-        )}
-        {outCoords ? (
-          <a href={mapsUrl(log.clockOutLat, log.clockOutLng)} target="_blank" rel="noopener noreferrer"
-            className="flex items-center gap-1 text-xs text-orange-600 dark:text-orange-400 hover:underline">
-            <MapPin className="w-3 h-3" /> Out: {outCoords}
-          </a>
-        ) : log.clockOut ? (
-          <span className="text-xs text-muted-foreground">Out: —</span>
-        ) : null}
+        {inCoords
+          ? <a href={mapsUrl(log.clockInLat, log.clockInLng)} target="_blank" rel="noopener noreferrer"
+              className="flex items-center gap-1 text-xs text-green-600 dark:text-green-400 hover:underline">
+              <MapPin className="w-3 h-3" /> In: {inCoords}
+            </a>
+          : <span className="text-xs text-muted-foreground">In: —</span>}
+        {outCoords
+          ? <a href={mapsUrl(log.clockOutLat, log.clockOutLng)} target="_blank" rel="noopener noreferrer"
+              className="flex items-center gap-1 text-xs text-orange-600 dark:text-orange-400 hover:underline">
+              <MapPin className="w-3 h-3" /> Out: {outCoords}
+            </a>
+          : log.clockOut ? <span className="text-xs text-muted-foreground">Out: —</span> : null}
       </div>
       <PingsCell logId={log.id} />
     </div>
   );
 }
+
+// ─── Main page ────────────────────────────────────────────────────────────────
 
 export default function Attendance() {
   const { user } = useAuth();
@@ -149,12 +185,18 @@ export default function Attendance() {
   const locStatusRef = useRef(locStatus);
   locStatusRef.current = locStatus;
 
-  // Ping tracking state
+  // Ping state
   const [pingCount, setPingCount] = useState(0);
-  const [nextPingIn, setNextPingIn] = useState<number | null>(null); // seconds until next ping
+  const [nextPingIn, setNextPingIn] = useState<number | null>(null);
+  const [queuedCount, setQueuedCount] = useState(() => readQueue().length);
+  const [isSyncing, setIsSyncing] = useState(false);
+  const [isOnline, setIsOnline] = useState(navigator.onLine);
+
   const pingIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const pingCountdownRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const lastPingTimeRef = useRef<number | null>(null);
+
+  // ── Queries ────────────────────────────────────────────────────────────────
 
   const { data: today, isLoading: todayLoading } = useQuery({
     queryKey: ["attendance-today"],
@@ -178,40 +220,93 @@ export default function Attendance() {
     enabled: isManager,
   });
 
-  // Send a location ping silently
+  const isClockedIn = today?.clockIn && !today?.clockOut;
+
+  // ── Flush offline queue ────────────────────────────────────────────────────
+
+  const flushQueue = useCallback(async () => {
+    const queue = readQueue();
+    if (queue.length === 0) return;
+    setIsSyncing(true);
+    try {
+      const result = await apiFetch("/api/attendance/location-ping/batch", {
+        method: "POST",
+        body: JSON.stringify({ pings: queue }),
+      });
+      clearQueue();
+      setQueuedCount(0);
+      setPingCount(c => c + (result.saved ?? 0));
+      qc.invalidateQueries({ queryKey: ["attendance"] });
+      qc.invalidateQueries({ queryKey: ["attendance-today"] });
+      if (result.saved > 0) {
+        toast({
+          title: "Location updates synced",
+          description: `${result.saved} queued ping${result.saved !== 1 ? "s" : ""} uploaded now that you're back online.`,
+        });
+      }
+    } catch {
+      // Still offline — leave the queue intact
+    } finally {
+      setIsSyncing(false);
+    }
+  }, [qc, toast]);
+
+  // ── Online / offline detection ─────────────────────────────────────────────
+
+  useEffect(() => {
+    const handleOnline = () => {
+      setIsOnline(true);
+      flushQueue();
+    };
+    const handleOffline = () => setIsOnline(false);
+    window.addEventListener("online", handleOnline);
+    window.addEventListener("offline", handleOffline);
+    // If already online on mount and there's a stale queue, flush it
+    if (navigator.onLine && readQueue().length > 0) flushQueue();
+    return () => {
+      window.removeEventListener("online", handleOnline);
+      window.removeEventListener("offline", handleOffline);
+    };
+  }, [flushQueue]);
+
+  // ── Send a location ping (online → server, offline → queue) ───────────────
+
   const sendPing = useCallback(async () => {
     const loc = await getLocation();
-    if (!loc) return;
+    if (!loc) return; // No GPS — nothing to queue either
+    const recordedAt = new Date().toISOString();
+
+    if (!navigator.onLine) {
+      // Store locally for later
+      enqueuePing({ lat: loc.lat, lng: loc.lng, recordedAt });
+      setQueuedCount(c => c + 1);
+      return;
+    }
+
     try {
       await apiFetch("/api/attendance/location-ping", {
         method: "POST",
-        body: JSON.stringify({ lat: loc.lat, lng: loc.lng }),
+        body: JSON.stringify({ lat: loc.lat, lng: loc.lng, recordedAt }),
       });
       setPingCount(c => c + 1);
-      lastPingTimeRef.current = Date.now();
-      qc.invalidateQueries({ queryKey: ["attendance-today"] });
       qc.invalidateQueries({ queryKey: ["attendance"] });
-    } catch { /* silent — don't bother user */ }
+    } catch {
+      // Send failed — queue it
+      enqueuePing({ lat: loc.lat, lng: loc.lng, recordedAt });
+      setQueuedCount(c => c + 1);
+    }
   }, [qc]);
 
-  // Start/stop the ping interval based on clock-in status
-  const isClockedIn = today?.clockIn && !today?.clockOut;
+  // ── Ping schedule (30-min interval) ───────────────────────────────────────
 
   const startPingSchedule = useCallback(() => {
-    if (pingIntervalRef.current) return; // already running
-
-    // Set up the 30-minute ping interval
-    pingIntervalRef.current = setInterval(() => {
-      sendPing();
-    }, PING_INTERVAL_MS);
-
-    // Countdown display (updates every second)
+    if (pingIntervalRef.current) return;
+    pingIntervalRef.current = setInterval(sendPing, PING_INTERVAL_MS);
     lastPingTimeRef.current = Date.now();
     setNextPingIn(PING_INTERVAL_MS / 1000);
     pingCountdownRef.current = setInterval(() => {
-      const elapsed = lastPingTimeRef.current ? (Date.now() - lastPingTimeRef.current) / 1000 : 0;
-      const remaining = Math.max(0, PING_INTERVAL_MS / 1000 - elapsed);
-      setNextPingIn(Math.round(remaining));
+      const passed = lastPingTimeRef.current ? (Date.now() - lastPingTimeRef.current) / 1000 : 0;
+      setNextPingIn(Math.round(Math.max(0, PING_INTERVAL_MS / 1000 - passed)));
     }, 1000);
   }, [sendPing]);
 
@@ -230,6 +325,8 @@ export default function Attendance() {
     }
     return stopPingSchedule;
   }, [isClockedIn, startPingSchedule, stopPingSchedule]);
+
+  // ── Clock in / out mutations ───────────────────────────────────────────────
 
   const clockIn = useMutation({
     mutationFn: async () => {
@@ -268,11 +365,14 @@ export default function Attendance() {
       qc.invalidateQueries({ queryKey: ["attendance"] });
       toast({ title: "Clocked out", description: "Have a great rest of your day!" });
       setLocStatus("idle");
+      // Flush any remaining queued pings now that we're clocking out
+      flushQueue();
     },
     onError: (e: any) => { setLocStatus("idle"); toast({ title: "Error", description: e.message, variant: "destructive" }); },
   });
 
-  // Live elapsed timer
+  // ── Live elapsed timer ─────────────────────────────────────────────────────
+
   useEffect(() => {
     if (!today?.clockIn || today?.clockOut) { setElapsed(""); return; }
     const tick = () => {
@@ -289,24 +389,50 @@ export default function Attendance() {
 
   const isBusy = clockIn.isPending || clockOut.isPending;
 
-  function fmtCountdown(secs: number) {
-    const m = Math.floor(secs / 60);
-    const s = secs % 60;
-    return m > 0 ? `${m}m ${String(s).padStart(2, "0")}s` : `${s}s`;
-  }
+  // ── Render ─────────────────────────────────────────────────────────────────
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold tracking-tight">Attendance</h1>
-        <p className="text-muted-foreground text-sm mt-1">Track your daily clock-in and clock-out</p>
+      <div className="flex items-start justify-between">
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight">Attendance</h1>
+          <p className="text-muted-foreground text-sm mt-1">Track your daily clock-in and clock-out</p>
+        </div>
+        {/* Online/offline pill */}
+        <div className={`flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium border ${
+          isOnline
+            ? "border-green-300 bg-green-50 text-green-700 dark:bg-green-900/20 dark:border-green-700 dark:text-green-300"
+            : "border-red-300 bg-red-50 text-red-700 dark:bg-red-900/20 dark:border-red-700 dark:text-red-300"
+        }`}>
+          {isOnline ? <Wifi className="w-3 h-3" /> : <WifiOff className="w-3 h-3" />}
+          {isOnline ? "Online" : "Offline"}
+        </div>
       </div>
+
+      {/* Offline warning banner */}
+      {!isOnline && isClockedIn && (
+        <div className="flex items-start gap-3 rounded-lg border border-orange-300 bg-orange-50 dark:bg-orange-900/20 dark:border-orange-700 px-4 py-3 text-sm text-orange-800 dark:text-orange-200">
+          <WifiOff className="w-4 h-4 mt-0.5 shrink-0" />
+          <div>
+            <p className="font-medium">You're offline</p>
+            <p className="mt-0.5 text-xs opacity-80">Location updates are being saved to your device and will upload automatically when you reconnect.</p>
+          </div>
+        </div>
+      )}
+
+      {/* Syncing banner */}
+      {isSyncing && (
+        <div className="flex items-center gap-2 rounded-lg border border-blue-300 bg-blue-50 dark:bg-blue-900/20 dark:border-blue-700 px-4 py-3 text-sm text-blue-800 dark:text-blue-200">
+          <CloudUpload className="w-4 h-4 animate-bounce" />
+          Uploading {queuedCount} queued location update{queuedCount !== 1 ? "s" : ""}…
+        </div>
+      )}
 
       {/* Location denied notice */}
       {locStatus === "denied" && (
         <div className="flex items-start gap-2 rounded-lg border border-yellow-300 bg-yellow-50 dark:bg-yellow-900/20 dark:border-yellow-700 px-4 py-3 text-sm text-yellow-800 dark:text-yellow-200">
           <AlertCircle className="w-4 h-4 mt-0.5 shrink-0" />
-          <span>Location permission was denied. Clock event recorded without coordinates. Enable location access in browser settings to capture it next time.</span>
+          Location permission denied. Clock event recorded without coordinates. Enable location in browser settings to capture it next time.
         </div>
       )}
 
@@ -329,8 +455,6 @@ export default function Attendance() {
           {today?.clockOut && (
             <p className="text-sm text-muted-foreground mt-1">Duration: {fmtDuration(today?.durationMinutes)}</p>
           )}
-
-          {/* Today's captured locations */}
           {(today?.clockInLat || today?.clockOutLat) && (
             <div className="mt-2 flex flex-col items-center gap-1 text-xs">
               {today.clockInLat && (
@@ -349,18 +473,21 @@ export default function Attendance() {
           )}
         </div>
 
-        {/* Tracking status pill */}
+        {/* Tracking / queue status */}
         {isClockedIn && (
-          <div className="flex items-center gap-4 flex-wrap justify-center">
-            <div className="flex items-center gap-2 rounded-full border border-green-300 bg-green-50 dark:bg-green-900/30 dark:border-green-700 px-3 py-1.5 text-xs text-green-700 dark:text-green-300 font-medium">
+          <div className="flex flex-wrap items-center gap-3 justify-center">
+            <div className={`flex items-center gap-2 rounded-full border px-3 py-1.5 text-xs font-medium ${
+              isOnline
+                ? "border-green-300 bg-green-50 dark:bg-green-900/30 dark:border-green-700 text-green-700 dark:text-green-300"
+                : "border-orange-300 bg-orange-50 dark:bg-orange-900/30 dark:border-orange-700 text-orange-700 dark:text-orange-300"
+            }`}>
               <Radio className="w-3.5 h-3.5 animate-pulse" />
-              Location tracking active
-              {pingCount > 0 && <span className="ml-1 opacity-70">· {pingCount} update{pingCount !== 1 ? "s" : ""}</span>}
+              {isOnline ? "Tracking active" : "Queuing offline"}
+              {pingCount > 0 && <span className="opacity-70">· {pingCount} sent</span>}
+              {queuedCount > 0 && !isSyncing && <span className="opacity-70">· {queuedCount} queued</span>}
             </div>
-            {nextPingIn !== null && (
-              <span className="text-xs text-muted-foreground">
-                Next update in {fmtCountdown(nextPingIn)}
-              </span>
+            {isOnline && nextPingIn !== null && (
+              <span className="text-xs text-muted-foreground">Next update in {fmtCountdown(nextPingIn)}</span>
             )}
           </div>
         )}

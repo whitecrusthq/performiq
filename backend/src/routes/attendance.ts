@@ -113,27 +113,67 @@ router.get("/attendance", requireAuth, async (req: AuthRequest, res) => {
 });
 
 // POST /attendance/location-ping — periodic location update while clocked in
+// Accepts optional `recordedAt` ISO string so offline-queued pings retain their original timestamp
 router.post("/attendance/location-ping", requireAuth, async (req: AuthRequest, res) => {
   try {
     const userId = req.user!.id;
-    const { lat, lng } = req.body;
+    const { lat, lng, recordedAt } = req.body;
     if (lat == null || lng == null) return res.status(400).json({ error: "lat and lng are required" });
-    const today = new Date().toISOString().split("T")[0];
+
+    // Resolve which attendance log this ping belongs to
+    // If recordedAt is provided use its date, otherwise use today
+    const pingTime = recordedAt ? new Date(recordedAt) : new Date();
+    const pingDate = pingTime.toISOString().split("T")[0];
+
     const [active] = await db.select().from(attendanceLogsTable)
-      .where(and(eq(attendanceLogsTable.userId, userId), eq(attendanceLogsTable.date, today)))
+      .where(and(eq(attendanceLogsTable.userId, userId), eq(attendanceLogsTable.date, pingDate)))
       .orderBy(desc(attendanceLogsTable.clockIn)).limit(1);
-    if (!active || !active.clockIn || active.clockOut) {
-      return res.status(400).json({ error: "Not currently clocked in" });
+
+    // Allow pings for past sessions (clocked-out already) when flushing offline queue
+    if (!active || !active.clockIn) {
+      return res.status(400).json({ error: "No clock-in found for this date" });
     }
+
     const [ping] = await db.insert(attendanceLocationPingsTable).values({
       attendanceLogId: active.id,
       userId,
       lat: String(lat),
       lng: String(lng),
+      recordedAt: pingTime,
     }).returning();
     res.json(ping);
   } catch (err) {
     res.status(500).json({ error: "Failed to save location ping" });
+  }
+});
+
+// POST /attendance/location-ping/batch — flush multiple queued offline pings at once
+router.post("/attendance/location-ping/batch", requireAuth, async (req: AuthRequest, res) => {
+  try {
+    const userId = req.user!.id;
+    const { pings } = req.body as { pings: Array<{ lat: number; lng: number; recordedAt: string }> };
+    if (!Array.isArray(pings) || pings.length === 0) return res.status(400).json({ error: "pings array required" });
+
+    const results: any[] = [];
+    for (const p of pings) {
+      const pingTime = new Date(p.recordedAt);
+      const pingDate = pingTime.toISOString().split("T")[0];
+      const [active] = await db.select().from(attendanceLogsTable)
+        .where(and(eq(attendanceLogsTable.userId, userId), eq(attendanceLogsTable.date, pingDate)))
+        .orderBy(desc(attendanceLogsTable.clockIn)).limit(1);
+      if (!active?.clockIn) continue;
+      const [inserted] = await db.insert(attendanceLocationPingsTable).values({
+        attendanceLogId: active.id,
+        userId,
+        lat: String(p.lat),
+        lng: String(p.lng),
+        recordedAt: pingTime,
+      }).returning();
+      results.push(inserted);
+    }
+    res.json({ saved: results.length });
+  } catch (err) {
+    res.status(500).json({ error: "Failed to save batch pings" });
   }
 });
 
