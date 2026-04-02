@@ -24,7 +24,7 @@ import {
 
 // ── helpers ───────────────────────────────────────────────────────────────────
 function authHeader() {
-  const token = localStorage.getItem("auth_token");
+  const token = localStorage.getItem("token");
   return token ? { Authorization: `Bearer ${token}` } : {};
 }
 
@@ -397,12 +397,11 @@ export default function HrQueries() {
         description={isHR
           ? "Review and respond to queries raised by employees."
           : "Raise questions or issues directly to the HR department."}
-        actions={
-          <Button onClick={() => setSubmitOpen(true)} className="gap-2">
-            <Plus className="w-4 h-4" /> Submit Query
-          </Button>
-        }
-      />
+      >
+        <Button onClick={() => setSubmitOpen(true)} className="gap-2">
+          <Plus className="w-4 h-4" /> Submit Query
+        </Button>
+      </PageHeader>
 
       {/* Stats (HR only) */}
       {isHR && (

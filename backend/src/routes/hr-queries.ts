@@ -28,7 +28,7 @@ async function enrichQuery(q: any) {
 }
 
 // GET /api/hr-queries — HR/admin sees all; employee sees own
-router.get("/api/hr-queries", requireAuth, async (req: AuthRequest, res) => {
+router.get("/hr-queries", requireAuth, async (req: AuthRequest, res) => {
   try {
     const user = req.user!;
     const isHR = ["super_admin", "admin"].includes(user.role) ||
@@ -49,7 +49,7 @@ router.get("/api/hr-queries", requireAuth, async (req: AuthRequest, res) => {
 });
 
 // GET /api/hr-queries/:id
-router.get("/api/hr-queries/:id", requireAuth, async (req: AuthRequest, res) => {
+router.get("/hr-queries/:id", requireAuth, async (req: AuthRequest, res) => {
   try {
     const user = req.user!;
     const id = parseInt(req.params.id);
@@ -65,7 +65,7 @@ router.get("/api/hr-queries/:id", requireAuth, async (req: AuthRequest, res) => 
 });
 
 // POST /api/hr-queries — any authenticated user can submit
-router.post("/api/hr-queries", requireAuth, async (req: AuthRequest, res) => {
+router.post("/hr-queries", requireAuth, async (req: AuthRequest, res) => {
   try {
     const user = req.user!;
     const { title, description, category = "general", priority = "normal" } = req.body;
@@ -87,7 +87,7 @@ router.post("/api/hr-queries", requireAuth, async (req: AuthRequest, res) => {
 });
 
 // PUT /api/hr-queries/:id — HR updates status/response; submitter can update own open queries
-router.put("/api/hr-queries/:id", requireAuth, async (req: AuthRequest, res) => {
+router.put("/hr-queries/:id", requireAuth, async (req: AuthRequest, res) => {
   try {
     const user = req.user!;
     const id = parseInt(req.params.id);
@@ -130,7 +130,7 @@ router.put("/api/hr-queries/:id", requireAuth, async (req: AuthRequest, res) => 
 });
 
 // DELETE /api/hr-queries/:id — HR or owner (if open)
-router.delete("/api/hr-queries/:id", requireAuth, async (req: AuthRequest, res) => {
+router.delete("/hr-queries/:id", requireAuth, async (req: AuthRequest, res) => {
   try {
     const user = req.user!;
     const id = parseInt(req.params.id);
