@@ -63,7 +63,7 @@ function fmtCountdown(secs: number) { const m = Math.floor(secs / 60); const s =
 interface FaceCaptureProps {
   open: boolean;
   action: "clock-in" | "clock-out";
-  onConfirm: (faceImage: string | null) => void;
+  onConfirm: (faceImage: string | null, photoTime: string | null) => void;
   onCancel: () => void;
 }
 
@@ -72,6 +72,7 @@ function FaceCaptureModal({ open, action, onConfirm, onCancel }: FaceCaptureProp
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const [captured, setCaptured] = useState<string | null>(null);
+  const [photoTime, setPhotoTime] = useState<string | null>(null);
   const [camError, setCamError] = useState<string | null>(null);
   const [starting, setStarting] = useState(false);
 
@@ -103,13 +104,14 @@ function FaceCaptureModal({ open, action, onConfirm, onCancel }: FaceCaptureProp
 
   useEffect(() => {
     if (open) { startCamera(); }
-    return () => { stopCamera(); setCaptured(null); setCamError(null); };
+    return () => { stopCamera(); setCaptured(null); setPhotoTime(null); setCamError(null); };
   }, [open, startCamera, stopCamera]);
 
   const capturePhoto = () => {
     const video = videoRef.current;
     const canvas = canvasRef.current;
     if (!video || !canvas) return;
+    const snapTime = new Date().toISOString();
     canvas.width = CAPTURE_WIDTH;
     canvas.height = CAPTURE_HEIGHT;
     const ctx = canvas.getContext("2d")!;
@@ -121,11 +123,13 @@ function FaceCaptureModal({ open, action, onConfirm, onCancel }: FaceCaptureProp
     ctx.restore();
     const dataUrl = canvas.toDataURL("image/jpeg", 0.72);
     setCaptured(dataUrl);
+    setPhotoTime(snapTime);
     stopCamera();
   };
 
   const retake = () => {
     setCaptured(null);
+    setPhotoTime(null);
     startCamera();
   };
 
@@ -192,13 +196,13 @@ function FaceCaptureModal({ open, action, onConfirm, onCancel }: FaceCaptureProp
                   <RefreshCw className="w-4 h-4" /> Retry Camera
                 </Button>
               )}
-              <Button variant="ghost" className="gap-1 text-muted-foreground text-xs" onClick={() => onConfirm(null)}>
+              <Button variant="ghost" className="gap-1 text-muted-foreground text-xs" onClick={() => onConfirm(null, null)}>
                 Skip
               </Button>
             </div>
           ) : (
             <div className="flex gap-2">
-              <Button className="flex-1 gap-2 bg-green-600 hover:bg-green-700 text-white" onClick={() => onConfirm(captured)}>
+              <Button className="flex-1 gap-2 bg-green-600 hover:bg-green-700 text-white" onClick={() => onConfirm(captured, photoTime)}>
                 <CheckCircle2 className="w-4 h-4" /> Looks Good — {label}
               </Button>
               <Button variant="outline" size="icon" onClick={retake} title="Retake">
@@ -216,7 +220,7 @@ function FaceCaptureModal({ open, action, onConfirm, onCancel }: FaceCaptureProp
 }
 
 // ─── Face thumbnail ───────────────────────────────────────────────────────────
-function FaceThumb({ src, label }: { src: string; label: string }) {
+function FaceThumb({ src, label, photoTime }: { src: string; label: string; photoTime?: string | null }) {
   const [zoom, setZoom] = useState(false);
   return (
     <>
@@ -232,7 +236,14 @@ function FaceThumb({ src, label }: { src: string; label: string }) {
       </button>
       <Dialog open={zoom} onOpenChange={setZoom}>
         <DialogContent className="max-w-xs p-4 text-center">
-          <DialogHeader><DialogTitle className="text-sm">{label}</DialogTitle></DialogHeader>
+          <DialogHeader>
+            <DialogTitle className="text-sm">{label}</DialogTitle>
+            {photoTime && (
+              <p className="text-xs text-muted-foreground mt-0.5">
+                Photo taken at {new Date(photoTime).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" })} on {new Date(photoTime).toLocaleDateString()}
+              </p>
+            )}
+          </DialogHeader>
           <img src={src} alt={label} className="w-full rounded-xl mt-2" />
         </DialogContent>
       </Dialog>
@@ -317,24 +328,37 @@ function LocationCell({ log }: { log: any }) {
 }
 
 function FaceCell({ log }: { log: any }) {
+  const fmtPhotoTime = (t: string | null | undefined) =>
+    t ? new Date(t).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" }) : null;
+
   return (
-    <div className="flex items-center gap-2">
+    <div className="flex items-start gap-3">
       {log.faceImageIn
         ? <div className="flex flex-col items-center gap-0.5">
-            <FaceThumb src={log.faceImageIn} label="Clock-in photo" />
-            <span className="text-[10px] text-muted-foreground">In</span>
+            <FaceThumb src={log.faceImageIn} label="Clock-in photo" photoTime={log.clockInPhotoTime} />
+            <span className="text-[10px] text-green-600 font-medium">In</span>
+            {log.clockInPhotoTime && (
+              <span className="text-[10px] text-muted-foreground">{fmtPhotoTime(log.clockInPhotoTime)}</span>
+            )}
           </div>
-        : <div className="w-9 h-9 rounded-full border-2 border-dashed border-border flex items-center justify-center">
-            <span className="text-[10px] text-muted-foreground">In</span>
+        : <div className="flex flex-col items-center gap-0.5">
+            <div className="w-9 h-9 rounded-full border-2 border-dashed border-border flex items-center justify-center">
+              <span className="text-[10px] text-muted-foreground">In</span>
+            </div>
           </div>}
       {log.faceImageOut
         ? <div className="flex flex-col items-center gap-0.5">
-            <FaceThumb src={log.faceImageOut} label="Clock-out photo" />
-            <span className="text-[10px] text-muted-foreground">Out</span>
+            <FaceThumb src={log.faceImageOut} label="Clock-out photo" photoTime={log.clockOutPhotoTime} />
+            <span className="text-[10px] text-orange-600 font-medium">Out</span>
+            {log.clockOutPhotoTime && (
+              <span className="text-[10px] text-muted-foreground">{fmtPhotoTime(log.clockOutPhotoTime)}</span>
+            )}
           </div>
         : log.clockOut
-          ? <div className="w-9 h-9 rounded-full border-2 border-dashed border-border flex items-center justify-center">
-              <span className="text-[10px] text-muted-foreground">Out</span>
+          ? <div className="flex flex-col items-center gap-0.5">
+              <div className="w-9 h-9 rounded-full border-2 border-dashed border-border flex items-center justify-center">
+                <span className="text-[10px] text-muted-foreground">Out</span>
+              </div>
             </div>
           : null}
     </div>
@@ -450,11 +474,15 @@ export default function Attendance() {
 
   // ── Clock in / out after face capture confirmed ───────────────────────────────
   const clockIn = useMutation({
-    mutationFn: async (faceImage: string | null) => {
+    mutationFn: async ({ faceImage, photoTime }: { faceImage: string | null; photoTime: string | null }) => {
       const loc = await getLocation();
       return apiFetch("/api/attendance/clock-in", {
         method: "POST",
-        body: JSON.stringify({ ...(loc ? { lat: loc.lat, lng: loc.lng } : {}), ...(faceImage ? { faceImage } : {}) }),
+        body: JSON.stringify({
+          ...(loc ? { lat: loc.lat, lng: loc.lng } : {}),
+          ...(faceImage ? { faceImage } : {}),
+          ...(photoTime ? { photoTime } : {}),
+        }),
       });
     },
     onSuccess: () => {
@@ -466,11 +494,15 @@ export default function Attendance() {
   });
 
   const clockOut = useMutation({
-    mutationFn: async (faceImage: string | null) => {
+    mutationFn: async ({ faceImage, photoTime }: { faceImage: string | null; photoTime: string | null }) => {
       const loc = await getLocation();
       return apiFetch("/api/attendance/clock-out", {
         method: "POST",
-        body: JSON.stringify({ ...(loc ? { lat: loc.lat, lng: loc.lng } : {}), ...(faceImage ? { faceImage } : {}) }),
+        body: JSON.stringify({
+          ...(loc ? { lat: loc.lat, lng: loc.lng } : {}),
+          ...(faceImage ? { faceImage } : {}),
+          ...(photoTime ? { photoTime } : {}),
+        }),
       });
     },
     onSuccess: () => {
@@ -488,11 +520,11 @@ export default function Attendance() {
     setCaptureOpen(true);
   };
 
-  // Camera confirmed (faceImage may be null if skipped)
-  const handleFaceConfirm = (faceImage: string | null) => {
+  // Camera confirmed (faceImage and photoTime may be null if skipped)
+  const handleFaceConfirm = (faceImage: string | null, photoTime: string | null) => {
     setCaptureOpen(false);
-    if (pendingAction === "clock-in") clockIn.mutate(faceImage);
-    else if (pendingAction === "clock-out") clockOut.mutate(faceImage);
+    if (pendingAction === "clock-in") clockIn.mutate({ faceImage, photoTime });
+    else if (pendingAction === "clock-out") clockOut.mutate({ faceImage, photoTime });
     setPendingAction(null);
   };
 

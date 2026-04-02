@@ -15,6 +15,8 @@ export const attendanceLogsTable = pgTable("attendance_logs", {
   clockOutLng: decimal("clock_out_lng", { precision: 10, scale: 7 }),
   faceImageIn: text("face_image_in"),
   faceImageOut: text("face_image_out"),
+  clockInPhotoTime: timestamp("clock_in_photo_time"),
+  clockOutPhotoTime: timestamp("clock_out_photo_time"),
   notes: text("notes"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
