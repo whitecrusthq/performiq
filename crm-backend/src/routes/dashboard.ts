@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { Op, fn, col, literal } from "sequelize";
-import { Conversation, Customer, Message, Agent } from "../models/index.js";
+import { Conversation, Customer, Message, Agent, Campaign } from "../models/index.js";
 import { requireAuth, AuthRequest } from "../middlewares/auth.js";
 
 const router = Router();
@@ -36,6 +36,21 @@ router.get("/dashboard", requireAuth, async (req: AuthRequest, res) => {
       limit: 10,
     });
 
+    const [campaignChannelCounts, totalCampaigns, sentCampaigns] = await Promise.all([
+      Campaign.findAll({
+        attributes: ["channel", [fn("COUNT", col("id")), "count"]],
+        group: ["channel"],
+        raw: true,
+      }) as unknown as Promise<Array<{ channel: string; count: string }>>,
+      Campaign.count(),
+      Campaign.count({ where: { status: "sent" } }),
+    ]);
+
+    const recentCampaigns = await Campaign.findAll({
+      order: [["createdAt", "DESC"]],
+      limit: 5,
+    });
+
     res.json({
       kpis: {
         openConversations: totalOpen,
@@ -49,6 +64,12 @@ router.get("/dashboard", requireAuth, async (req: AuthRequest, res) => {
       },
       channelBreakdown: channelCounts.map((r) => ({ channel: r.channel, count: parseInt(r.count) })),
       recentActivity,
+      campaigns: {
+        total: totalCampaigns,
+        sent: sentCampaigns,
+        byChannel: campaignChannelCounts.map((r) => ({ channel: r.channel, count: parseInt(r.count) })),
+        recent: recentCampaigns,
+      },
     });
   } catch (err) {
     console.error(err);

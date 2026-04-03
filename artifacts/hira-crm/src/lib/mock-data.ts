@@ -1,4 +1,5 @@
-import { SiWhatsapp, SiFacebook, SiInstagram } from "react-icons/si";
+import { SiWhatsapp, SiFacebook, SiInstagram, SiTiktok } from "react-icons/si";
+import { Mail, MessageSquare, Bell } from "lucide-react";
 
 export type Agent = {
   id: string;
@@ -45,7 +46,7 @@ export type Conversation = {
 export type Campaign = {
   id: string;
   name: string;
-  channel: 'whatsapp' | 'facebook' | 'instagram';
+  channel: 'whatsapp' | 'facebook' | 'instagram' | 'sms' | 'email' | 'push' | 'tiktok';
   status: 'draft' | 'scheduled' | 'sent';
   recipients: number;
   sentAt: string | null;
@@ -54,22 +55,35 @@ export type Campaign = {
   clickRate: number;
 };
 
-export function getChannelIcon(channel: 'whatsapp' | 'facebook' | 'instagram') {
+const CHANNEL_META: Record<string, { label: string; color: string; textColor: string; bg: string; border: string }> = {
+  whatsapp:  { label: "WhatsApp",          color: "#25D366", textColor: "text-[#25D366]",  bg: "bg-green-50 dark:bg-green-950/30",     border: "border-green-100 dark:border-green-900" },
+  facebook:  { label: "Facebook",          color: "#1877F2", textColor: "text-[#1877F2]",  bg: "bg-blue-50 dark:bg-blue-950/30",       border: "border-blue-100 dark:border-blue-900" },
+  instagram: { label: "Instagram",         color: "#E4405F", textColor: "text-[#E4405F]",  bg: "bg-pink-50 dark:bg-pink-950/30",       border: "border-pink-100 dark:border-pink-900" },
+  sms:       { label: "SMS",               color: "#7c3aed", textColor: "text-violet-600 dark:text-violet-400", bg: "bg-violet-50 dark:bg-violet-950/30",   border: "border-violet-100 dark:border-violet-900" },
+  email:     { label: "Email",             color: "#0ea5e9", textColor: "text-sky-600 dark:text-sky-400",       bg: "bg-sky-50 dark:bg-sky-950/30",         border: "border-sky-100 dark:border-sky-900" },
+  push:      { label: "Push Notification", color: "#f59e0b", textColor: "text-amber-600 dark:text-amber-400",   bg: "bg-amber-50 dark:bg-amber-950/30",     border: "border-amber-100 dark:border-amber-900" },
+  tiktok:    { label: "TikTok",            color: "#010101", textColor: "text-foreground",                      bg: "bg-muted/30",                          border: "border-muted" },
+};
+
+export function getChannelMeta(channel: string) {
+  return CHANNEL_META[channel] ?? { label: channel, color: "#888", textColor: "text-muted-foreground", bg: "bg-muted/20", border: "border-muted" };
+}
+
+export function getChannelIcon(channel: string) {
   switch (channel) {
-    case 'whatsapp': return SiWhatsapp;
-    case 'facebook': return SiFacebook;
+    case 'whatsapp':  return SiWhatsapp;
+    case 'facebook':  return SiFacebook;
     case 'instagram': return SiInstagram;
-    default: return SiWhatsapp;
+    case 'tiktok':    return SiTiktok;
+    case 'sms':       return MessageSquare;
+    case 'email':     return Mail;
+    case 'push':      return Bell;
+    default:          return MessageSquare;
   }
 }
 
-export function getChannelColor(channel: 'whatsapp' | 'facebook' | 'instagram') {
-  switch (channel) {
-    case 'whatsapp': return 'text-[#25D366]';
-    case 'facebook': return 'text-[#1877F2]';
-    case 'instagram': return 'text-[#E4405F]';
-    default: return 'text-muted-foreground';
-  }
+export function getChannelColor(channel: string) {
+  return CHANNEL_META[channel]?.textColor ?? "text-muted-foreground";
 }
 
 export function getStatusColor(status: 'open' | 'pending' | 'resolved' | 'closed') {

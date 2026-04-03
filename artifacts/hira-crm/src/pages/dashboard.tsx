@@ -1,9 +1,9 @@
 import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { getChannelIcon, getChannelColor, getStatusColor } from "@/lib/mock-data";
+import { getChannelIcon, getChannelColor, getChannelMeta, getStatusColor } from "@/lib/mock-data";
 import { AreaChart, Area, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, XAxis, PieChart, Pie, Cell } from "recharts";
-import { MessageSquare, Clock, CheckCircle2, TrendingUp, Loader2 } from "lucide-react";
+import { MessageSquare, Clock, CheckCircle2, TrendingUp, Loader2, Megaphone } from "lucide-react";
 import { Link } from "wouter";
 import { formatDistanceToNow } from "date-fns";
 import { apiGet } from "@/lib/api";
@@ -40,6 +40,12 @@ interface DashboardData {
     lastMessageAt: string;
     customer: { name: string; channel: string };
   }>;
+  campaigns: {
+    total: number;
+    sent: number;
+    byChannel: Array<{ channel: string; count: number }>;
+    recent: Array<{ id: number; name: string; channel: string; status: string; recipients: number }>;
+  };
 }
 
 export default function Dashboard() {
@@ -178,7 +184,7 @@ export default function Dashboard() {
               {isLoading ? (
                 <div className="flex justify-center py-8"><Loader2 className="h-6 w-6 animate-spin text-muted-foreground" /></div>
               ) : (data?.recentActivity ?? []).map((conv) => {
-                const Icon = getChannelIcon(conv.channel as "whatsapp" | "facebook" | "instagram");
+                const Icon = getChannelIcon(conv.channel);
                 return (
                   <div key={conv.id} className="flex items-center justify-between p-4 rounded-lg border bg-card hover:bg-muted/50 transition-colors" data-testid={`activity-item-${conv.id}`}>
                     <div className="flex items-center gap-4">
@@ -187,12 +193,12 @@ export default function Dashboard() {
                           {conv.customer.name.charAt(0)}
                         </div>
                         <div className="absolute -bottom-1 -right-1 bg-white dark:bg-black rounded-full p-0.5">
-                          <Icon className={`h-3.5 w-3.5 ${getChannelColor(conv.channel as "whatsapp" | "facebook" | "instagram")}`} />
+                          <Icon className={`h-3.5 w-3.5 ${getChannelColor(conv.channel)}`} />
                         </div>
                       </div>
                       <div>
                         <div className="font-medium">{conv.customer.name}</div>
-                        <div className="text-sm text-muted-foreground capitalize">{conv.channel} conversation</div>
+                        <div className="text-sm text-muted-foreground">{getChannelMeta(conv.channel).label} conversation</div>
                       </div>
                     </div>
                     <div className="flex items-center gap-4">
@@ -212,6 +218,106 @@ export default function Dashboard() {
             </div>
           </CardContent>
         </Card>
+      </div>
+
+      {/* Campaigns section */}
+      <div>
+        <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center gap-2">
+            <Megaphone className="h-5 w-5 text-primary" />
+            <h2 className="text-xl font-semibold">Campaigns</h2>
+          </div>
+          <Link href="/campaigns" className="text-sm text-primary hover:underline" data-testid="link-view-all-campaigns">
+            View all
+          </Link>
+        </div>
+        <div className="grid gap-4 md:grid-cols-2">
+          {/* Summary cards */}
+          <div className="grid grid-cols-2 gap-4">
+            <Card>
+              <CardContent className="p-5 flex items-center gap-4">
+                <div className="h-11 w-11 rounded-full bg-primary/10 flex items-center justify-center text-primary shrink-0">
+                  <Megaphone className="h-5 w-5" />
+                </div>
+                <div>
+                  <p className="text-sm text-muted-foreground">Total Campaigns</p>
+                  <p className="text-2xl font-bold">{data?.campaigns?.total ?? "—"}</p>
+                </div>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardContent className="p-5 flex items-center gap-4">
+                <div className="h-11 w-11 rounded-full bg-green-100 dark:bg-green-900/30 flex items-center justify-center text-green-600 dark:text-green-400 shrink-0">
+                  <Megaphone className="h-5 w-5" />
+                </div>
+                <div>
+                  <p className="text-sm text-muted-foreground">Sent</p>
+                  <p className="text-2xl font-bold">{data?.campaigns?.sent ?? "—"}</p>
+                </div>
+              </CardContent>
+            </Card>
+            {/* Per-channel breakdown */}
+            {(data?.campaigns?.byChannel ?? []).map((item) => {
+              const Icon = getChannelIcon(item.channel);
+              const meta = getChannelMeta(item.channel);
+              return (
+                <Card key={item.channel} className={`border ${meta.border} ${meta.bg}`}>
+                  <CardContent className="p-4 flex items-center gap-3">
+                    <Icon className={`h-5 w-5 shrink-0 ${meta.textColor}`} />
+                    <div className="min-w-0">
+                      <p className="text-xs text-muted-foreground truncate">{meta.label}</p>
+                      <p className="text-xl font-bold">{item.count}</p>
+                    </div>
+                  </CardContent>
+                </Card>
+              );
+            })}
+          </div>
+
+          {/* Recent campaigns */}
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-medium text-muted-foreground uppercase tracking-wider">Recent Campaigns</CardTitle>
+            </CardHeader>
+            <CardContent>
+              {isLoading ? (
+                <div className="flex justify-center py-8"><Loader2 className="h-5 w-5 animate-spin text-muted-foreground" /></div>
+              ) : (data?.campaigns?.recent ?? []).length === 0 ? (
+                <p className="text-sm text-muted-foreground text-center py-6">No campaigns yet</p>
+              ) : (
+                <div className="space-y-3">
+                  {(data?.campaigns?.recent ?? []).map((c) => {
+                    const Icon = getChannelIcon(c.channel);
+                    const meta = getChannelMeta(c.channel);
+                    return (
+                      <div key={c.id} className="flex items-center justify-between gap-3 p-3 rounded-lg border bg-card hover:bg-muted/40 transition-colors">
+                        <div className="flex items-center gap-3 min-w-0">
+                          <div className={`h-8 w-8 rounded-full flex items-center justify-center shrink-0 ${meta.bg}`}>
+                            <Icon className={`h-4 w-4 ${meta.textColor}`} />
+                          </div>
+                          <div className="min-w-0">
+                            <p className="text-sm font-medium truncate">{c.name}</p>
+                            <p className="text-xs text-muted-foreground">{meta.label} · {c.recipients.toLocaleString()} recipients</p>
+                          </div>
+                        </div>
+                        <Badge
+                          variant="secondary"
+                          className={
+                            c.status === "sent" ? "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300 border-none" :
+                            c.status === "scheduled" ? "bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300 border-none" :
+                            "text-muted-foreground"
+                          }
+                        >
+                          {c.status.charAt(0).toUpperCase() + c.status.slice(1)}
+                        </Badge>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </div>
       </div>
     </div>
   );

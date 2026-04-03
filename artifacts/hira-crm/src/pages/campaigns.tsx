@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { getChannelIcon, getChannelColor } from "@/lib/mock-data";
+import { getChannelIcon, getChannelColor, getChannelMeta } from "@/lib/mock-data";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -18,7 +18,7 @@ import { useToast } from "@/hooks/use-toast";
 interface ApiCampaign {
   id: number;
   name: string;
-  channel: "whatsapp" | "facebook" | "instagram";
+  channel: string;
   status: "draft" | "scheduled" | "sent";
   message: string;
   recipients: number;
@@ -27,6 +27,16 @@ interface ApiCampaign {
   openRate: number;
   clickRate: number;
 }
+
+const ALL_CHANNELS = [
+  { value: "whatsapp",  label: "WhatsApp" },
+  { value: "facebook",  label: "Facebook Messenger" },
+  { value: "instagram", label: "Instagram Direct" },
+  { value: "sms",       label: "SMS" },
+  { value: "email",     label: "Email" },
+  { value: "push",      label: "Push Notification" },
+  { value: "tiktok",    label: "TikTok" },
+];
 
 export default function Campaigns() {
   const { toast } = useToast();
@@ -101,9 +111,18 @@ export default function Campaigns() {
                   <Select value={newChannel} onValueChange={setNewChannel}>
                     <SelectTrigger><SelectValue /></SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="whatsapp">WhatsApp</SelectItem>
-                      <SelectItem value="facebook">Facebook Messenger</SelectItem>
-                      <SelectItem value="instagram">Instagram Direct</SelectItem>
+                      {ALL_CHANNELS.map((ch) => {
+                        const Icon = getChannelIcon(ch.value);
+                        const meta = getChannelMeta(ch.value);
+                        return (
+                          <SelectItem key={ch.value} value={ch.value}>
+                            <div className="flex items-center gap-2">
+                              <Icon className={`h-4 w-4 ${meta.textColor}`} />
+                              <span>{ch.label}</span>
+                            </div>
+                          </SelectItem>
+                        );
+                      })}
                     </SelectContent>
                   </Select>
                 </div>
@@ -184,6 +203,29 @@ export default function Campaigns() {
         </Card>
       </div>
 
+      {/* Per-channel breakdown */}
+      <div className="mb-6 shrink-0">
+        <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider mb-3">Campaigns by Channel</h2>
+        <div className="grid gap-3 grid-cols-2 sm:grid-cols-3 lg:grid-cols-7">
+          {ALL_CHANNELS.map((ch) => {
+            const Icon = getChannelIcon(ch.value);
+            const meta = getChannelMeta(ch.value);
+            const count = campaigns.filter((c) => c.channel === ch.value).length;
+            return (
+              <Card key={ch.value} className={`border ${meta.border} ${meta.bg}`}>
+                <CardContent className="p-4 flex flex-col gap-2">
+                  <div className="flex items-center gap-2">
+                    <Icon className={`h-4 w-4 ${meta.textColor}`} />
+                    <span className="text-xs font-medium text-muted-foreground truncate">{ch.label}</span>
+                  </div>
+                  <p className="text-2xl font-bold">{count}</p>
+                </CardContent>
+              </Card>
+            );
+          })}
+        </div>
+      </div>
+
       <Card className="flex-1 flex flex-col overflow-hidden">
         <div className="p-4 border-b flex items-center justify-between shrink-0 bg-muted/20">
           <div className="relative w-80">
@@ -217,7 +259,7 @@ export default function Campaigns() {
                     <TableCell>
                       <div className="flex items-center gap-2 text-sm text-muted-foreground">
                         <Icon className={`h-4 w-4 ${getChannelColor(campaign.channel)}`} />
-                        <span className="capitalize">{campaign.channel}</span>
+                        <span>{getChannelMeta(campaign.channel).label}</span>
                       </div>
                     </TableCell>
                     <TableCell>{getStatusBadge(campaign.status)}</TableCell>

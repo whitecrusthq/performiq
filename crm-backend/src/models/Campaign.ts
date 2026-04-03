@@ -4,7 +4,7 @@ import { sequelize } from "../lib/database.js";
 export interface CampaignAttributes {
   id: number;
   name: string;
-  channel: "whatsapp" | "facebook" | "instagram";
+  channel: "whatsapp" | "facebook" | "instagram" | "sms" | "email" | "push" | "tiktok";
   status: "draft" | "scheduled" | "sent";
   message: string;
   recipients: number;
@@ -22,7 +22,7 @@ export interface CampaignCreationAttributes
 export class Campaign extends Model<CampaignAttributes, CampaignCreationAttributes> implements CampaignAttributes {
   declare id: number;
   declare name: string;
-  declare channel: "whatsapp" | "facebook" | "instagram";
+  declare channel: "whatsapp" | "facebook" | "instagram" | "sms" | "email" | "push" | "tiktok";
   declare status: "draft" | "scheduled" | "sent";
   declare message: string;
   declare recipients: number;
@@ -38,7 +38,7 @@ Campaign.init(
   {
     id: { type: DataTypes.INTEGER, autoIncrement: true, primaryKey: true },
     name: { type: DataTypes.STRING(200), allowNull: false },
-    channel: { type: DataTypes.ENUM("whatsapp", "facebook", "instagram"), allowNull: false },
+    channel: { type: DataTypes.STRING(50), allowNull: false },
     status: { type: DataTypes.ENUM("draft", "scheduled", "sent"), allowNull: false, defaultValue: "draft" },
     message: { type: DataTypes.TEXT, allowNull: false },
     recipients: { type: DataTypes.INTEGER, allowNull: false, defaultValue: 0 },
