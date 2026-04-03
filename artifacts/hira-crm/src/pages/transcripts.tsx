@@ -35,9 +35,13 @@ import {
   Loader2,
   X,
   Globe,
+  RefreshCw,
+  RotateCcw,
+  Hourglass,
+  Sparkles,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import { apiGet, apiPut } from "@/lib/api";
+import { apiGet, apiPut, apiPost } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
 import { format, formatDistanceToNow } from "date-fns";
 
@@ -73,7 +77,10 @@ interface AgentStat {
   period: string;
   totalConversations: number;
   resolvedConversations: number;
+  reopenedCount: number;
   resolutionRate: number;
+  reopenRate: number;
+  avgHandleTimeMins: number | null;
   agentMessages: number;
   avgResponseTimeMins: number | null;
   csatScore: number | null;
@@ -83,6 +90,8 @@ interface AgentStat {
     responseTimeMins: number | null;
     resolutionRate: number | null;
     csatScore: number | null;
+    reopenRate: number | null;
+    handleTimeMins: number | null;
   } | null;
 }
 
@@ -160,6 +169,8 @@ export default function Transcripts() {
   const [tgtRespTime, setTgtRespTime] = useState("");
   const [tgtResolution, setTgtResolution] = useState("");
   const [tgtCsat, setTgtCsat] = useState("");
+  const [tgtReopenRate, setTgtReopenRate] = useState("");
+  const [tgtHandleTime, setTgtHandleTime] = useState("");
 
   // ── Queries ────────────────────────────────────────────────────────────────
 
@@ -207,12 +218,23 @@ export default function Transcripts() {
     onError: () => toast({ title: "Failed to save targets", variant: "destructive" }),
   });
 
+  const bestPracticeMutation = useMutation({
+    mutationFn: (p: "weekly" | "monthly") => apiPost("/transcripts/kpi-targets/best-practice", { period: p }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["agent-stats"] });
+      toast({ title: "Best-practice KPI targets applied to all agents!" });
+    },
+    onError: () => toast({ title: "Failed to apply defaults", variant: "destructive" }),
+  });
+
   const openEditTarget = (stat: AgentStat) => {
     setEditTarget(stat);
     setTgtConvs(stat.targets?.conversations != null ? String(stat.targets.conversations) : "");
     setTgtRespTime(stat.targets?.responseTimeMins != null ? String(stat.targets.responseTimeMins) : "");
     setTgtResolution(stat.targets?.resolutionRate != null ? String(stat.targets.resolutionRate) : "");
     setTgtCsat(stat.targets?.csatScore != null ? String(stat.targets.csatScore) : "");
+    setTgtReopenRate(stat.targets?.reopenRate != null ? String(stat.targets.reopenRate) : "");
+    setTgtHandleTime(stat.targets?.handleTimeMins != null ? String(stat.targets.handleTimeMins) : "");
   };
 
   const handleSaveTargets = () => {
@@ -222,6 +244,8 @@ export default function Transcripts() {
     if (tgtRespTime) payload.targetResponseTimeMins = Number(tgtRespTime);
     if (tgtResolution) payload.targetResolutionRate = Number(tgtResolution);
     if (tgtCsat) payload.targetCsatScore = Number(tgtCsat);
+    if (tgtReopenRate) payload.targetReopenRate = Number(tgtReopenRate);
+    if (tgtHandleTime) payload.targetHandleTimeMins = Number(tgtHandleTime);
     saveKpiMutation.mutate({ agentId: editTarget.agent.id, data: payload });
   };
 
@@ -514,21 +538,61 @@ export default function Transcripts() {
 
         {/* ────────────────── AGENT KPIs TAB ────────────────── */}
         <TabsContent value="kpis" className="mt-4 space-y-4">
-          <div className="flex items-center justify-between">
+          <div className="flex items-center justify-between gap-3 flex-wrap">
             <div>
               <h2 className="font-semibold">Agent Performance</h2>
               <p className="text-xs text-muted-foreground">Actual performance vs. set targets for the current {period === "weekly" ? "week" : "month"}.</p>
             </div>
-            <Select value={period} onValueChange={(v) => setPeriod(v as "weekly" | "monthly")}>
-              <SelectTrigger className="w-36">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="weekly">This Week</SelectItem>
-                <SelectItem value="monthly">This Month</SelectItem>
-              </SelectContent>
-            </Select>
+            <div className="flex items-center gap-2">
+              {me?.role !== "agent" && (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => bestPracticeMutation.mutate(period)}
+                  disabled={bestPracticeMutation.isPending}
+                  className="gap-1.5 border-violet-200 text-violet-700 hover:bg-violet-50 dark:border-violet-800 dark:text-violet-400 dark:hover:bg-violet-950/30"
+                >
+                  {bestPracticeMutation.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}
+                  Apply Best Practice Defaults
+                </Button>
+              )}
+              <Select value={period} onValueChange={(v) => setPeriod(v as "weekly" | "monthly")}>
+                <SelectTrigger className="w-36">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="weekly">This Week</SelectItem>
+                  <SelectItem value="monthly">This Month</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
           </div>
+
+          {/* Best-practice reference card */}
+          {me?.role !== "agent" && (
+            <div className="rounded-lg border border-violet-200 bg-violet-50/50 dark:border-violet-800/50 dark:bg-violet-950/10 p-3">
+              <p className="text-xs font-medium text-violet-700 dark:text-violet-400 mb-2 flex items-center gap-1.5">
+                <Sparkles className="h-3.5 w-3.5" /> Industry Best-Practice Benchmarks
+              </p>
+              <div className="grid grid-cols-3 sm:grid-cols-6 gap-3">
+                {[
+                  { label: "First Response", value: "≤ 5 min", icon: <Timer className="h-3 w-3" /> },
+                  { label: "Tickets Closed", value: period === "weekly" ? "≥ 50/wk" : "≥ 200/mo", icon: <CheckCircle2 className="h-3 w-3" /> },
+                  { label: "Resolution Rate", value: "≥ 85%", icon: <TrendingUp className="h-3 w-3" /> },
+                  { label: "CSAT Score", value: "≥ 4.2 / 5", icon: <Star className="h-3 w-3" /> },
+                  { label: "Reopen Rate", value: "≤ 5%", icon: <RotateCcw className="h-3 w-3" /> },
+                  { label: "Handle Time", value: "≤ 45 min", icon: <Hourglass className="h-3 w-3" /> },
+                ].map((b) => (
+                  <div key={b.label} className="text-center">
+                    <div className="flex items-center justify-center gap-1 text-[10px] text-muted-foreground mb-0.5">
+                      {b.icon}<span>{b.label}</span>
+                    </div>
+                    <p className="text-xs font-semibold text-violet-700 dark:text-violet-400">{b.value}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
 
           {statsLoading ? (
             <div className="flex justify-center py-16"><Loader2 className="h-6 w-6 animate-spin text-muted-foreground" /></div>
@@ -562,15 +626,15 @@ export default function Transcripts() {
                             )}
                           </div>
 
-                          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+                          <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-6 gap-4">
                             {/* Conversations handled */}
                             <div className="space-y-1.5">
                               <div className="flex items-center gap-1 text-xs text-muted-foreground">
                                 <MessageCircle className="h-3.5 w-3.5" />
-                                <span>Conversations</span>
+                                <span>Tickets Closed</span>
                               </div>
-                              <KpiProgress value={stat.totalConversations} target={stat.targets?.conversations ?? null} />
-                              <p className="text-[10px] text-muted-foreground">{stat.resolvedConversations} resolved</p>
+                              <KpiProgress value={stat.resolvedConversations} target={stat.targets?.conversations ?? null} />
+                              <p className="text-[10px] text-muted-foreground">{stat.totalConversations} total handled</p>
                             </div>
 
                             {/* Resolution rate */}
@@ -587,7 +651,7 @@ export default function Transcripts() {
                             <div className="space-y-1.5">
                               <div className="flex items-center gap-1 text-xs text-muted-foreground">
                                 <Timer className="h-3.5 w-3.5" />
-                                <span>Avg Response</span>
+                                <span>First Response</span>
                               </div>
                               {stat.avgResponseTimeMins !== null ? (
                                 <div className="space-y-1 w-full">
@@ -602,7 +666,50 @@ export default function Transcripts() {
                               ) : (
                                 <span className="text-xs text-muted-foreground">—</span>
                               )}
-                              <p className="text-[10px] text-muted-foreground">target: {stat.targets?.responseTimeMins != null ? `${stat.targets.responseTimeMins}m` : "—"}</p>
+                              <p className="text-[10px] text-muted-foreground">target: {stat.targets?.responseTimeMins != null ? `≤${stat.targets.responseTimeMins}m` : "—"}</p>
+                            </div>
+
+                            {/* Reopen Rate */}
+                            <div className="space-y-1.5">
+                              <div className="flex items-center gap-1 text-xs text-muted-foreground">
+                                <RotateCcw className="h-3.5 w-3.5" />
+                                <span>Reopen Rate</span>
+                              </div>
+                              <div className="space-y-1 w-full">
+                                <div className="flex justify-between items-baseline gap-2">
+                                  <span className="text-sm font-semibold">{stat.reopenRate}%</span>
+                                  {stat.targets?.reopenRate != null && <span className="text-[10px] text-muted-foreground">/ ≤{stat.targets.reopenRate}%</span>}
+                                </div>
+                                {stat.targets?.reopenRate != null && (
+                                  <Progress
+                                    value={Math.min((stat.targets.reopenRate / Math.max(stat.reopenRate, 0.1)) * 100, 100)}
+                                    className={`h-1.5 ${stat.reopenRate <= stat.targets.reopenRate ? "[&>div]:bg-green-500" : "[&>div]:bg-orange-400"}`}
+                                  />
+                                )}
+                              </div>
+                              <p className="text-[10px] text-muted-foreground">{stat.reopenedCount} reopened</p>
+                            </div>
+
+                            {/* Handle Time */}
+                            <div className="space-y-1.5">
+                              <div className="flex items-center gap-1 text-xs text-muted-foreground">
+                                <Hourglass className="h-3.5 w-3.5" />
+                                <span>Handle Time</span>
+                              </div>
+                              {stat.avgHandleTimeMins !== null ? (
+                                <div className="space-y-1 w-full">
+                                  <span className="text-sm font-semibold">{minsToReadable(stat.avgHandleTimeMins)}</span>
+                                  {stat.targets?.handleTimeMins != null && (
+                                    <Progress
+                                      value={Math.min((stat.targets.handleTimeMins / stat.avgHandleTimeMins) * 100, 100)}
+                                      className={`h-1.5 ${stat.avgHandleTimeMins <= stat.targets.handleTimeMins ? "[&>div]:bg-green-500" : "[&>div]:bg-orange-400"}`}
+                                    />
+                                  )}
+                                </div>
+                              ) : (
+                                <span className="text-xs text-muted-foreground">—</span>
+                              )}
+                              <p className="text-[10px] text-muted-foreground">target: {stat.targets?.handleTimeMins != null ? `≤${stat.targets.handleTimeMins}m` : "—"}</p>
                             </div>
 
                             {/* CSAT */}
@@ -619,7 +726,7 @@ export default function Transcripts() {
                               ) : (
                                 <span className="text-xs text-muted-foreground">No ratings</span>
                               )}
-                              <p className="text-[10px] text-muted-foreground">{stat.csatCount} rating{stat.csatCount !== 1 ? "s" : ""} · target: {stat.targets?.csatScore != null ? stat.targets.csatScore : "—"}</p>
+                              <p className="text-[10px] text-muted-foreground">{stat.csatCount} rating{stat.csatCount !== 1 ? "s" : ""} · target: {stat.targets?.csatScore != null ? `≥${stat.targets.csatScore}` : "—"}</p>
                             </div>
                           </div>
                         </div>
@@ -642,7 +749,7 @@ export default function Transcripts() {
 
       {/* ── Edit KPI Targets Dialog ── */}
       <Dialog open={!!editTarget} onOpenChange={(o) => !o && setEditTarget(null)}>
-        <DialogContent className="sm:max-w-md">
+        <DialogContent className="sm:max-w-lg">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Target className="h-4 w-4" />
@@ -652,12 +759,12 @@ export default function Transcripts() {
           <div className="space-y-4 py-2">
             <p className="text-xs text-muted-foreground">
               Set performance targets for the <strong>{period === "weekly" ? "weekly" : "monthly"}</strong> period.
-              Leave a field blank to remove that target.
+              Leave a field blank to keep the existing value.
             </p>
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <Label className="flex items-center gap-1.5 mb-1.5 text-sm">
-                  <MessageCircle className="h-3.5 w-3.5" /> Conversations
+                  <MessageCircle className="h-3.5 w-3.5" /> Tickets Closed (target)
                 </Label>
                 <Input
                   type="number"
@@ -666,11 +773,11 @@ export default function Transcripts() {
                   value={tgtConvs}
                   onChange={(e) => setTgtConvs(e.target.value)}
                 />
-                <p className="text-[10px] text-muted-foreground mt-1">Total to handle this {period === "weekly" ? "week" : "month"}</p>
+                <p className="text-[10px] text-muted-foreground mt-1">Min resolved tickets this {period === "weekly" ? "week" : "month"} · BP: {period === "weekly" ? "50" : "200"}</p>
               </div>
               <div>
                 <Label className="flex items-center gap-1.5 mb-1.5 text-sm">
-                  <Timer className="h-3.5 w-3.5" /> Response Time (mins)
+                  <Timer className="h-3.5 w-3.5" /> First Response (mins, max)
                 </Label>
                 <Input
                   type="number"
@@ -680,11 +787,11 @@ export default function Transcripts() {
                   value={tgtRespTime}
                   onChange={(e) => setTgtRespTime(e.target.value)}
                 />
-                <p className="text-[10px] text-muted-foreground mt-1">Max avg first response time</p>
+                <p className="text-[10px] text-muted-foreground mt-1">Max avg first response time · BP: 5 min</p>
               </div>
               <div>
                 <Label className="flex items-center gap-1.5 mb-1.5 text-sm">
-                  <CheckCircle2 className="h-3.5 w-3.5" /> Resolution Rate (%)
+                  <CheckCircle2 className="h-3.5 w-3.5" /> Resolution Rate (%, min)
                 </Label>
                 <Input
                   type="number"
@@ -694,22 +801,51 @@ export default function Transcripts() {
                   value={tgtResolution}
                   onChange={(e) => setTgtResolution(e.target.value)}
                 />
-                <p className="text-[10px] text-muted-foreground mt-1">% of conversations resolved</p>
+                <p className="text-[10px] text-muted-foreground mt-1">Min % of conversations resolved · BP: 85%</p>
               </div>
               <div>
                 <Label className="flex items-center gap-1.5 mb-1.5 text-sm">
-                  <Star className="h-3.5 w-3.5" /> CSAT Score (1–5)
+                  <Star className="h-3.5 w-3.5" /> CSAT Score (1–5, min)
                 </Label>
                 <Input
                   type="number"
                   min={1}
                   max={5}
                   step={0.1}
-                  placeholder="e.g. 4.5"
+                  placeholder="e.g. 4.2"
                   value={tgtCsat}
                   onChange={(e) => setTgtCsat(e.target.value)}
                 />
-                <p className="text-[10px] text-muted-foreground mt-1">Min average customer rating</p>
+                <p className="text-[10px] text-muted-foreground mt-1">Min average customer rating · BP: 4.2</p>
+              </div>
+              <div>
+                <Label className="flex items-center gap-1.5 mb-1.5 text-sm">
+                  <RotateCcw className="h-3.5 w-3.5" /> Reopen Rate (%, max)
+                </Label>
+                <Input
+                  type="number"
+                  min={0}
+                  max={100}
+                  step={0.5}
+                  placeholder="e.g. 5"
+                  value={tgtReopenRate}
+                  onChange={(e) => setTgtReopenRate(e.target.value)}
+                />
+                <p className="text-[10px] text-muted-foreground mt-1">Max % of tickets reopened after resolve · BP: 5%</p>
+              </div>
+              <div>
+                <Label className="flex items-center gap-1.5 mb-1.5 text-sm">
+                  <Hourglass className="h-3.5 w-3.5" /> Handle Time (mins, max)
+                </Label>
+                <Input
+                  type="number"
+                  min={1}
+                  step={1}
+                  placeholder="e.g. 45"
+                  value={tgtHandleTime}
+                  onChange={(e) => setTgtHandleTime(e.target.value)}
+                />
+                <p className="text-[10px] text-muted-foreground mt-1">Max avg time to close a ticket · BP: 45 min</p>
               </div>
             </div>
           </div>

@@ -13,12 +13,13 @@ export interface ConversationAttributes {
   lockedAt: Date | null;
   followUpAt: Date | null;
   followUpNote: string | null;
+  reopenCount: number;
   createdAt?: Date;
   updatedAt?: Date;
 }
 
 export interface ConversationCreationAttributes
-  extends Optional<ConversationAttributes, "id" | "assignedAgentId" | "unreadCount" | "lastMessageAt" | "lockedByAgentId" | "lockedAt" | "followUpAt" | "followUpNote"> {}
+  extends Optional<ConversationAttributes, "id" | "assignedAgentId" | "unreadCount" | "lastMessageAt" | "lockedByAgentId" | "lockedAt" | "followUpAt" | "followUpNote" | "reopenCount"> {}
 
 export class Conversation extends Model<ConversationAttributes, ConversationCreationAttributes> implements ConversationAttributes {
   declare id: number;
@@ -32,6 +33,7 @@ export class Conversation extends Model<ConversationAttributes, ConversationCrea
   declare lockedAt: Date | null;
   declare followUpAt: Date | null;
   declare followUpNote: string | null;
+  declare reopenCount: number;
   declare readonly createdAt: Date;
   declare readonly updatedAt: Date;
 }
@@ -49,6 +51,7 @@ Conversation.init(
     lockedAt: { type: DataTypes.DATE, allowNull: true, field: "locked_at" },
     followUpAt: { type: DataTypes.DATE, allowNull: true, field: "follow_up_at" },
     followUpNote: { type: DataTypes.TEXT, allowNull: true, field: "follow_up_note" },
+    reopenCount: { type: DataTypes.INTEGER, allowNull: false, defaultValue: 0, field: "reopen_count" },
   },
   {
     sequelize,

@@ -246,7 +246,12 @@ router.put("/conversations/:id", requireAuth, async (req: AuthRequest, res) => {
       return;
     }
 
-    if (status) conversation.status = status as "open" | "pending" | "resolved";
+    if (status) {
+      const wasResolved = conversation.status === "resolved";
+      const reopening = wasResolved && (status === "open" || status === "pending");
+      conversation.status = status as "open" | "pending" | "resolved";
+      if (reopening) conversation.reopenCount = (conversation.reopenCount ?? 0) + 1;
+    }
     if (assignedAgentId !== undefined) conversation.assignedAgentId = assignedAgentId;
     await conversation.save();
     res.json(conversation);

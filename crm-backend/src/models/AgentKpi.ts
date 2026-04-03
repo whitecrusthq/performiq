@@ -9,14 +9,28 @@ export interface AgentKpiAttributes {
   targetResponseTimeMins: number | null;
   targetResolutionRate: number | null;
   targetCsatScore: number | null;
+  targetReopenRate: number | null;
+  targetHandleTimeMins: number | null;
   createdAt?: Date;
   updatedAt?: Date;
 }
 
 export interface AgentKpiCreationAttributes
-  extends Optional<AgentKpiAttributes, "id" | "targetConversations" | "targetResponseTimeMins" | "targetResolutionRate" | "targetCsatScore"> {}
+  extends Optional<
+    AgentKpiAttributes,
+    | "id"
+    | "targetConversations"
+    | "targetResponseTimeMins"
+    | "targetResolutionRate"
+    | "targetCsatScore"
+    | "targetReopenRate"
+    | "targetHandleTimeMins"
+  > {}
 
-export class AgentKpi extends Model<AgentKpiAttributes, AgentKpiCreationAttributes> implements AgentKpiAttributes {
+export class AgentKpi
+  extends Model<AgentKpiAttributes, AgentKpiCreationAttributes>
+  implements AgentKpiAttributes
+{
   declare id: number;
   declare agentId: number;
   declare period: "weekly" | "monthly";
@@ -24,6 +38,8 @@ export class AgentKpi extends Model<AgentKpiAttributes, AgentKpiCreationAttribut
   declare targetResponseTimeMins: number | null;
   declare targetResolutionRate: number | null;
   declare targetCsatScore: number | null;
+  declare targetReopenRate: number | null;
+  declare targetHandleTimeMins: number | null;
   declare readonly createdAt: Date;
   declare readonly updatedAt: Date;
 }
@@ -31,12 +47,47 @@ export class AgentKpi extends Model<AgentKpiAttributes, AgentKpiCreationAttribut
 AgentKpi.init(
   {
     id: { type: DataTypes.INTEGER, autoIncrement: true, primaryKey: true },
-    agentId: { type: DataTypes.INTEGER, allowNull: false, field: "agent_id", references: { model: "crm_agents", key: "id" } },
-    period: { type: DataTypes.ENUM("weekly", "monthly"), allowNull: false, defaultValue: "weekly" },
-    targetConversations: { type: DataTypes.INTEGER, allowNull: true, field: "target_conversations" },
-    targetResponseTimeMins: { type: DataTypes.FLOAT, allowNull: true, field: "target_response_time_mins" },
-    targetResolutionRate: { type: DataTypes.FLOAT, allowNull: true, field: "target_resolution_rate" },
-    targetCsatScore: { type: DataTypes.FLOAT, allowNull: true, field: "target_csat_score" },
+    agentId: {
+      type: DataTypes.INTEGER,
+      allowNull: false,
+      field: "agent_id",
+      references: { model: "crm_agents", key: "id" },
+    },
+    period: {
+      type: DataTypes.ENUM("weekly", "monthly"),
+      allowNull: false,
+      defaultValue: "weekly",
+    },
+    targetConversations: {
+      type: DataTypes.INTEGER,
+      allowNull: true,
+      field: "target_conversations",
+    },
+    targetResponseTimeMins: {
+      type: DataTypes.FLOAT,
+      allowNull: true,
+      field: "target_response_time_mins",
+    },
+    targetResolutionRate: {
+      type: DataTypes.FLOAT,
+      allowNull: true,
+      field: "target_resolution_rate",
+    },
+    targetCsatScore: {
+      type: DataTypes.FLOAT,
+      allowNull: true,
+      field: "target_csat_score",
+    },
+    targetReopenRate: {
+      type: DataTypes.FLOAT,
+      allowNull: true,
+      field: "target_reopen_rate",
+    },
+    targetHandleTimeMins: {
+      type: DataTypes.FLOAT,
+      allowNull: true,
+      field: "target_handle_time_mins",
+    },
   },
   {
     sequelize,
