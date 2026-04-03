@@ -1,10 +1,10 @@
 import { useState, useEffect } from "react";
-import { useRoute } from "wouter";
+import { useRoute, useLocation } from "wouter";
 import { useGetAppraisal, useUpdateAppraisal } from "../lib";
 import { useQueryClient } from "@tanstack/react-query";
 import { PageHeader, Card, StatusBadge, Button, Label } from "@/components/shared";
 import { useAuth } from "@/hooks/use-auth";
-import { CheckCircle2, User, Star, FileText, ShieldCheck, ThumbsUp, ArrowRight, Users, MessageSquare } from "lucide-react";
+import { CheckCircle2, User, Star, FileText, ShieldCheck, ThumbsUp, ArrowRight, Users, MessageSquare, ArrowLeft } from "lucide-react";
 import { format } from "date-fns";
 
 const WORKFLOW_ROUTES: Record<string, { label: string; steps: string[] }> = {
@@ -15,6 +15,7 @@ const WORKFLOW_ROUTES: Record<string, { label: string; steps: string[] }> = {
 
 export default function AppraisalDetail() {
   const [, params] = useRoute("/appraisals/:id");
+  const [, navigate] = useLocation();
   const appraisalId = params?.id ? parseInt(params.id) : 0;
   const { user } = useAuth();
   const queryClient = useQueryClient();
@@ -116,6 +117,15 @@ export default function AppraisalDetail() {
 
   return (
     <div className="max-w-4xl mx-auto">
+      <div className="mb-4">
+        <button
+          onClick={() => navigate("/appraisals")}
+          className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium transition-colors shadow-sm"
+        >
+          <ArrowLeft className="w-4 h-4" />
+          Back to Appraisals
+        </button>
+      </div>
       <PageHeader title="Appraisal Detail" />
 
       {/* Status Notice Banner */}
