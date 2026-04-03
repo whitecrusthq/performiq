@@ -299,26 +299,32 @@ function WorkflowDetail({
   }, [activeTab, workflow.id]);
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
+    const files = Array.from(e.target.files || []);
+    if (!files.length) return;
     setUploading(true);
+    const readAsBase64 = (file: File): Promise<string> =>
+      new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = ev => resolve((ev.target?.result as string).split(",")[1]);
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+      });
     try {
-      const reader = new FileReader();
-      reader.onload = async (ev) => {
-        const base64 = (ev.target?.result as string).split(",")[1];
+      const uploaded: any[] = [];
+      for (const file of files) {
+        const base64 = await readAsBase64(file);
         const res = await apiFetch(`/api/onboarding/workflows/${workflow.id}/documents`, {
           method: "POST",
           body: JSON.stringify({ name: file.name, fileData: base64, fileType: file.type, notes: docNotes }),
         });
-        if (!res.ok) throw new Error("Upload failed");
-        const doc = await res.json();
-        setDocuments(prev => [doc, ...prev]);
-        setDocNotes("");
-        toast({ title: "Document uploaded" });
-      };
-      reader.readAsDataURL(file);
-    } catch {
-      toast({ title: "Failed to upload document", variant: "destructive" });
+        if (!res.ok) throw new Error(`Failed to upload ${file.name}`);
+        uploaded.push(await res.json());
+      }
+      setDocuments(prev => [...uploaded.reverse(), ...prev]);
+      setDocNotes("");
+      toast({ title: uploaded.length === 1 ? "Document uploaded" : `${uploaded.length} documents uploaded` });
+    } catch (err: any) {
+      toast({ title: err.message || "Upload failed", variant: "destructive" });
     } finally {
       setUploading(false);
       e.target.value = "";
@@ -798,8 +804,8 @@ function WorkflowDetail({
               />
               <label className={`flex items-center justify-center gap-2 w-full py-2.5 rounded-xl text-sm font-medium cursor-pointer transition-colors ${uploading ? "bg-muted text-muted-foreground" : "bg-primary text-primary-foreground hover:bg-primary/90"}`}>
                 {uploading ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
-                {uploading ? "Uploading…" : "Choose File"}
-                <input type="file" className="hidden" disabled={uploading} onChange={handleFileUpload}
+                {uploading ? "Uploading…" : "Choose Files"}
+                <input type="file" className="hidden" disabled={uploading} onChange={handleFileUpload} multiple
                   accept=".pdf,.doc,.docx,.xls,.xlsx,.png,.jpg,.jpeg,.gif,.txt,.csv" />
               </label>
             </div>
