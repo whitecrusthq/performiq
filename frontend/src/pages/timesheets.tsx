@@ -8,14 +8,10 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
-
-const authHeader = () => ({
-  Authorization: `Bearer ${localStorage.getItem("token")}`,
-  "Content-Type": "application/json",
-});
+import { apiFetch as apiFetchBase } from "@/lib/utils";
 
 async function apiFetch(url: string, opts: RequestInit = {}) {
-  const r = await fetch(url, { ...opts, headers: { ...authHeader(), ...(opts.headers ?? {}) } });
+  const r = await apiFetchBase(url, opts);
   if (!r.ok) {
     const err = await r.json().catch(() => ({}));
     throw new Error(err.error ?? "Request failed");

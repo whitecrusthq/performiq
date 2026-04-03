@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
+import { apiFetch } from "@/lib/utils";
 import { PageHeader, Card } from "@/components/shared";
 import {
   BarChart3, Download, Users, CheckCircle2, TrendingUp, FileSpreadsheet,
@@ -81,8 +82,6 @@ function statusBadge(status: string) {
   return `px-2 py-0.5 rounded-full text-xs font-medium capitalize ${map[status] ?? "bg-slate-100 text-slate-600"}`;
 }
 
-const authHeaders = () => ({ Authorization: `Bearer ${localStorage.getItem("token")}` });
-
 // ─── Tab: Attendance Report ───────────────────────────────────────────────────
 
 function AttendanceTab() {
@@ -99,7 +98,7 @@ function AttendanceTab() {
     const params = new URLSearchParams();
     if (from) params.set("from", from);
     if (to) params.set("to", to);
-    fetch(`/api/reports/attendance-summary?${params}`, { headers: authHeaders() })
+    apiFetch(`/api/reports/attendance-summary?${params}`)
       .then(r => r.ok ? r.json() : Promise.reject("Failed"))
       .then(setData)
       .catch(() => setError("Could not load attendance report."))
@@ -331,7 +330,7 @@ function TimesheetsTab() {
     if (from) params.set("from", from);
     if (to) params.set("to", to);
     if (statusFilter) params.set("status", statusFilter);
-    fetch(`/api/reports/timesheets-summary?${params}`, { headers: authHeaders() })
+    apiFetch(`/api/reports/timesheets-summary?${params}`)
       .then(r => r.ok ? r.json() : Promise.reject("Failed"))
       .then(setData)
       .catch(() => setError("Could not load timesheets report."))
@@ -578,7 +577,7 @@ function AppraisalsTab() {
   const fetchData = useCallback((dept: string) => {
     setLoading(true); setError(null);
     const url = dept ? `/api/reports?department=${encodeURIComponent(dept)}` : "/api/reports";
-    fetch(url, { headers: authHeaders() })
+    apiFetch(url)
       .then(r => r.ok ? r.json() : Promise.reject("Failed to load"))
       .then(setData)
       .catch(() => setError("Could not load report data."))

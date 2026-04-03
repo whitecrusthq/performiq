@@ -6,6 +6,7 @@ import { format } from "date-fns";
 import { ClipboardList, Plus, X, Search, ChevronDown, ArrowUp, ArrowDown, UserPlus } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
 import { Link } from "wouter";
+import { apiFetch } from "@/lib/utils";
 
 const authHeader = () => ({ Authorization: `Bearer ${localStorage.getItem("token")}` });
 
@@ -34,7 +35,7 @@ export default function Appraisals() {
   // Criteria groups
   const [criteriaGroups, setCriteriaGroups] = useState<any[]>([]);
   useEffect(() => {
-    fetch("/api/criteria-groups", { headers: authHeader() })
+    apiFetch("/api/criteria-groups")
       .then(r => r.json())
       .then(setCriteriaGroups)
       .catch(() => {});

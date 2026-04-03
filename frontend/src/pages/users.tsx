@@ -4,6 +4,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { PageHeader, Card, Button, Input, Label } from "@/components/shared";
 import { Users as UsersIcon, Plus, Edit, Trash2, X, Search, ChevronDown, AlertCircle } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
+import { apiFetch } from "@/lib/utils";
 
 interface Site { id: number; name: string; city?: string | null; country?: string | null; }
 
@@ -48,15 +49,15 @@ export default function Users() {
   }, [users, search, filterRole, filterDept]);
 
   useEffect(() => {
-    fetch("/api/custom-roles", { headers: authHeader() })
+    apiFetch("/api/custom-roles")
       .then(r => r.json())
       .then(data => Array.isArray(data) && setCustomRoles(data))
       .catch(() => {});
-    fetch("/api/departments", { headers: authHeader() })
+    apiFetch("/api/departments")
       .then(r => r.json())
       .then(data => Array.isArray(data) && setDepartments(data.map((d: any) => d.name ?? d)))
       .catch(() => {});
-    fetch("/api/sites", { headers: authHeader() })
+    apiFetch("/api/sites")
       .then(r => r.json())
       .then(data => Array.isArray(data) && setSites(data))
       .catch(() => {});

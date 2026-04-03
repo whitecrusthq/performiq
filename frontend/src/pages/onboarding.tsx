@@ -8,13 +8,7 @@ import {
   RefreshCw, Search, Filter, Check, SkipForward, CircleDot,
 } from "lucide-react";
 import { format } from "date-fns";
-
-const API = "";
-
-function authHeader(): HeadersInit {
-  const token = localStorage.getItem("token");
-  return token ? { Authorization: `Bearer ${token}`, "Content-Type": "application/json" } : { "Content-Type": "application/json" };
-}
+import { apiFetch } from "@/lib/utils";
 
 const CATEGORY_COLORS: Record<string, string> = {
   "Pre-boarding & Documentation":    "bg-purple-100 text-purple-700",
@@ -103,7 +97,7 @@ function StartWorkflowDialog({
           dueInDays: t.dueInDays ? parseInt(t.dueInDays) : undefined,
         }));
       }
-      const res = await fetch(`${API}/api/onboarding/workflows`, { method: "POST", headers: authHeader(), body: JSON.stringify(body) });
+      const res = await apiFetch(`/api/onboarding/workflows`, { method: "POST", body: JSON.stringify(body) });
       if (!res.ok) throw new Error((await res.json()).error);
       const wf = await res.json();
       onCreated(wf);
@@ -255,8 +249,8 @@ function WorkflowDetail({
   const updateTask = async (taskId: number, patch: any) => {
     setUpdatingTaskId(taskId);
     try {
-      const res = await fetch(`${API}/api/onboarding/tasks/${taskId}`, {
-        method: "PATCH", headers: authHeader(), body: JSON.stringify(patch),
+      const res = await apiFetch(`/api/onboarding/tasks/${taskId}`, {
+        method: "PATCH", body: JSON.stringify(patch),
       });
       if (!res.ok) throw new Error((await res.json()).error);
       onUpdate(await res.json());
@@ -270,7 +264,7 @@ function WorkflowDetail({
   const deleteTask = async (taskId: number) => {
     if (!confirm("Delete this task?")) return;
     try {
-      const res = await fetch(`${API}/api/onboarding/tasks/${taskId}`, { method: "DELETE", headers: authHeader() });
+      const res = await apiFetch(`/api/onboarding/tasks/${taskId}`, { method: "DELETE" });
       if (!res.ok) throw new Error();
       onUpdate(await res.json());
       toast({ title: "Task deleted" });
@@ -282,8 +276,8 @@ function WorkflowDetail({
   const addTask = async () => {
     if (!newTask.title.trim()) { toast({ title: "Task title required", variant: "destructive" }); return; }
     try {
-      const res = await fetch(`${API}/api/onboarding/workflows/${workflow.id}/tasks`, {
-        method: "POST", headers: authHeader(), body: JSON.stringify({
+      const res = await apiFetch(`/api/onboarding/workflows/${workflow.id}/tasks`, {
+        method: "POST", body: JSON.stringify({
           ...newTask, assigneeId: newTask.assigneeId || undefined, dueDate: newTask.dueDate || undefined,
         }),
       });
@@ -299,8 +293,8 @@ function WorkflowDetail({
 
   const updateWorkflowStatus = async (status: string) => {
     try {
-      const res = await fetch(`${API}/api/onboarding/workflows/${workflow.id}`, {
-        method: "PUT", headers: authHeader(), body: JSON.stringify({ status }),
+      const res = await apiFetch(`/api/onboarding/workflows/${workflow.id}`, {
+        method: "PUT", body: JSON.stringify({ status }),
       });
       if (!res.ok) throw new Error();
       onUpdate(await res.json());
@@ -540,9 +534,9 @@ function TemplatesPanel({
           dueInDays: t.dueInDays ? parseInt(t.dueInDays) : null,
         })),
       };
-      const url = editingId ? `${API}/api/onboarding/templates/${editingId}` : `${API}/api/onboarding/templates`;
+      const url = editingId ? `/api/onboarding/templates/${editingId}` : "/api/onboarding/templates";
       const method = editingId ? "PUT" : "POST";
-      const res = await fetch(url, { method, headers: authHeader(), body: JSON.stringify(body) });
+      const res = await apiFetch(url, { method, headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
       if (!res.ok) throw new Error((await res.json()).error);
       toast({ title: editingId ? "Template updated" : "Template created" });
       onTemplatesChanged();
@@ -557,7 +551,7 @@ function TemplatesPanel({
   const deleteTemplate = async (id: number) => {
     if (!confirm("Delete this template? Existing workflows won't be affected.")) return;
     try {
-      await fetch(`${API}/api/onboarding/templates/${id}`, { method: "DELETE", headers: authHeader() });
+      await apiFetch(`/api/onboarding/templates/${id}`, { method: "DELETE" });
       toast({ title: "Template deleted" });
       onTemplatesChanged();
     } catch {
@@ -702,9 +696,9 @@ export default function Onboarding() {
     setLoading(true);
     try {
       const [wfRes, tmplRes, usersRes] = await Promise.all([
-        fetch(`${API}/api/onboarding/workflows`, { headers: authHeader() }),
-        fetch(`${API}/api/onboarding/templates`, { headers: authHeader() }),
-        fetch(`${API}/api/users`, { headers: authHeader() }),
+        apiFetch(`/api/onboarding/workflows`),
+        apiFetch(`/api/onboarding/templates`),
+        apiFetch(`/api/users`),
       ]);
       if (wfRes.ok) setWorkflows(await wfRes.json());
       if (tmplRes.ok) setTemplates(await tmplRes.json());

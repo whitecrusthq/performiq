@@ -12,6 +12,7 @@ import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { apiFetch as apiFetchBase } from "@/lib/utils";
 
 const PING_INTERVAL_MS = 30 * 60 * 1000;
 const QUEUE_KEY = "attendance_ping_queue";
@@ -28,13 +29,8 @@ function enqueuePing(ping: QueuedPing) { writeQueue([...readQueue(), ping]); }
 function clearQueue() { localStorage.removeItem(QUEUE_KEY); }
 
 // ─── API ──────────────────────────────────────────────────────────────────────
-const authHeader = () => ({
-  Authorization: `Bearer ${localStorage.getItem("token")}`,
-  "Content-Type": "application/json",
-});
-
 async function apiFetch(url: string, opts: RequestInit = {}) {
-  const r = await fetch(url, { ...opts, headers: { ...authHeader(), ...(opts.headers ?? {}) } });
+  const r = await apiFetchBase(url, opts);
   if (!r.ok) { const err = await r.json().catch(() => ({})); throw new Error(err.error ?? "Request failed"); }
   return r.json();
 }

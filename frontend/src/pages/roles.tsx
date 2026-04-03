@@ -3,6 +3,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { PageHeader, Card, Button, Input, Label, EmptyState } from "@/components/shared";
 import { Shield, Plus, Edit, Trash2, X, LayoutDashboard, ClipboardList, Target, RefreshCcw, ListChecks, Users, BarChart3, Building2, MapPin, CalendarDays, Clock, ClipboardCheck, UserPlus } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
+import { apiFetch } from "@/lib/utils";
 
 const PERMISSION_LEVELS = [
   { value: "employee", label: "Employee", desc: "Can complete self-reviews and view own appraisals", color: "bg-slate-100 text-slate-700" },
@@ -27,9 +28,6 @@ const ALL_MENUS = [
   { key: "onboarding",  label: "Onboarding",  icon: UserPlus },
 ];
 
-const API = (path: string) => `/api${path}`;
-const authHeader = () => ({ Authorization: `Bearer ${localStorage.getItem('token')}`, "Content-Type": "application/json" });
-
 type CustomRole = { id: number; name: string; permissionLevel: string; description: string | null; menuPermissions: string[]; createdAt: string };
 
 const emptyForm = () => ({ name: "", permissionLevel: "employee", description: "", menuPermissions: [] as string[] });
@@ -47,14 +45,14 @@ export default function Roles() {
   const [formData, setFormData] = useState(emptyForm());
 
   useEffect(() => {
-    fetch(API("/custom-roles"), { headers: authHeader() })
+    apiFetch("/api/custom-roles")
       .then(r => r.json())
       .then(data => { setRoles(data); setLoading(false); })
       .catch(() => setLoading(false));
   }, []);
 
   const refreshRoles = () => {
-    fetch(API("/custom-roles"), { headers: authHeader() })
+    apiFetch("/api/custom-roles")
       .then(r => r.json())
       .then(setRoles);
   };
@@ -91,8 +89,8 @@ export default function Roles() {
     setError("");
     try {
       const method = editingId ? "PUT" : "POST";
-      const url = editingId ? API(`/custom-roles/${editingId}`) : API("/custom-roles");
-      const res = await fetch(url, { method, headers: authHeader(), body: JSON.stringify(formData) });
+      const url = editingId ? `/api/custom-roles/${editingId}` : "/api/custom-roles";
+      const res = await apiFetch(url, { method, headers: { "Content-Type": "application/json" }, body: JSON.stringify(formData) });
       if (!res.ok) {
         const data = await res.json();
         setError(data.error || "Something went wrong");
@@ -108,7 +106,7 @@ export default function Roles() {
 
   const handleDelete = async (id: number) => {
     if (!confirm("Delete this role? Users assigned to it will lose their custom role label.")) return;
-    await fetch(API(`/custom-roles/${id}`), { method: "DELETE", headers: authHeader() });
+    await apiFetch(`/api/custom-roles/${id}`, { method: "DELETE" });
     refreshRoles();
   };
 

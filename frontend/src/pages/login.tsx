@@ -5,6 +5,7 @@ import { useLogin } from "../lib";
 import { Button, Input, Label } from "@/components/shared";
 import { AlertCircle, ShieldCheck, ArrowLeft } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
+import { apiFetch } from "@/lib/utils";
 
 export default function Login() {
   const [email, setEmail] = useState("");
@@ -41,7 +42,7 @@ export default function Login() {
     setOtpError(null);
     setOtpLoading(true);
     try {
-      const r = await fetch("/api/auth/verify-otp", {
+      const r = await apiFetch("/api/auth/verify-otp", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email, otp }),

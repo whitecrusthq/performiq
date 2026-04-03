@@ -3,8 +3,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { PageHeader, Card, Button, Input, Label } from "@/components/shared";
 import { CalendarDays, Plus, X, CheckCircle2, XCircle, Clock, Ban, ChevronRight, UserPlus, ArrowUp, ArrowDown } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
-
-const authHeader = () => ({ Authorization: `Bearer ${localStorage.getItem("token")}`, "Content-Type": "application/json" });
+import { apiFetch } from "@/lib/utils";
 
 const LEAVE_TYPES = ["annual", "sick", "personal", "maternity", "paternity", "unpaid", "other"] as const;
 type LeaveType = typeof LEAVE_TYPES[number];
@@ -91,7 +90,7 @@ export default function Leave() {
   const load = async () => {
     setIsLoading(true);
     try {
-      const r = await fetch("/api/leave-requests", { headers: authHeader() });
+      const r = await apiFetch("/api/leave-requests");
       const data = await r.json();
       if (Array.isArray(data)) setRequests(data);
     } catch {}
@@ -100,7 +99,7 @@ export default function Leave() {
 
   const loadUsers = async () => {
     try {
-      const r = await fetch("/api/users", { headers: authHeader() });
+      const r = await apiFetch("/api/users");
       const data = await r.json();
       if (Array.isArray(data)) setAllUsers(data);
     } catch {}
@@ -134,8 +133,8 @@ export default function Leave() {
     setSubmitting(true);
     try {
       const approverIds = approverSteps.map(Number).filter(Boolean);
-      const r = await fetch("/api/leave-requests", {
-        method: "POST", headers: authHeader(),
+      const r = await apiFetch("/api/leave-requests", {
+        method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ ...form, days, approverIds }),
       });
       const data = await r.json();
@@ -149,15 +148,15 @@ export default function Leave() {
   };
 
   const handleCancel = async (id: number) => {
-    await fetch(`/api/leave-requests/${id}`, { method: "PUT", headers: authHeader(), body: JSON.stringify({ status: "cancelled" }) });
+    await apiFetch(`/api/leave-requests/${id}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ status: "cancelled" }) });
     load();
   };
 
   const handleReview = async () => {
     if (!reviewDialog) return;
     setSubmitting(true);
-    await fetch(`/api/leave-requests/${reviewDialog.request.id}`, {
-      method: "PUT", headers: authHeader(),
+    await apiFetch(`/api/leave-requests/${reviewDialog.request.id}`, {
+      method: "PUT", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ status: reviewDialog.action, reviewNote }),
     });
     setReviewDialog(null);

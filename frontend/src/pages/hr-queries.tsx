@@ -22,17 +22,11 @@ import {
   CircleDot, XCircle, AlertTriangle, User, Send, Trash2, Pencil, RotateCcw,
 } from "lucide-react";
 
-// ── helpers ───────────────────────────────────────────────────────────────────
-function authHeader() {
-  const token = localStorage.getItem("token");
-  return token ? { Authorization: `Bearer ${token}` } : {};
-}
+import { apiFetch as apiFetchBase } from "@/lib/utils";
 
+// ── helpers ───────────────────────────────────────────────────────────────────
 async function apiFetch(url: string, opts: RequestInit = {}) {
-  const res = await fetch(url, {
-    ...opts,
-    headers: { "Content-Type": "application/json", ...authHeader(), ...(opts.headers ?? {}) },
-  });
+  const res = await apiFetchBase(url, opts);
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
     throw new Error(err.error ?? "Request failed");

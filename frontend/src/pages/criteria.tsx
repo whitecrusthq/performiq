@@ -4,6 +4,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { PageHeader, Card, Button, Input, Label, EmptyState } from "@/components/shared";
 import { ListChecks, Plus, X, Trash2, Edit2, Layers, ChevronRight } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
+import { apiFetch } from "@/lib/utils";
 
 const authHeader = () => ({ Authorization: `Bearer ${localStorage.getItem("token")}` });
 
@@ -85,7 +86,7 @@ export default function Criteria() {
   const loadGroups = async () => {
     setGroupsLoading(true);
     try {
-      const r = await fetch("/api/criteria-groups", { headers: authHeader() });
+      const r = await apiFetch("/api/criteria-groups");
       const data = await r.json();
       setGroups(data);
     } finally {
@@ -98,9 +99,9 @@ export default function Criteria() {
   const handleGroupSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     const url = editingGroupId ? `/api/criteria-groups/${editingGroupId}` : "/api/criteria-groups";
-    await fetch(url, {
+    await apiFetch(url, {
       method: editingGroupId ? "PUT" : "POST",
-      headers: { ...authHeader(), "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify(groupForm),
     });
     setIsGroupDialogOpen(false);
@@ -109,7 +110,7 @@ export default function Criteria() {
 
   const handleGroupDelete = async (id: number) => {
     if (!confirm("Delete this criteria group?")) return;
-    await fetch(`/api/criteria-groups/${id}`, { method: "DELETE", headers: authHeader() });
+    await apiFetch(`/api/criteria-groups/${id}`, { method: "DELETE" });
     loadGroups();
   };
 
