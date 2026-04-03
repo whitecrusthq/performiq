@@ -24,6 +24,7 @@ import Leave from "@/pages/leave";
 import Attendance from "@/pages/attendance";
 import Timesheets from "@/pages/timesheets";
 import Onboarding from "@/pages/onboarding";
+import Staff from "@/pages/staff";
 import HrQueries from "@/pages/hr-queries";
 import Profile from "@/pages/profile";
 import Security from "@/pages/security";
@@ -98,6 +99,9 @@ function Router() {
       </Route>
       <Route path="/onboarding">
         <AppLayout><ProtectedRoute component={Onboarding} /></AppLayout>
+      </Route>
+      <Route path="/staff">
+        <AppLayout><ProtectedRoute component={Staff} /></AppLayout>
       </Route>
       <Route path="/hr-queries">
         <AppLayout><ProtectedRoute component={HrQueries} /></AppLayout>

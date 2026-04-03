@@ -1,4 +1,4 @@
-import { pgTable, serial, text, integer, timestamp, boolean, pgEnum, unique } from "drizzle-orm/pg-core";
+import { pgTable, serial, text, integer, timestamp, boolean, pgEnum, date } from "drizzle-orm/pg-core";
 
 export const roleEnum = pgEnum("role", ["super_admin", "admin", "manager", "employee"]);
 
@@ -29,6 +29,25 @@ export const usersTable = pgTable("users", {
   failedLoginAttempts: integer("failed_login_attempts").notNull().default(0),
   lockedAt: timestamp("locked_at"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
+  // HR profile fields
+  address: text("address"),
+  city: text("city"),
+  stateProvince: text("state_province"),
+  country: text("country"),
+  postalCode: text("postal_code"),
+  dateOfBirth: date("date_of_birth"),
+  gender: text("gender"),
+  nationalId: text("national_id"),
+  startDate: date("start_date"),
+  emergencyContactName: text("emergency_contact_name"),
+  emergencyContactPhone: text("emergency_contact_phone"),
+  emergencyContactRelation: text("emergency_contact_relation"),
+  bankName: text("bank_name"),
+  bankBranch: text("bank_branch"),
+  bankAccountNumber: text("bank_account_number"),
+  bankAccountName: text("bank_account_name"),
+  taxId: text("tax_id"),
+  notes: text("notes"),
 });
 
 export type User = typeof usersTable.$inferSelect;

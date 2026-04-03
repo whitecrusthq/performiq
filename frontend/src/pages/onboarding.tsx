@@ -232,13 +232,14 @@ function StartWorkflowDialog({
 // ─── Workflow Detail Panel ────────────────────────────────────────────────────
 
 function WorkflowDetail({
-  workflowInit, users, canManage, onUpdate, onClose,
+  workflowInit, users, canManage, onUpdate, onClose, onStartNew,
 }: {
   workflowInit: any;
   users: any[];
   canManage: boolean;
   onUpdate: (wf: any) => void;
   onClose: () => void;
+  onStartNew?: () => void;
 }) {
   const { toast } = useToast();
   const [workflow, setWorkflow] = useState<any>(workflowInit);
@@ -423,6 +424,13 @@ function WorkflowDetail({
                   {workflow.notes && <p className="text-xs text-muted-foreground italic mt-1">{workflow.notes}</p>}
                 </div>
                 <div className="flex items-center gap-1 shrink-0">
+                  {canManage && onStartNew && (
+                    <button onClick={onStartNew}
+                      className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-primary text-primary-foreground text-xs font-semibold hover:bg-primary/90 transition-colors"
+                      title="Start another workflow">
+                      <Plus className="w-3.5 h-3.5" /> New
+                    </button>
+                  )}
                   {canManage && (
                     <button onClick={() => {
                       setHeaderDraft({
@@ -1062,6 +1070,7 @@ export default function Onboarding() {
           canManage={canManage}
           onUpdate={handleWorkflowUpdate}
           onClose={() => setSelectedWorkflow(null)}
+          onStartNew={canManage ? () => setShowStartDialog(true) : undefined}
         />
       )}
     </div>

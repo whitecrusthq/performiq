@@ -25,7 +25,28 @@ const formatUser = (u: typeof usersTable.$inferSelect, customRole?: typeof custo
   jobTitle: u.jobTitle,
   phone: u.phone,
   staffId: u.staffId,
+  profilePhoto: u.profilePhoto,
+  isLocked: u.isLocked,
   createdAt: u.createdAt,
+  // HR profile fields
+  address: u.address,
+  city: u.city,
+  stateProvince: u.stateProvince,
+  country: u.country,
+  postalCode: u.postalCode,
+  dateOfBirth: u.dateOfBirth,
+  gender: u.gender,
+  nationalId: u.nationalId,
+  startDate: u.startDate,
+  emergencyContactName: u.emergencyContactName,
+  emergencyContactPhone: u.emergencyContactPhone,
+  emergencyContactRelation: u.emergencyContactRelation,
+  bankName: u.bankName,
+  bankBranch: u.bankBranch,
+  bankAccountNumber: u.bankAccountNumber,
+  bankAccountName: u.bankAccountName,
+  taxId: u.taxId,
+  notes: u.notes,
 });
 
 async function getUserWithRole(userId: number) {
@@ -153,6 +174,51 @@ router.put("/users/:id/profile-photo", requireAuth, async (req: AuthRequest, res
     if (!updated) return res.status(404).json({ error: "User not found" });
     res.json(updated);
   } catch {
+    res.status(500).json({ error: "Server error" });
+  }
+});
+
+// PUT /users/:id/hr-profile — update extended HR/payroll fields (admin or self)
+router.put("/users/:id/hr-profile", requireAuth, async (req: AuthRequest, res) => {
+  try {
+    const { role, id: actorId } = req.user!;
+    const targetId = Number(req.params.id);
+    if (role === "employee" && actorId !== targetId) {
+      return res.status(403).json({ error: "Forbidden" });
+    }
+    const {
+      address, city, stateProvince, country, postalCode,
+      dateOfBirth, gender, nationalId, startDate,
+      emergencyContactName, emergencyContactPhone, emergencyContactRelation,
+      bankName, bankBranch, bankAccountNumber, bankAccountName, taxId, notes,
+    } = req.body;
+
+    const [updated] = await db.update(usersTable).set({
+      address: address ?? null,
+      city: city ?? null,
+      stateProvince: stateProvince ?? null,
+      country: country ?? null,
+      postalCode: postalCode ?? null,
+      dateOfBirth: dateOfBirth ?? null,
+      gender: gender ?? null,
+      nationalId: nationalId ?? null,
+      startDate: startDate ?? null,
+      emergencyContactName: emergencyContactName ?? null,
+      emergencyContactPhone: emergencyContactPhone ?? null,
+      emergencyContactRelation: emergencyContactRelation ?? null,
+      bankName: bankName ?? null,
+      bankBranch: bankBranch ?? null,
+      bankAccountNumber: bankAccountNumber ?? null,
+      bankAccountName: bankAccountName ?? null,
+      taxId: taxId ?? null,
+      notes: notes ?? null,
+    }).where(eq(usersTable.id, targetId)).returning();
+
+    if (!updated) return res.status(404).json({ error: "User not found" });
+    const result = await getUserWithRole(updated.id);
+    res.json(result);
+  } catch (err) {
+    console.error("PUT /users/:id/hr-profile error:", err);
     res.status(500).json({ error: "Server error" });
   }
 });
