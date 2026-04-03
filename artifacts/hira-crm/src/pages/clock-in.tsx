@@ -8,14 +8,16 @@ import {
   WifiOff, Wifi, CloudUpload, Camera, RefreshCw, CheckCircle2,
   ZoomIn, ShieldCheck, ShieldAlert, ShieldQuestion, ScanFace, UserCircle2,
   Activity, MessageSquare, CheckCheck, Hourglass, WifiOff as WifiOffIcon,
+  CalendarClock, Plus, Pencil, Trash2, X,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { apiFetch, apiGet } from "@/lib/api";
+import { Label } from "@/components/ui/label";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { apiFetch, apiGet, apiPost, apiPut, apiDelete } from "@/lib/api";
 
 const PING_INTERVAL_MS = 30 * 60 * 1000;
 const QUEUE_KEY = "crm_attendance_ping_queue";
@@ -393,6 +395,35 @@ function StatusBadge({ log }: { log: any }) {
   return <Badge variant="outline">—</Badge>;
 }
 
+function ShiftBenchmarkBadge({ log }: { log: any }) {
+  const diff = log?.clockInDiffMinutes;
+  const grace = log?.shiftGraceMinutes ?? 15;
+  const expected = log?.shiftStartExpected;
+  if (diff == null || expected == null) return <span className="text-[11px] text-muted-foreground">No shift set</span>;
+  if (diff < -5) {
+    return (
+      <span className="inline-flex items-center gap-1 text-[11px] font-medium text-blue-700 dark:text-blue-400">
+        <CheckCircle2 className="w-3 h-3" /> Early {Math.abs(diff)}m
+        <span className="text-muted-foreground font-normal">({expected})</span>
+      </span>
+    );
+  }
+  if (diff <= grace) {
+    return (
+      <span className="inline-flex items-center gap-1 text-[11px] font-medium text-green-700 dark:text-green-400">
+        <CheckCircle2 className="w-3 h-3" /> On Time
+        <span className="text-muted-foreground font-normal">({expected})</span>
+      </span>
+    );
+  }
+  return (
+    <span className="inline-flex items-center gap-1 text-[11px] font-medium text-orange-600 dark:text-orange-400">
+      <AlertCircle className="w-3 h-3" /> Late {diff}m
+      <span className="text-muted-foreground font-normal">({expected})</span>
+    </span>
+  );
+}
+
 function PingsCell({ logId }: { logId: number }) {
   const [open, setOpen] = useState(false);
   const { data: pings = [] } = useQuery({
@@ -601,6 +632,229 @@ function AgentStatusCard({ agent }: { agent: any }) {
         </div>
       </CardContent>
     </Card>
+  );
+}
+
+// ── Shift Schedules (admin/supervisor only) ────────────────────────────────────
+const DAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+
+function ShiftSchedules({ agents }: { agents: any[] }) {
+  const { toast } = useToast();
+  const qc = useQueryClient();
+
+  const [showForm, setShowForm] = useState(false);
+  const [editShift, setEditShift] = useState<any>(null);
+  const [form, setForm] = useState({
+    agentId: "",
+    shiftName: "",
+    startTime: "09:00",
+    endTime: "17:00",
+    daysOfWeek: [1, 2, 3, 4, 5],
+    graceMinutes: 15,
+  });
+
+  const { data: shifts = [], isLoading } = useQuery({
+    queryKey: ["crm-shifts"],
+    queryFn: () => apiGet<any[]>("/attendance/shifts"),
+  } as Parameters<typeof useQuery>[0]);
+
+  const resetForm = () => {
+    setForm({ agentId: "", shiftName: "", startTime: "09:00", endTime: "17:00", daysOfWeek: [1, 2, 3, 4, 5], graceMinutes: 15 });
+    setEditShift(null);
+    setShowForm(false);
+  };
+
+  const createMutation = useMutation({
+    mutationFn: (data: any) => apiPost("/attendance/shifts", data),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ["crm-shifts"] }); toast({ title: "Shift created" }); resetForm(); },
+    onError: (e: any) => toast({ title: "Error", description: e.message, variant: "destructive" }),
+  });
+
+  const updateMutation = useMutation({
+    mutationFn: ({ id, data }: { id: number; data: any }) => apiPut(`/attendance/shifts/${id}`, data),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ["crm-shifts"] }); toast({ title: "Shift updated" }); resetForm(); },
+    onError: (e: any) => toast({ title: "Error", description: e.message, variant: "destructive" }),
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: (id: number) => apiDelete(`/attendance/shifts/${id}`),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ["crm-shifts"] }); toast({ title: "Shift deleted" }); },
+    onError: (e: any) => toast({ title: "Error", description: e.message, variant: "destructive" }),
+  });
+
+  const openEdit = (shift: any) => {
+    setEditShift(shift);
+    let days: number[] = [1,2,3,4,5];
+    try { days = JSON.parse(shift.daysOfWeek); } catch {}
+    setForm({
+      agentId: String(shift.agentId),
+      shiftName: shift.shiftName,
+      startTime: shift.startTime,
+      endTime: shift.endTime,
+      daysOfWeek: days,
+      graceMinutes: shift.graceMinutes,
+    });
+    setShowForm(true);
+  };
+
+  const toggleDay = (d: number) => {
+    setForm(f => ({
+      ...f,
+      daysOfWeek: f.daysOfWeek.includes(d) ? f.daysOfWeek.filter(x => x !== d) : [...f.daysOfWeek, d].sort(),
+    }));
+  };
+
+  const handleSubmit = () => {
+    if (!form.agentId || !form.shiftName || !form.startTime || !form.endTime) {
+      toast({ title: "Fill in all required fields", variant: "destructive" }); return;
+    }
+    const payload = { ...form, agentId: parseInt(form.agentId) };
+    if (editShift) updateMutation.mutate({ id: editShift.id, data: payload });
+    else createMutation.mutate(payload);
+  };
+
+  const isBusy = createMutation.isPending || updateMutation.isPending;
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <CalendarClock className="w-4 h-4 text-primary" />
+          <h2 className="text-base font-semibold">Shift Schedules</h2>
+          <span className="text-xs text-muted-foreground">· benchmark clock-in punctuality</span>
+        </div>
+        <Button size="sm" variant="outline" className="gap-1.5 h-8" onClick={() => { resetForm(); setShowForm(true); }}>
+          <Plus className="w-3.5 h-3.5" /> Add Shift
+        </Button>
+      </div>
+
+      {isLoading ? (
+        <div className="flex justify-center py-6">
+          <div className="w-5 h-5 rounded-full border-2 border-primary/30 border-t-primary animate-spin" />
+        </div>
+      ) : (shifts as any[]).length === 0 && !showForm ? (
+        <div className="rounded-xl border border-dashed border-border p-6 text-center">
+          <CalendarClock className="w-7 h-7 mx-auto mb-2 text-muted-foreground/40" />
+          <p className="text-sm text-muted-foreground">No shift schedules yet</p>
+          <p className="text-xs text-muted-foreground mt-1">Add shifts to benchmark agent clock-in times as early, on-time, or late.</p>
+        </div>
+      ) : (
+        <div className="rounded-xl border border-border overflow-hidden">
+          <table className="w-full text-sm">
+            <thead className="bg-muted/50">
+              <tr>
+                <th className="text-left px-4 py-2.5 font-medium text-muted-foreground text-xs">Agent</th>
+                <th className="text-left px-4 py-2.5 font-medium text-muted-foreground text-xs">Shift</th>
+                <th className="text-left px-4 py-2.5 font-medium text-muted-foreground text-xs">Hours</th>
+                <th className="text-left px-4 py-2.5 font-medium text-muted-foreground text-xs">Days</th>
+                <th className="text-left px-4 py-2.5 font-medium text-muted-foreground text-xs">Grace</th>
+                <th className="px-4 py-2.5" />
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-border">
+              {(shifts as any[]).map((s: any) => {
+                let days: number[] = [];
+                try { days = JSON.parse(s.daysOfWeek); } catch {}
+                return (
+                  <tr key={s.id} className="hover:bg-muted/20 transition-colors">
+                    <td className="px-4 py-2.5 font-medium">{s.agent?.name ?? "—"}</td>
+                    <td className="px-4 py-2.5">{s.shiftName}</td>
+                    <td className="px-4 py-2.5 font-mono text-xs">{s.startTime} – {s.endTime}</td>
+                    <td className="px-4 py-2.5">
+                      <div className="flex gap-0.5">
+                        {DAYS.map((d, i) => (
+                          <span key={d} className={`text-[10px] px-1 py-0.5 rounded ${days.includes(i) ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"}`}>{d}</span>
+                        ))}
+                      </div>
+                    </td>
+                    <td className="px-4 py-2.5 text-xs text-muted-foreground">{s.graceMinutes}m</td>
+                    <td className="px-4 py-2.5">
+                      <div className="flex items-center gap-1 justify-end">
+                        <Button size="sm" variant="ghost" className="h-7 w-7 p-0" onClick={() => openEdit(s)}>
+                          <Pencil className="w-3.5 h-3.5" />
+                        </Button>
+                        <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-destructive hover:text-destructive"
+                          onClick={() => deleteMutation.mutate(s.id)}>
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </Button>
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {/* Add / Edit form */}
+      <Dialog open={showForm} onOpenChange={(o) => { if (!o) resetForm(); }}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <CalendarClock className="w-4 h-4" />
+              {editShift ? "Edit Shift" : "Add Shift Schedule"}
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-1">
+            <div>
+              <Label className="text-sm mb-1.5 block">Agent</Label>
+              <Select value={form.agentId} onValueChange={v => setForm(f => ({ ...f, agentId: v }))}>
+                <SelectTrigger><SelectValue placeholder="Select agent…" /></SelectTrigger>
+                <SelectContent>
+                  {agents.map((a: any) => (
+                    <SelectItem key={a.id} value={String(a.id)}>{a.name ?? a.email}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <Label className="text-sm mb-1.5 block">Shift Name</Label>
+              <Input placeholder="e.g. Morning Shift" value={form.shiftName} onChange={e => setForm(f => ({ ...f, shiftName: e.target.value }))} />
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <Label className="text-sm mb-1.5 block">Start Time</Label>
+                <Input type="time" value={form.startTime} onChange={e => setForm(f => ({ ...f, startTime: e.target.value }))} />
+              </div>
+              <div>
+                <Label className="text-sm mb-1.5 block">End Time</Label>
+                <Input type="time" value={form.endTime} onChange={e => setForm(f => ({ ...f, endTime: e.target.value }))} />
+              </div>
+            </div>
+            <div>
+              <Label className="text-sm mb-2 block">Working Days</Label>
+              <div className="flex gap-1.5 flex-wrap">
+                {DAYS.map((d, i) => (
+                  <button key={d} type="button"
+                    onClick={() => toggleDay(i)}
+                    className={`px-2.5 py-1 rounded text-xs font-medium transition-colors border ${
+                      form.daysOfWeek.includes(i)
+                        ? "bg-primary text-primary-foreground border-primary"
+                        : "bg-background text-muted-foreground border-border hover:border-primary/50"
+                    }`}>
+                    {d}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div>
+              <Label className="text-sm mb-1.5 block">Grace Period (minutes)</Label>
+              <Input type="number" min={0} max={60} value={form.graceMinutes}
+                onChange={e => setForm(f => ({ ...f, graceMinutes: parseInt(e.target.value) || 0 }))} />
+              <p className="text-[11px] text-muted-foreground mt-1">How many minutes late is still counted as "on time"</p>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={resetForm}>Cancel</Button>
+            <Button onClick={handleSubmit} disabled={isBusy} className="gap-1.5">
+              {isBusy && <div className="w-3.5 h-3.5 rounded-full border-2 border-primary-foreground/30 border-t-primary-foreground animate-spin" />}
+              {editShift ? "Save Changes" : "Create Shift"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </div>
   );
 }
 
@@ -1053,6 +1307,13 @@ export default function ClockIn() {
         </div>
       </div>
 
+      {/* ── Shift Schedules (admin/supervisor only) ── */}
+      {isManager && (
+        <div className="rounded-2xl border border-border bg-card p-6 shadow-sm">
+          <ShiftSchedules agents={(agents as any[]).map((a: any) => ({ id: a.id, name: a.name ?? a.email }))} />
+        </div>
+      )}
+
       {/* ── Activity Monitor (admin/supervisor only) ── */}
       {isManager && (
         <div className="rounded-2xl border border-border bg-card p-6 shadow-sm">
@@ -1096,6 +1357,7 @@ export default function ClockIn() {
                 <th className="text-left px-4 py-3 font-medium text-muted-foreground">Clock In</th>
                 <th className="text-left px-4 py-3 font-medium text-muted-foreground">Clock Out</th>
                 <th className="text-left px-4 py-3 font-medium text-muted-foreground">Duration</th>
+                <th className="text-left px-4 py-3 font-medium text-muted-foreground">Shift</th>
                 <th className="text-left px-4 py-3 font-medium text-muted-foreground">Photos</th>
                 <th className="text-left px-4 py-3 font-medium text-muted-foreground">Location</th>
                 <th className="text-left px-4 py-3 font-medium text-muted-foreground">Status</th>
@@ -1103,10 +1365,10 @@ export default function ClockIn() {
             </thead>
             <tbody className="divide-y divide-border">
               {logsLoading ? (
-                <tr><td colSpan={isManager ? 8 : 7} className="text-center py-10 text-muted-foreground">Loading…</td></tr>
+                <tr><td colSpan={isManager ? 9 : 8} className="text-center py-10 text-muted-foreground">Loading…</td></tr>
               ) : (logs as any[]).length === 0 ? (
                 <tr>
-                  <td colSpan={isManager ? 8 : 7} className="text-center py-10 text-muted-foreground">
+                  <td colSpan={isManager ? 9 : 8} className="text-center py-10 text-muted-foreground">
                     <Timer className="w-8 h-8 mx-auto mb-2 opacity-30" />
                     No attendance records yet
                   </td>
@@ -1118,6 +1380,7 @@ export default function ClockIn() {
                   <td className="px-4 py-3">{fmtTime(log.clockIn)}</td>
                   <td className="px-4 py-3">{fmtTime(log.clockOut)}</td>
                   <td className="px-4 py-3">{fmtDuration(log.durationMinutes)}</td>
+                  <td className="px-4 py-3"><ShiftBenchmarkBadge log={log} /></td>
                   <td className="px-4 py-3"><FaceCell log={log} isManager={isManager} onReviewClick={setReviewLog} /></td>
                   <td className="px-4 py-3"><LocationCell log={log} /></td>
                   <td className="px-4 py-3"><StatusBadge log={log} /></td>

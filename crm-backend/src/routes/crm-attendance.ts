@@ -3,11 +3,43 @@ import { Op } from "sequelize";
 import { requireAuth, AuthRequest } from "../middlewares/auth.js";
 import { AgentAttendance } from "../models/AgentAttendance.js";
 import { AgentAttendancePing } from "../models/AgentAttendancePing.js";
+import { AgentShift } from "../models/AgentShift.js";
 import { Agent } from "../models/Agent.js";
 
 const router = Router();
 
-// ── GET /attendance/today — current agent's status today ─────────────────────
+// ── Shift helper ──────────────────────────────────────────────────────────────
+// Returns the clockInDiffMinutes: negative = early, positive = late, null = no shift
+async function computeShiftDiff(agentId: number, clockInTime: Date): Promise<{
+  shiftStartExpected: string | null;
+  shiftGraceMinutes: number | null;
+  clockInDiffMinutes: number | null;
+}> {
+  const dayOfWeek = clockInTime.getDay(); // 0=Sun, 6=Sat
+  const shift = await AgentShift.findOne({
+    where: { agentId, isActive: true },
+  });
+  if (!shift) return { shiftStartExpected: null, shiftGraceMinutes: null, clockInDiffMinutes: null };
+
+  let days: number[] = [];
+  try { days = JSON.parse(shift.daysOfWeek); } catch { /* ignore */ }
+  if (!days.includes(dayOfWeek)) return { shiftStartExpected: null, shiftGraceMinutes: null, clockInDiffMinutes: null };
+
+  const [shiftH, shiftM] = shift.startTime.split(":").map(Number);
+  const shiftStartMs = shiftH * 60 + shiftM;
+  const clockInH = clockInTime.getHours();
+  const clockInM = clockInTime.getMinutes();
+  const clockInMs = clockInH * 60 + clockInM;
+  const diffMinutes = clockInMs - shiftStartMs;
+
+  return {
+    shiftStartExpected: shift.startTime,
+    shiftGraceMinutes: shift.graceMinutes,
+    clockInDiffMinutes: diffMinutes,
+  };
+}
+
+// ── GET /attendance/today ─────────────────────────────────────────────────────
 router.get("/attendance/today", requireAuth, async (req: AuthRequest, res) => {
   try {
     const agentId = req.agent!.id;
@@ -34,18 +66,22 @@ router.post("/attendance/clock-in", requireAuth, async (req: AuthRequest, res) =
       where: { agentId, date: today, clockIn: { [Op.ne]: null }, clockOut: null },
       order: [["clockIn", "DESC"]],
     });
-    if (existing) {
-      return res.status(400).json({ error: "Already clocked in" });
-    }
+    if (existing) return res.status(400).json({ error: "Already clocked in" });
+
+    const clockInTime = new Date();
+    const { shiftStartExpected, shiftGraceMinutes, clockInDiffMinutes } = await computeShiftDiff(agentId, clockInTime);
 
     const log = await AgentAttendance.create({
       agentId,
       date: today,
-      clockIn: new Date(),
+      clockIn: clockInTime,
       clockInLat: lat != null ? String(lat) : null,
       clockInLng: lng != null ? String(lng) : null,
       faceImageIn: faceImage ?? null,
       clockInPhotoTime: photoTime ? new Date(photoTime) : null,
+      shiftStartExpected,
+      shiftGraceMinutes,
+      clockInDiffMinutes,
     });
     res.json(log);
   } catch (err) {
@@ -65,9 +101,7 @@ router.post("/attendance/clock-out", requireAuth, async (req: AuthRequest, res) 
       where: { agentId, date: today, clockIn: { [Op.ne]: null }, clockOut: null },
       order: [["clockIn", "DESC"]],
     });
-    if (!existing) {
-      return res.status(400).json({ error: "Not currently clocked in" });
-    }
+    if (!existing) return res.status(400).json({ error: "Not currently clocked in" });
 
     const clockOut = new Date();
     const durationMinutes = Math.round(
@@ -91,15 +125,14 @@ router.post("/attendance/clock-out", requireAuth, async (req: AuthRequest, res) 
   }
 });
 
-// ── GET /attendance — list logs with optional filters ─────────────────────────
+// ── GET /attendance ───────────────────────────────────────────────────────────
 router.get("/attendance", requireAuth, async (req: AuthRequest, res) => {
   try {
     const { role, id: agentId } = req.agent!;
     const { startDate, endDate, agentId: filterAgentId } = req.query as Record<string, string>;
 
     const isManager = role === "admin" || role === "supervisor";
-
-    const where: any = {};
+    const where: Record<string, unknown> = {};
 
     if (!isManager) {
       where.agentId = agentId;
@@ -109,19 +142,13 @@ router.get("/attendance", requireAuth, async (req: AuthRequest, res) => {
 
     if (startDate || endDate) {
       where.date = {};
-      if (startDate) where.date[Op.gte] = startDate;
-      if (endDate) where.date[Op.lte] = endDate;
+      if (startDate) (where.date as Record<string, unknown>)[Op.gte as symbol] = startDate;
+      if (endDate) (where.date as Record<string, unknown>)[Op.lte as symbol] = endDate;
     }
 
     const logs = await AgentAttendance.findAll({
       where,
-      include: [
-        {
-          model: Agent,
-          as: "agent",
-          attributes: ["id", "name", "email", "avatar", "role"],
-        },
-      ],
+      include: [{ model: Agent, as: "agent", attributes: ["id", "name", "email", "avatar", "role"] }],
       order: [["date", "DESC"], ["clockIn", "DESC"]],
     });
 
@@ -137,9 +164,7 @@ router.post("/attendance/location-ping", requireAuth, async (req: AuthRequest, r
   try {
     const agentId = req.agent!.id;
     const { lat, lng, recordedAt } = req.body;
-    if (lat == null || lng == null) {
-      return res.status(400).json({ error: "lat and lng are required" });
-    }
+    if (lat == null || lng == null) return res.status(400).json({ error: "lat and lng are required" });
 
     const pingTime = recordedAt ? new Date(recordedAt) : new Date();
     const pingDate = pingTime.toISOString().split("T")[0];
@@ -148,10 +173,7 @@ router.post("/attendance/location-ping", requireAuth, async (req: AuthRequest, r
       where: { agentId, date: pingDate, clockIn: { [Op.ne]: null } },
       order: [["clockIn", "DESC"]],
     });
-
-    if (!active) {
-      return res.status(400).json({ error: "No clock-in found for this date" });
-    }
+    if (!active) return res.status(400).json({ error: "No clock-in found for this date" });
 
     const ping = await AgentAttendancePing.create({
       attendanceId: active.id,
@@ -160,7 +182,6 @@ router.post("/attendance/location-ping", requireAuth, async (req: AuthRequest, r
       lng: String(lng),
       recordedAt: pingTime,
     });
-
     res.json(ping);
   } catch (err) {
     console.error("location-ping error:", err);
@@ -173,9 +194,7 @@ router.post("/attendance/location-ping/batch", requireAuth, async (req: AuthRequ
   try {
     const agentId = req.agent!.id;
     const { pings } = req.body as { pings: Array<{ lat: number; lng: number; recordedAt: string }> };
-    if (!Array.isArray(pings) || pings.length === 0) {
-      return res.status(400).json({ error: "pings array required" });
-    }
+    if (!Array.isArray(pings) || pings.length === 0) return res.status(400).json({ error: "pings array required" });
 
     let saved = 0;
     for (const p of pings) {
@@ -195,7 +214,6 @@ router.post("/attendance/location-ping/batch", requireAuth, async (req: AuthRequ
       });
       saved++;
     }
-
     res.json({ saved });
   } catch (err) {
     console.error("location-ping/batch error:", err);
@@ -207,26 +225,16 @@ router.post("/attendance/location-ping/batch", requireAuth, async (req: AuthRequ
 router.put("/attendance/:id/face-review", requireAuth, async (req: AuthRequest, res) => {
   try {
     const { role, id: reviewerId } = req.agent!;
-    if (role === "agent") {
-      return res.status(403).json({ error: "Forbidden" });
-    }
+    if (role === "agent") return res.status(403).json({ error: "Forbidden" });
 
     const logId = parseInt(req.params.id);
     const { status } = req.body as { status: "verified" | "flagged" | "pending" };
-
-    if (!["verified", "flagged", "pending"].includes(status)) {
-      return res.status(400).json({ error: "Invalid status" });
-    }
+    if (!["verified", "flagged", "pending"].includes(status)) return res.status(400).json({ error: "Invalid status" });
 
     const log = await AgentAttendance.findByPk(logId);
     if (!log) return res.status(404).json({ error: "Log not found" });
 
-    await log.update({
-      faceReviewStatus: status,
-      faceReviewedBy: reviewerId,
-      faceReviewedAt: new Date(),
-    });
-
+    await log.update({ faceReviewStatus: status, faceReviewedBy: reviewerId, faceReviewedAt: new Date() });
     res.json(log);
   } catch (err) {
     console.error("face-review error:", err);
@@ -234,7 +242,7 @@ router.put("/attendance/:id/face-review", requireAuth, async (req: AuthRequest, 
   }
 });
 
-// ── GET /attendance/monitor — live agent activity status ─────────────────────
+// ── GET /attendance/monitor ───────────────────────────────────────────────────
 router.get("/attendance/monitor", requireAuth, async (req: AuthRequest, res) => {
   try {
     const { role } = req.agent!;
@@ -243,36 +251,14 @@ router.get("/attendance/monitor", requireAuth, async (req: AuthRequest, res) => 
     const today = new Date().toISOString().split("T")[0];
     const now = new Date();
 
-    // All agents clocked in today (clock-out not yet done)
     const activeLogs = await AgentAttendance.findAll({
-      where: {
-        date: today,
-        clockIn: { [Op.ne]: null },
-        clockOut: null,
-      },
-      include: [
-        {
-          model: Agent,
-          as: "agent",
-          attributes: ["id", "name", "email", "avatar", "role", "lastActiveAt", "activeConversations", "resolvedToday"],
-        },
-      ],
+      where: { date: today, clockIn: { [Op.ne]: null }, clockOut: null },
+      include: [{ model: Agent, as: "agent", attributes: ["id", "name", "email", "avatar", "role", "lastActiveAt", "activeConversations", "resolvedToday"] }],
     });
 
-    // All agents with a clock-out today (completed shifts)
     const completedLogs = await AgentAttendance.findAll({
-      where: {
-        date: today,
-        clockIn: { [Op.ne]: null },
-        clockOut: { [Op.ne]: null },
-      },
-      include: [
-        {
-          model: Agent,
-          as: "agent",
-          attributes: ["id", "name", "email", "avatar", "role", "lastActiveAt", "activeConversations", "resolvedToday"],
-        },
-      ],
+      where: { date: today, clockIn: { [Op.ne]: null }, clockOut: { [Op.ne]: null } },
+      include: [{ model: Agent, as: "agent", attributes: ["id", "name", "email", "avatar", "role", "lastActiveAt", "activeConversations", "resolvedToday"] }],
     });
 
     function toStatus(lastActiveAt: Date | null): "active" | "away" | "idle" | "offline" {
@@ -282,6 +268,14 @@ router.get("/attendance/monitor", requireAuth, async (req: AuthRequest, res) => 
       if (idleMins < 15) return "away";
       if (idleMins < 60) return "idle";
       return "offline";
+    }
+
+    function shiftStatus(diff: number | null, grace: number | null) {
+      if (diff === null) return null;
+      const g = grace ?? 15;
+      if (diff < -5) return { status: "early", label: `Early ${Math.abs(diff)}m` };
+      if (diff <= g) return { status: "on-time", label: "On Time" };
+      return { status: "late", label: `Late ${diff}m` };
     }
 
     const clockedIn = activeLogs.map((log: any) => {
@@ -305,6 +299,8 @@ router.get("/attendance/monitor", requireAuth, async (req: AuthRequest, res) => 
         shiftDurationMinutes: log.clockIn
           ? Math.round((now.getTime() - new Date(log.clockIn).getTime()) / 60000)
           : 0,
+        shiftBenchmark: shiftStatus(log.clockInDiffMinutes, log.shiftGraceMinutes),
+        shiftStartExpected: log.shiftStartExpected,
       };
     });
 
@@ -322,6 +318,8 @@ router.get("/attendance/monitor", requireAuth, async (req: AuthRequest, res) => 
         durationMinutes: log.durationMinutes,
         resolvedToday: agent?.resolvedToday ?? 0,
         activityStatus: "clocked-out" as const,
+        shiftBenchmark: shiftStatus(log.clockInDiffMinutes, log.shiftGraceMinutes),
+        shiftStartExpected: log.shiftStartExpected,
       };
     });
 
@@ -351,20 +349,116 @@ router.get("/attendance/:id/pings", requireAuth, async (req: AuthRequest, res) =
 
     const log = await AgentAttendance.findByPk(logId);
     if (!log) return res.status(404).json({ error: "Not found" });
-
-    if (role === "agent" && log.agentId !== agentId) {
-      return res.status(403).json({ error: "Forbidden" });
-    }
+    if (role === "agent" && log.agentId !== agentId) return res.status(403).json({ error: "Forbidden" });
 
     const pings = await AgentAttendancePing.findAll({
       where: { attendanceId: logId },
       order: [["recordedAt", "ASC"]],
     });
-
     res.json(pings);
   } catch (err) {
     console.error("pings error:", err);
     res.status(500).json({ error: "Failed to fetch pings" });
+  }
+});
+
+// ── SHIFT SCHEDULE CRUD ───────────────────────────────────────────────────────
+
+// GET /attendance/shifts — list shifts (admin/supervisor see all, agent sees own)
+router.get("/attendance/shifts", requireAuth, async (req: AuthRequest, res) => {
+  try {
+    const { role, id: agentId } = req.agent!;
+    const isManager = role === "admin" || role === "supervisor";
+
+    const where: Record<string, unknown> = {};
+    if (!isManager) where.agentId = agentId;
+
+    const shifts = await AgentShift.findAll({
+      where,
+      include: [{ model: Agent, as: "agent", attributes: ["id", "name", "email", "role"] }],
+      order: [["agentId", "ASC"], ["shiftName", "ASC"]],
+    });
+    res.json(shifts);
+  } catch (err) {
+    console.error("shifts list error:", err);
+    res.status(500).json({ error: "Failed to fetch shifts" });
+  }
+});
+
+// POST /attendance/shifts — create shift (admin/supervisor only)
+router.post("/attendance/shifts", requireAuth, async (req: AuthRequest, res) => {
+  try {
+    const { role } = req.agent!;
+    if (role === "agent") return res.status(403).json({ error: "Forbidden" });
+
+    const { agentId, shiftName, startTime, endTime, daysOfWeek, graceMinutes } = req.body;
+    if (!agentId || !shiftName || !startTime || !endTime) {
+      return res.status(400).json({ error: "agentId, shiftName, startTime and endTime are required" });
+    }
+
+    const shift = await AgentShift.create({
+      agentId,
+      shiftName,
+      startTime,
+      endTime,
+      daysOfWeek: JSON.stringify(daysOfWeek ?? [1, 2, 3, 4, 5]),
+      graceMinutes: graceMinutes ?? 15,
+      isActive: true,
+    });
+
+    const withAgent = await AgentShift.findByPk(shift.id, {
+      include: [{ model: Agent, as: "agent", attributes: ["id", "name", "email", "role"] }],
+    });
+    res.status(201).json(withAgent);
+  } catch (err) {
+    console.error("shifts create error:", err);
+    res.status(500).json({ error: "Failed to create shift" });
+  }
+});
+
+// PUT /attendance/shifts/:id — update shift (admin/supervisor only)
+router.put("/attendance/shifts/:id", requireAuth, async (req: AuthRequest, res) => {
+  try {
+    const { role } = req.agent!;
+    if (role === "agent") return res.status(403).json({ error: "Forbidden" });
+
+    const shift = await AgentShift.findByPk(parseInt(req.params.id));
+    if (!shift) return res.status(404).json({ error: "Shift not found" });
+
+    const { shiftName, startTime, endTime, daysOfWeek, graceMinutes, isActive } = req.body;
+    await shift.update({
+      shiftName: shiftName ?? shift.shiftName,
+      startTime: startTime ?? shift.startTime,
+      endTime: endTime ?? shift.endTime,
+      daysOfWeek: daysOfWeek !== undefined ? JSON.stringify(daysOfWeek) : shift.daysOfWeek,
+      graceMinutes: graceMinutes ?? shift.graceMinutes,
+      isActive: isActive !== undefined ? isActive : shift.isActive,
+    });
+
+    const withAgent = await AgentShift.findByPk(shift.id, {
+      include: [{ model: Agent, as: "agent", attributes: ["id", "name", "email", "role"] }],
+    });
+    res.json(withAgent);
+  } catch (err) {
+    console.error("shifts update error:", err);
+    res.status(500).json({ error: "Failed to update shift" });
+  }
+});
+
+// DELETE /attendance/shifts/:id — delete shift (admin/supervisor only)
+router.delete("/attendance/shifts/:id", requireAuth, async (req: AuthRequest, res) => {
+  try {
+    const { role } = req.agent!;
+    if (role === "agent") return res.status(403).json({ error: "Forbidden" });
+
+    const shift = await AgentShift.findByPk(parseInt(req.params.id));
+    if (!shift) return res.status(404).json({ error: "Shift not found" });
+
+    await shift.destroy();
+    res.json({ deleted: true });
+  } catch (err) {
+    console.error("shifts delete error:", err);
+    res.status(500).json({ error: "Failed to delete shift" });
   }
 });
 

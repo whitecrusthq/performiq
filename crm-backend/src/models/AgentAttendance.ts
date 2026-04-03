@@ -20,6 +20,9 @@ export interface AgentAttendanceAttributes {
   faceReviewStatus: "pending" | "verified" | "flagged";
   faceReviewedBy: number | null;
   faceReviewedAt: Date | null;
+  shiftStartExpected: string | null;
+  shiftGraceMinutes: number | null;
+  clockInDiffMinutes: number | null;
   createdAt?: Date;
   updatedAt?: Date;
 }
@@ -43,6 +46,9 @@ export interface AgentAttendanceCreationAttributes
     | "faceReviewStatus"
     | "faceReviewedBy"
     | "faceReviewedAt"
+    | "shiftStartExpected"
+    | "shiftGraceMinutes"
+    | "clockInDiffMinutes"
   > {}
 
 export class AgentAttendance
@@ -67,6 +73,9 @@ export class AgentAttendance
   declare faceReviewStatus: "pending" | "verified" | "flagged";
   declare faceReviewedBy: number | null;
   declare faceReviewedAt: Date | null;
+  declare shiftStartExpected: string | null;
+  declare shiftGraceMinutes: number | null;
+  declare clockInDiffMinutes: number | null;
   declare readonly createdAt: Date;
   declare readonly updatedAt: Date;
 }
@@ -96,6 +105,9 @@ AgentAttendance.init(
     },
     faceReviewedBy: { type: DataTypes.INTEGER, allowNull: true, field: "face_reviewed_by" },
     faceReviewedAt: { type: DataTypes.DATE, allowNull: true, field: "face_reviewed_at" },
+    shiftStartExpected: { type: DataTypes.STRING(5), allowNull: true, field: "shift_start_expected" },
+    shiftGraceMinutes: { type: DataTypes.INTEGER, allowNull: true, field: "shift_grace_minutes" },
+    clockInDiffMinutes: { type: DataTypes.INTEGER, allowNull: true, field: "clock_in_diff_minutes" },
   },
   {
     sequelize,
