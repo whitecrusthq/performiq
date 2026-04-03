@@ -411,7 +411,11 @@ export default function Staff() {
   const [search, setSearch] = useState("");
   const [filterDept, setFilterDept] = useState("");
   const [filterRole, setFilterRole] = useState("");
-  const [selectedId, setSelectedId] = useState<number | null>(null);
+  const [selectedId, setSelectedId] = useState<number | null>(() => {
+    const p = new URLSearchParams(window.location.search);
+    const id = p.get("id");
+    return id ? Number(id) : null;
+  });
 
   const canEdit = user?.role === "admin" || user?.role === "super_admin" || user?.role === "manager";
 

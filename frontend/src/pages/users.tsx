@@ -1,8 +1,9 @@
 import { useState, useEffect, useMemo, useRef } from "react";
+import { useLocation } from "wouter";
 import { useListUsers, useCreateUser, useUpdateUser, useDeleteUser } from "../lib";
 import { useQueryClient } from "@tanstack/react-query";
 import { PageHeader, Card, Button, Input, Label } from "@/components/shared";
-import { Users as UsersIcon, Plus, Edit, Trash2, X, Search, ChevronDown, AlertCircle, Camera, UserCircle2 } from "lucide-react";
+import { Users as UsersIcon, Plus, Edit, Trash2, X, Search, ChevronDown, AlertCircle, Camera, UserCircle2, ExternalLink } from "lucide-react";
 import { BulkActionBar } from "@/components/bulk-action-bar";
 import { useAuth } from "@/hooks/use-auth";
 import { apiFetch } from "@/lib/utils";
@@ -18,6 +19,7 @@ const NEW_DEPT_SENTINEL = "__new__";
 export default function Users() {
   const { user } = useAuth();
   const { toast } = useToast();
+  const [, navigate] = useLocation();
   const queryClient = useQueryClient();
   const headers = { Authorization: `Bearer ${localStorage.getItem('token')}` };
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -284,6 +286,14 @@ export default function Users() {
                     >
                       <Camera className="w-3.5 h-3.5" />
                       <span className="hidden sm:inline">Photo</span>
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="gap-1.5"
+                      onClick={() => navigate(`/staff?id=${u.id}`)}
+                    >
+                      <ExternalLink className="w-3.5 h-3.5" /> View
                     </Button>
                     {(user?.role === 'super_admin' || !['admin','super_admin'].includes(u.role)) && (
                       <Button
