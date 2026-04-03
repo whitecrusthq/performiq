@@ -1,0 +1,31 @@
+kind = "web"
+previewPath = "/crm/"
+title = "HiraCRM"
+version = "1.0.0"
+id = "artifacts/hira-crm"
+router = "path"
+
+[[integratedSkills]]
+name = "react-vite"
+version = "1.0.0"
+
+[[services]]
+name = "web"
+paths = [ "/crm/" ]
+localPort = 3001
+
+[services.development]
+run = "pnpm --filter @workspace/hira-crm run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/hira-crm", "run", "build" ]
+publicDir = "artifacts/hira-crm/dist/public"
+serve = "static"
+
+[[services.production.rewrites]]
+from = "/*"
+to = "/index.html"
+
+[services.env]
+PORT = "3001"
+BASE_PATH = "/crm/"
