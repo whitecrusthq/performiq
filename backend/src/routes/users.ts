@@ -47,6 +47,7 @@ const formatUser = (u: typeof usersTable.$inferSelect, customRole?: typeof custo
   bankAccountName: u.bankAccountName,
   taxId: u.taxId,
   pensionId: u.pensionId,
+  hmo: u.hmo,
   notes: u.notes,
 });
 
@@ -191,7 +192,7 @@ router.put("/users/:id/hr-profile", requireAuth, async (req: AuthRequest, res) =
       address, city, stateProvince, country, postalCode,
       dateOfBirth, gender, nationalId, startDate,
       emergencyContactName, emergencyContactPhone, emergencyContactRelation,
-      bankName, bankBranch, bankAccountNumber, bankAccountName, taxId, pensionId, notes,
+      bankName, bankBranch, bankAccountNumber, bankAccountName, taxId, pensionId, hmo, notes,
     } = req.body;
 
     const [updated] = await db.update(usersTable).set({
@@ -213,6 +214,7 @@ router.put("/users/:id/hr-profile", requireAuth, async (req: AuthRequest, res) =
       bankAccountName: bankAccountName ?? null,
       taxId: taxId ?? null,
       pensionId: pensionId ?? null,
+      hmo: hmo ?? null,
       notes: notes ?? null,
     }).where(eq(usersTable.id, targetId)).returning();
 

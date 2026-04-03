@@ -211,6 +211,7 @@ function StaffPanel({ staffId, canEdit, onClose, onUpdated }: {
       bankAccountName: staff.bankAccountName ?? "",
       taxId: staff.taxId ?? "",
       pensionId: staff.pensionId ?? "",
+      hmo: staff.hmo ?? "",
       notes: staff.notes ?? "",
     });
     setEditing(true);
@@ -414,6 +415,7 @@ function StaffPanel({ staffId, canEdit, onClose, onUpdated }: {
                       <h4 className="text-sm font-semibold flex items-center gap-1.5"><Hash className="w-4 h-4" /> Tax & Pension Information</h4>
                       <Field label="Tax ID / TIN" value={d.taxId} editing={editing} placeholder="Tax identification number" onChange={set("taxId")} />
                       <Field label="Pension ID" value={d.pensionId} editing={editing} placeholder="Pension scheme ID" onChange={set("pensionId")} />
+                      <Field label="HMO (Health Insurance)" value={d.hmo} editing={editing} placeholder="e.g. AXA / Hygeia plan name or ID" onChange={set("hmo")} />
                     </div>
                   </div>
                 </div>
