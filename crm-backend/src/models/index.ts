@@ -12,6 +12,8 @@ export { AiSettings } from "./AiSettings.js";
 export type { AiProvider } from "./AiSettings.js";
 export { EmailSettings } from "./EmailSettings.js";
 export { AgentKpi } from "./AgentKpi.js";
+export { AgentAttendance } from "./AgentAttendance.js";
+export { AgentAttendancePing } from "./AgentAttendancePing.js";
 
 import { Agent } from "./Agent.js";
 import { Customer } from "./Customer.js";
@@ -43,3 +45,10 @@ Feedback.belongsTo(Agent, { foreignKey: "agentId", as: "agent" });
 import { AgentKpi } from "./AgentKpi.js";
 Agent.hasOne(AgentKpi, { foreignKey: "agentId", as: "kpiTargets" });
 AgentKpi.belongsTo(Agent, { foreignKey: "agentId", as: "agent" });
+
+import { AgentAttendance } from "./AgentAttendance.js";
+import { AgentAttendancePing } from "./AgentAttendancePing.js";
+Agent.hasMany(AgentAttendance, { foreignKey: "agentId", as: "attendanceLogs" });
+AgentAttendance.belongsTo(Agent, { foreignKey: "agentId", as: "agent" });
+AgentAttendance.hasMany(AgentAttendancePing, { foreignKey: "attendanceId", as: "pings" });
+AgentAttendancePing.belongsTo(AgentAttendance, { foreignKey: "attendanceId", as: "attendance" });

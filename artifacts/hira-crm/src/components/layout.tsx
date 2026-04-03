@@ -17,6 +17,7 @@ import {
   Brain,
   ScrollText,
   PackageSearch,
+  Clock,
 } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
@@ -38,6 +39,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
     { name: "Intelligence", href: "/insights", icon: Brain },
     { name: "Transcripts", href: "/transcripts", icon: ScrollText },
     { name: "Product Demand", href: "/product-demand", icon: PackageSearch },
+    { name: "Clock In", href: "/clock-in", icon: Clock },
   ];
 
   const adminNav = agent?.role === "admin"

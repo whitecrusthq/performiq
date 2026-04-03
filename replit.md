@@ -112,6 +112,29 @@ The Vite proxy rewrites `/crm/api/*` → `http://localhost:3002/api/*` at dev ti
 - AI Assistant page: 4-tab layout — AI Provider (provider selector + model/key/URL/temp), Knowledge Base, Test Chat, System Prompt
 - Inbox: ⚡ button to get AI suggestions (click to insert); "Bot Reply" button for auto-respond
 
+### Agent Clock-In (`/clock-in`)
+- **Sidebar**: "Clock In" nav item (Clock icon)
+- **Feature-parity with PerformIQ attendance.tsx** — same full feature set, adapted for CommsCRM
+- **Clock-In Card**: live elapsed timer (HH:MM:SS), clock-in/out times, GPS coordinates with Google Maps links; green/red status indicator
+- **Face Capture Modal**: webcam selfie with mirrored preview, guided face oval, skip option, retake button; captures base64 JPEG at clock-in and clock-out
+- **Face Review**: admins/supervisors can verify/flag each record — opens side-by-side photo comparison modal (reference avatar vs clock-in/out selfies) with verify/flag/reset actions
+- **GPS Location Pings**: auto-sends location every 30 minutes while clocked in; offline queue with `crm_attendance_ping_queue` localStorage key; batch-syncs on reconnect
+- **Offline support**: network status badge, queued ping counter, auto-flush on online event
+- **Logs table**: date, agent name (admin/supervisor view), clock in/out times, duration, face thumbnail cells with review badge, location cells with Google Maps links, expandable ping history
+- **Agent filter** (admin/supervisor only): filter logs by agent and/or date
+- **Backend models** (Sequelize `sync({ alter: true })`):
+  - `AgentAttendance` → `crm_agent_attendance` table
+  - `AgentAttendancePing` → `crm_agent_attendance_pings` table
+- **Routes** in `crm-backend/src/routes/crm-attendance.ts`:
+  - `GET /api/attendance/today` — current agent's today record
+  - `POST /api/attendance/clock-in` — clock in (lat/lng/faceImage/photoTime)
+  - `POST /api/attendance/clock-out` — clock out (lat/lng/faceImage/photoTime/notes)
+  - `GET /api/attendance` — list (agents see own; admin/supervisor see all + filter by agentId/date)
+  - `POST /api/attendance/location-ping` — single location ping
+  - `POST /api/attendance/location-ping/batch` — flush offline queue
+  - `PUT /api/attendance/:id/face-review` — set status: verified/flagged/pending (admin/supervisor only)
+  - `GET /api/attendance/:id/pings` — get pings for a log entry
+
 ### Product Demand Intelligence (`/product-demand`)
 - **Sidebar**: "Product Demand" nav item (PackageSearch icon) in Core nav section
 - **4 KPI cards**: Total Product Searches, Unique Products in Demand, Not Available Rate (%), Search-to-Order Rate (%)

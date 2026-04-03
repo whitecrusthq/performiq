@@ -20,6 +20,7 @@ import FollowUps from "@/pages/follow-ups";
 import Insights from "@/pages/insights";
 import Transcripts from "@/pages/transcripts";
 import ProductDemand from "@/pages/product-demand";
+import ClockIn from "@/pages/clock-in";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -68,6 +69,7 @@ function Router() {
       <Route path="/insights" component={() => <PrivateRoute component={Insights} />} />
       <Route path="/transcripts" component={() => <PrivateRoute component={Transcripts} />} />
       <Route path="/product-demand" component={() => <PrivateRoute component={ProductDemand} />} />
+      <Route path="/clock-in" component={() => <PrivateRoute component={ClockIn} />} />
       <Route component={NotFound} />
     </Switch>
   );
