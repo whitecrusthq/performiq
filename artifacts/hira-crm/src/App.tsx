@@ -12,6 +12,8 @@ import Customers from "@/pages/customers";
 import Campaigns from "@/pages/campaigns";
 import Analytics from "@/pages/analytics";
 import Settings from "@/pages/settings";
+import Channels from "@/pages/channels";
+import AiChat from "@/pages/ai-chat";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -40,6 +42,8 @@ function Router() {
       <Route path="/campaigns" component={() => <PrivateRoute component={Campaigns} />} />
       <Route path="/analytics" component={() => <PrivateRoute component={Analytics} />} />
       <Route path="/settings" component={() => <PrivateRoute component={Settings} />} />
+      <Route path="/channels" component={() => <PrivateRoute component={Channels} />} />
+      <Route path="/ai-chat" component={() => <PrivateRoute component={AiChat} />} />
       <Route component={NotFound} />
     </Switch>
   );

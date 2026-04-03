@@ -6,10 +6,15 @@ import campaignsRouter from "./campaigns.js";
 import agentsRouter from "./agents.js";
 import dashboardRouter from "./dashboard.js";
 import analyticsRouter from "./analytics.js";
+import channelsRouter from "./channels.js";
+import aiRouter from "./ai.js";
+import webhooksRouter from "./webhooks.js";
 
 const router = Router();
 
 router.get("/health", (_req, res) => res.json({ status: "ok", service: "hira-crm" }));
+
+router.use(webhooksRouter);
 
 router.use(authRouter);
 router.use(conversationsRouter);
@@ -18,5 +23,7 @@ router.use(campaignsRouter);
 router.use(agentsRouter);
 router.use(dashboardRouter);
 router.use(analyticsRouter);
+router.use(channelsRouter);
+router.use(aiRouter);
 
 export default router;

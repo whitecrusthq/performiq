@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { getChannelIcon, getChannelColor, getStatusColor } from "@/lib/mock-data";
 import { Input } from "@/components/ui/input";
@@ -6,11 +6,13 @@ import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Search, MoreVertical, Send, CheckCircle, Paperclip, Smile, UserPlus, MessageSquare, Loader2 } from "lucide-react";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { Search, MoreVertical, Send, CheckCircle, Paperclip, Smile, UserPlus, MessageSquare, Loader2, Sparkles, Bot, Zap, RefreshCw, ChevronUp } from "lucide-react";
 import { format } from "date-fns";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { apiGet, apiPost, apiPut } from "@/lib/api";
+import { useToast } from "@/hooks/use-toast";
 
 interface ApiAgent { id: number; name: string; avatar: string | null; email: string; role: string; }
 interface ApiCustomer { id: number; name: string; phone: string | null; channel: string; }
@@ -25,13 +27,19 @@ interface ApiConversation {
 }
 interface ApiMessage { id: number; sender: "customer" | "agent" | "bot"; content: string; isRead: boolean; createdAt: string; }
 interface ConversationListResponse { total: number; conversations: ApiConversation[]; }
+interface AiSuggestResponse { suggestions: string[]; }
 
 export default function Inbox() {
   const qc = useQueryClient();
+  const { toast } = useToast();
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [filter, setFilter] = useState<string>("all");
   const [searchQuery, setSearchQuery] = useState("");
   const [replyText, setReplyText] = useState("");
+  const [aiSuggestions, setAiSuggestions] = useState<string[]>([]);
+  const [showSuggestions, setShowSuggestions] = useState(false);
+  const [isLoadingSuggestions, setIsLoadingSuggestions] = useState(false);
+  const [isAutoResponding, setIsAutoResponding] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
 
   const convParams = new URLSearchParams();
@@ -42,7 +50,7 @@ export default function Inbox() {
   const { data: convData, isLoading: convLoading } = useQuery<ConversationListResponse>({
     queryKey: ["conversations", filter, searchQuery],
     queryFn: () => apiGet(`/conversations?${convParams.toString()}`),
-    refetchInterval: 15000,
+    refetchInterval: 8000,
   });
 
   const conversations = convData?.conversations ?? [];
@@ -51,7 +59,7 @@ export default function Inbox() {
     queryKey: ["messages", selectedId],
     queryFn: () => apiGet(`/conversations/${selectedId}/messages`),
     enabled: !!selectedId,
-    refetchInterval: 10000,
+    refetchInterval: 5000,
   });
 
   const { data: agentsList = [] } = useQuery<ApiAgent[]>({
@@ -70,6 +78,11 @@ export default function Inbox() {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }
   }, [messages]);
+
+  useEffect(() => {
+    setAiSuggestions([]);
+    setShowSuggestions(false);
+  }, [selectedId]);
 
   const sendMessageMutation = useMutation({
     mutationFn: ({ content }: { content: string }) =>
@@ -92,13 +105,49 @@ export default function Inbox() {
     if (!replyText.trim() || !selectedId) return;
     sendMessageMutation.mutate({ content: replyText });
     setReplyText("");
+    setShowSuggestions(false);
+  };
+
+  const handleGetSuggestions = async () => {
+    if (!selectedId) return;
+    setIsLoadingSuggestions(true);
+    setShowSuggestions(true);
+    try {
+      const data: AiSuggestResponse = await apiPost("/ai/suggest-reply", { conversationId: selectedId });
+      setAiSuggestions(data.suggestions || []);
+    } catch {
+      toast({ title: "AI unavailable", description: "Could not load suggestions.", variant: "destructive" });
+      setShowSuggestions(false);
+    } finally {
+      setIsLoadingSuggestions(false);
+    }
+  };
+
+  const handleAutoRespond = async () => {
+    if (!selectedId) return;
+    setIsAutoResponding(true);
+    try {
+      await apiPost("/ai/auto-respond", { conversationId: selectedId });
+      qc.invalidateQueries({ queryKey: ["messages", selectedId] });
+      qc.invalidateQueries({ queryKey: ["conversations"] });
+      toast({ title: "Bot responded", description: "AI sent an automated reply." });
+    } catch {
+      toast({ title: "Auto-respond failed", description: "AI could not respond.", variant: "destructive" });
+    } finally {
+      setIsAutoResponding(false);
+    }
+  };
+
+  const handleAcceptSuggestion = (s: string) => {
+    setReplyText(s);
+    setShowSuggestions(false);
   };
 
   const selectedConv = conversations.find((c) => c.id === selectedId) ?? null;
 
   return (
     <div className="flex h-full bg-background overflow-hidden">
-      {/* Left Panel: Conversation List */}
+      {/* Left Panel */}
       <div className="w-[380px] border-r flex flex-col bg-card shrink-0">
         <div className="p-4 border-b flex flex-col gap-4">
           <h2 className="font-semibold text-lg">Inbox</h2>
@@ -186,6 +235,7 @@ export default function Inbox() {
       {/* Right Panel: Chat Thread */}
       {selectedConv ? (
         <div className="flex-1 flex flex-col bg-background">
+          {/* Chat Header */}
           <div className="h-[72px] border-b flex items-center justify-between px-6 bg-card shrink-0">
             <div className="flex items-center gap-4">
               <Avatar className="h-10 w-10 border">
@@ -201,6 +251,23 @@ export default function Inbox() {
             </div>
 
             <div className="flex items-center gap-3">
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={handleAutoRespond}
+                    disabled={isAutoResponding}
+                    className="gap-2 text-blue-600 border-blue-200 hover:bg-blue-50 dark:text-blue-400 dark:border-blue-900 dark:hover:bg-blue-950"
+                    data-testid="button-auto-respond"
+                  >
+                    {isAutoResponding ? <Loader2 className="h-4 w-4 animate-spin" /> : <Bot className="h-4 w-4" />}
+                    Bot Reply
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>HiraBot auto-responds to customer</TooltipContent>
+              </Tooltip>
+
               <Select
                 value={selectedConv.assignedAgent?.id.toString() ?? "unassigned"}
                 onValueChange={(val) => updateConvMutation.mutate({ id: selectedConv.id, assignedAgentId: val === "unassigned" ? null : parseInt(val) })}
@@ -249,6 +316,7 @@ export default function Inbox() {
             </div>
           </div>
 
+          {/* Messages */}
           <div className="flex-1 overflow-y-auto p-6 space-y-6 bg-slate-50/50 dark:bg-slate-900/20" ref={scrollRef}>
             {messagesLoading && (
               <div className="flex justify-center py-8"><Loader2 className="h-5 w-5 animate-spin text-muted-foreground" /></div>
@@ -267,12 +335,12 @@ export default function Inbox() {
                       </div>
                     </div>
                   )}
-                  <div className={`flex flex-col ${isMe ? 'items-end' : 'items-start'}`}>
+                  <div className={`flex flex-col ${isMe || isBot ? 'items-end' : 'items-start'}`}>
                     <div className={`max-w-[70%] rounded-2xl px-4 py-2.5 ${
                       isMe
                         ? 'bg-primary text-primary-foreground rounded-tr-sm'
                         : isBot
-                          ? 'bg-blue-100 text-blue-900 dark:bg-blue-900/30 dark:text-blue-100 rounded-tl-sm'
+                          ? 'bg-blue-100 text-blue-900 dark:bg-blue-900/30 dark:text-blue-100 rounded-tr-sm'
                           : 'bg-card border shadow-sm text-card-foreground rounded-tl-sm'
                     }`}>
                       <div className="text-sm whitespace-pre-wrap">{msg.content}</div>
@@ -280,7 +348,7 @@ export default function Inbox() {
                     <div className="flex items-center gap-2 mt-1.5 px-1">
                       <span className="text-[11px] text-muted-foreground">{format(new Date(msg.createdAt), "HH:mm")}</span>
                       {isMe && <CheckCircle className="h-3 w-3 text-primary/60" />}
-                      {isBot && <span className="text-[11px] text-blue-600 dark:text-blue-400 font-medium">Automated</span>}
+                      {isBot && <span className="text-[11px] text-blue-600 dark:text-blue-400 font-medium flex items-center gap-1"><Bot className="h-3 w-3" /> HiraBot</span>}
                     </div>
                   </div>
                 </React.Fragment>
@@ -291,6 +359,46 @@ export default function Inbox() {
             )}
           </div>
 
+          {/* AI Suggestions Panel */}
+          {showSuggestions && (
+            <div className="border-t bg-gradient-to-r from-violet-50 to-blue-50 dark:from-violet-950/30 dark:to-blue-950/30 px-4 py-3">
+              <div className="flex items-center justify-between mb-2">
+                <div className="flex items-center gap-2 text-sm font-medium text-violet-700 dark:text-violet-400">
+                  <Sparkles className="h-4 w-4" />
+                  AI Reply Suggestions
+                </div>
+                <div className="flex gap-2">
+                  <Button variant="ghost" size="sm" onClick={handleGetSuggestions} disabled={isLoadingSuggestions} className="h-6 px-2 text-xs">
+                    <RefreshCw className={`h-3 w-3 mr-1 ${isLoadingSuggestions ? 'animate-spin' : ''}`} />
+                    Refresh
+                  </Button>
+                  <Button variant="ghost" size="sm" onClick={() => setShowSuggestions(false)} className="h-6 px-2 text-xs">
+                    <ChevronUp className="h-3 w-3" />
+                  </Button>
+                </div>
+              </div>
+              {isLoadingSuggestions ? (
+                <div className="flex items-center gap-2 text-sm text-muted-foreground py-2">
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  Generating suggestions...
+                </div>
+              ) : (
+                <div className="space-y-1.5">
+                  {aiSuggestions.map((s, i) => (
+                    <button
+                      key={i}
+                      onClick={() => handleAcceptSuggestion(s)}
+                      className="w-full text-left text-sm px-3 py-2 rounded-lg bg-white/70 dark:bg-white/10 hover:bg-white dark:hover:bg-white/20 border border-violet-200/60 dark:border-violet-800/60 transition-colors text-foreground"
+                    >
+                      {s}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Reply Box */}
           <div className="p-4 bg-card border-t shrink-0">
             <div className="flex items-end gap-2 bg-muted/30 rounded-xl border p-2 focus-within:ring-1 focus-within:ring-ring transition-all">
               <div className="flex gap-1 pb-1">
@@ -307,20 +415,41 @@ export default function Inbox() {
                 onKeyDown={(e) => {
                   if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(); }
                 }}
-                placeholder="Type a message... (Press Enter to send)"
+                placeholder="Type a message... (Enter to send)"
                 className="flex-1 bg-transparent border-none resize-none outline-none max-h-32 min-h-[40px] py-2 px-2 text-sm"
                 rows={1}
                 data-testid="textarea-reply"
               />
-              <Button
-                onClick={handleSend}
-                disabled={!replyText.trim() || sendMessageMutation.isPending}
-                className="h-10 px-4 rounded-lg bg-primary hover:bg-primary/90"
-                data-testid="button-send-reply"
-              >
-                {sendMessageMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <><Send className="h-4 w-4 mr-2" />Send</>}
-              </Button>
+              <div className="flex gap-2 pb-1">
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={handleGetSuggestions}
+                      disabled={isLoadingSuggestions}
+                      className="h-9 w-9 rounded-lg text-violet-600 hover:bg-violet-50 dark:hover:bg-violet-950"
+                      data-testid="button-ai-suggest"
+                    >
+                      {isLoadingSuggestions ? <Loader2 className="h-4 w-4 animate-spin" /> : <Zap className="h-4 w-4" />}
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>Get AI reply suggestions</TooltipContent>
+                </Tooltip>
+
+                <Button
+                  onClick={handleSend}
+                  disabled={!replyText.trim() || sendMessageMutation.isPending}
+                  className="h-9 px-4 rounded-lg bg-primary hover:bg-primary/90"
+                  data-testid="button-send-reply"
+                >
+                  {sendMessageMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <><Send className="h-4 w-4 mr-2" />Send</>}
+                </Button>
+              </div>
             </div>
+            <p className="text-[11px] text-muted-foreground mt-1.5 px-2">
+              Press <kbd className="text-[10px] px-1 py-0.5 rounded border bg-muted">⚡</kbd> for AI suggestions · <kbd className="text-[10px] px-1 py-0.5 rounded border bg-muted">Bot Reply</kbd> to auto-respond
+            </p>
           </div>
         </div>
       ) : (

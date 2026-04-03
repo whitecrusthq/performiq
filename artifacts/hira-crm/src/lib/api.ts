@@ -1,5 +1,9 @@
 const BASE_URL = `${import.meta.env.BASE_URL.replace(/\/$/, "")}/api`;
 
+export function getBaseUrl(): string {
+  return BASE_URL;
+}
+
 function getToken(): string | null {
   return localStorage.getItem("crm_token");
 }

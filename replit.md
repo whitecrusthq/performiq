@@ -89,6 +89,33 @@ crm-backend/src/
 ### API Routing
 The Vite proxy rewrites `/crm/api/*` → `http://localhost:3002/api/*` at dev time. All API calls in the frontend use `${BASE_URL}api/...` (e.g. `/crm/api/auth/login`).
 
+### Pages / Navigation
+- **Dashboard** — overview metrics
+- **Inbox** — unified multi-channel inbox with AI assist + bot reply
+- **Customers** — customer list
+- **Campaigns** — broadcast campaigns
+- **Analytics** — charts
+- **AI Chat** — test HiraBot AI with custom system prompt
+- **Channels** — connect WhatsApp / Facebook / Instagram; simulate incoming messages
+- **Settings** — agent/profile settings
+
+### AI Features
+- `POST /api/ai/suggest-reply` — generates 3 AI reply suggestions for the active conversation (Claude Haiku)
+- `POST /api/ai/auto-respond` — HiraBot auto-replies to the customer as "bot" sender (Claude Haiku)
+- `POST /api/ai/chat` — SSE streaming AI chat for testing (Claude Haiku). Uses `AI_INTEGRATIONS_ANTHROPIC_BASE_URL` + `AI_INTEGRATIONS_ANTHROPIC_API_KEY` (auto-provisioned by Replit AI Integrations)
+- Inbox: ⚡ button to get AI suggestions (click to insert); "Bot Reply" button for auto-respond
+
+### Channel Integrations
+- `crm_channels` table stores credentials (accessToken, phoneNumberId, pageAccessToken, etc.)
+- `GET/POST/PUT/DELETE /api/channels` — CRUD for channel config
+- Webhook endpoints (real Meta webhooks):
+  - `GET/POST /api/webhooks/whatsapp` — WhatsApp Business API (verifies with `webhookVerifyToken`)
+  - `GET/POST /api/webhooks/facebook` — Facebook Messenger
+  - `GET/POST /api/webhooks/instagram` — Instagram Direct
+- `POST /api/webhooks/simulate` — simulate an incoming message (creates customer + conversation + message in DB)
+- When credentials are saved, `isConnected` is auto-set based on required fields being present
+- Setup flow: Channels page → Add channel → Configure API Keys → copy Webhook URL + Verify Token into Meta Developer App
+
 ### CRM Demo Accounts (password: `password`)
 - `sarah@hiracrm.com` — admin
 - `james@hiracrm.com` — agent
