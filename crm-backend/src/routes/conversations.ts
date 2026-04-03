@@ -48,6 +48,15 @@ router.get("/conversations", requireAuth, async (req: AuthRequest, res) => {
           attributes: ["id", "name"],
           required: false,
         },
+        {
+          model: Message,
+          as: "messages",
+          attributes: ["content", "sender", "createdAt"],
+          order: [["createdAt", "DESC"]],
+          limit: 1,
+          required: false,
+          separate: true,
+        },
       ],
       order: [["lastMessageAt", "DESC"], ["createdAt", "DESC"]],
       limit: parseInt(limit),
@@ -57,11 +66,15 @@ router.get("/conversations", requireAuth, async (req: AuthRequest, res) => {
     const conversations = rows.map((conv) => {
       const lockExpired = isLockExpired(conv.lockedAt);
       const lockedByAgent = (conv as unknown as { lockedByAgent?: { id: number; name: string } }).lockedByAgent;
+      const messages = (conv as unknown as { messages?: Array<{ content: string; sender: string; createdAt: string }> }).messages ?? [];
+      const lastMessage = messages.length > 0 ? { content: messages[0].content, sender: messages[0].sender } : null;
       return {
         ...conv.toJSON(),
         isLocked: !lockExpired && !!conv.lockedByAgentId,
         lockedByAgent: !lockExpired ? lockedByAgent : null,
         lockedByAgentId: !lockExpired ? conv.lockedByAgentId : null,
+        lastMessage,
+        messages: undefined,
       };
     });
 
