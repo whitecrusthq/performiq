@@ -7,6 +7,7 @@ export { Channel } from "./Channel.js";
 export { ClosedConversation } from "./ClosedConversation.js";
 export { ClosedMessage } from "./ClosedMessage.js";
 export { Feedback } from "./Feedback.js";
+export { KnowledgeDoc } from "./KnowledgeDoc.js";
 
 import { Agent } from "./Agent.js";
 import { Customer } from "./Customer.js";

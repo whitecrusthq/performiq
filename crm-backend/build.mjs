@@ -33,6 +33,7 @@ async function buildAll() {
       "canvas",
       "bufferutil",
       "utf-8-validate",
+      "pdf-parse",
     ],
     sourcemap: "linked",
     plugins: [esbuildPluginPino({ transports: ["pino-pretty"] })],

@@ -39,7 +39,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
     : [];
 
   const toolsNav = [
-    { name: "AI Chat", href: "/ai-chat", icon: Bot },
+    { name: "AI Assistant", href: "/ai-chat", icon: Bot },
     { name: "Channels", href: "/channels", icon: Plug },
     { name: "Settings", href: "/settings", icon: Settings },
   ];
