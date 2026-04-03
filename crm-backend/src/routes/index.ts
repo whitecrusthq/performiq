@@ -9,6 +9,7 @@ import analyticsRouter from "./analytics.js";
 import channelsRouter from "./channels.js";
 import aiRouter from "./ai.js";
 import webhooksRouter from "./webhooks.js";
+import closedRouter from "./closed.js";
 
 const router = Router();
 
@@ -25,5 +26,6 @@ router.use(dashboardRouter);
 router.use(analyticsRouter);
 router.use(channelsRouter);
 router.use(aiRouter);
+router.use(closedRouter);
 
 export default router;

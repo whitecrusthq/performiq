@@ -1,13 +1,21 @@
 import { Router } from "express";
 import { Op } from "sequelize";
-import { Conversation, Customer, Agent, Message } from "../models/index.js";
+import { Conversation, Customer, Agent, Message, ClosedConversation, ClosedMessage } from "../models/index.js";
 import { requireAuth, AuthRequest } from "../middlewares/auth.js";
 
 const router = Router();
 
+const LOCK_TIMEOUT_MINUTES = 10;
+
+function isLockExpired(lockedAt: Date | null): boolean {
+  if (!lockedAt) return true;
+  const expiresAt = new Date(lockedAt.getTime() + LOCK_TIMEOUT_MINUTES * 60 * 1000);
+  return new Date() > expiresAt;
+}
+
 router.get("/conversations", requireAuth, async (req: AuthRequest, res) => {
   try {
-    const { status, channel, search, page = "1", limit = "30" } = req.query as Record<string, string>;
+    const { status, channel, search, page = "1", limit = "50" } = req.query as Record<string, string>;
     const offset = (parseInt(page) - 1) * parseInt(limit);
 
     const where: Record<string, unknown> = {};
@@ -34,13 +42,30 @@ router.get("/conversations", requireAuth, async (req: AuthRequest, res) => {
           attributes: ["id", "name", "avatar"],
           required: false,
         },
+        {
+          model: Agent,
+          as: "lockedByAgent",
+          attributes: ["id", "name"],
+          required: false,
+        },
       ],
       order: [["lastMessageAt", "DESC"], ["createdAt", "DESC"]],
       limit: parseInt(limit),
       offset,
     });
 
-    res.json({ total: count, page: parseInt(page), conversations: rows });
+    const conversations = rows.map((conv) => {
+      const lockExpired = isLockExpired(conv.lockedAt);
+      const lockedByAgent = (conv as unknown as { lockedByAgent?: { id: number; name: string } }).lockedByAgent;
+      return {
+        ...conv.toJSON(),
+        isLocked: !lockExpired && !!conv.lockedByAgentId,
+        lockedByAgent: !lockExpired ? lockedByAgent : null,
+        lockedByAgentId: !lockExpired ? conv.lockedByAgentId : null,
+      };
+    });
+
+    res.json({ total: count, page: parseInt(page), conversations });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "Internal server error" });
@@ -53,6 +78,7 @@ router.get("/conversations/:id", requireAuth, async (req: AuthRequest, res) => {
       include: [
         { model: Customer, as: "customer" },
         { model: Agent, as: "assignedAgent", attributes: ["id", "name", "avatar", "email"], required: false },
+        { model: Agent, as: "lockedByAgent", attributes: ["id", "name"], required: false },
         {
           model: Message,
           as: "messages",
@@ -71,19 +97,145 @@ router.get("/conversations/:id", requireAuth, async (req: AuthRequest, res) => {
   }
 });
 
-router.put("/conversations/:id", requireAuth, async (req: AuthRequest, res) => {
+router.post("/conversations/:id/claim", requireAuth, async (req: AuthRequest, res) => {
   try {
+    const agentId = req.agent!.id;
+    const conversation = await Conversation.findByPk(req.params.id, {
+      include: [{ model: Agent, as: "lockedByAgent", attributes: ["id", "name"], required: false }],
+    });
+
+    if (!conversation) {
+      res.status(404).json({ error: "Conversation not found" });
+      return;
+    }
+
+    const lockExpired = isLockExpired(conversation.lockedAt);
+    const isLockedByOther = !lockExpired && conversation.lockedByAgentId && conversation.lockedByAgentId !== agentId;
+
+    if (isLockedByOther) {
+      const lockedByAgent = (conversation as unknown as { lockedByAgent?: { id: number; name: string } }).lockedByAgent;
+      res.status(409).json({
+        error: "conversation_locked",
+        message: `This conversation is currently being handled by ${lockedByAgent?.name ?? "another agent"}.`,
+        lockedBy: lockedByAgent,
+      });
+      return;
+    }
+
+    conversation.lockedByAgentId = agentId;
+    conversation.lockedAt = new Date();
+    await conversation.save();
+
+    res.json({ success: true, lockedByAgentId: agentId });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+router.post("/conversations/:id/force-claim", requireAuth, async (req: AuthRequest, res) => {
+  try {
+    const agentId = req.agent!.id;
     const conversation = await Conversation.findByPk(req.params.id);
     if (!conversation) {
       res.status(404).json({ error: "Conversation not found" });
       return;
     }
+    conversation.lockedByAgentId = agentId;
+    conversation.lockedAt = new Date();
+    await conversation.save();
+    res.json({ success: true, lockedByAgentId: agentId });
+  } catch (err) {
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+router.post("/conversations/:id/release", requireAuth, async (req: AuthRequest, res) => {
+  try {
+    const agentId = req.agent!.id;
+    const conversation = await Conversation.findByPk(req.params.id);
+    if (!conversation) {
+      res.status(404).json({ error: "Conversation not found" });
+      return;
+    }
+    if (conversation.lockedByAgentId === agentId) {
+      conversation.lockedByAgentId = null;
+      conversation.lockedAt = null;
+      await conversation.save();
+    }
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+router.put("/conversations/:id", requireAuth, async (req: AuthRequest, res) => {
+  try {
+    const agentId = req.agent!.id;
+    const conversation = await Conversation.findByPk(req.params.id, {
+      include: [
+        { model: Customer, as: "customer", attributes: ["id", "name", "phone"] },
+        { model: Agent, as: "assignedAgent", attributes: ["id", "name"], required: false },
+        { model: Message, as: "messages", order: [["createdAt", "ASC"]] },
+      ],
+    });
+
+    if (!conversation) {
+      res.status(404).json({ error: "Conversation not found" });
+      return;
+    }
+
     const { status, assignedAgentId } = req.body;
-    if (status) conversation.status = status;
+
+    if (status === "closed") {
+      const customer = (conversation as unknown as { customer: { id: number; name: string; phone: string | null } }).customer;
+      const assignedAgent = (conversation as unknown as { assignedAgent?: { id: number; name: string } | null }).assignedAgent;
+      const messages = (conversation as unknown as { messages: Array<{ sender: string; content: string; isRead: boolean; createdAt: Date }> }).messages ?? [];
+
+      let closingAgentName: string | null = null;
+      const closingAgent = await Agent.findByPk(agentId, { attributes: ["name"] });
+      if (closingAgent) closingAgentName = closingAgent.name;
+
+      const closed = await ClosedConversation.create({
+        originalId: conversation.id,
+        customerId: customer.id,
+        customerName: customer.name,
+        customerPhone: customer.phone,
+        assignedAgentId: conversation.assignedAgentId,
+        assignedAgentName: assignedAgent?.name ?? null,
+        closedByAgentId: agentId,
+        closedByAgentName: closingAgentName,
+        channel: conversation.channel,
+        messageCount: messages.length,
+        closedAt: new Date(),
+        originalCreatedAt: conversation.createdAt,
+      });
+
+      if (messages.length > 0) {
+        await ClosedMessage.bulkCreate(
+          messages.map((m) => ({
+            closedConversationId: closed.id,
+            sender: m.sender as "customer" | "agent" | "bot",
+            content: m.content,
+            isRead: m.isRead,
+            originalCreatedAt: m.createdAt,
+          }))
+        );
+      }
+
+      await Message.destroy({ where: { conversationId: conversation.id } });
+      await conversation.destroy();
+
+      res.json({ archived: true, closedConversationId: closed.id });
+      return;
+    }
+
+    if (status) conversation.status = status as "open" | "pending" | "resolved";
     if (assignedAgentId !== undefined) conversation.assignedAgentId = assignedAgentId;
     await conversation.save();
     res.json(conversation);
   } catch (err) {
+    console.error(err);
     res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -120,7 +272,7 @@ router.post("/conversations/:id/messages", requireAuth, async (req: AuthRequest,
     });
 
     await Conversation.update(
-      { lastMessageAt: new Date(), status: sender === "agent" ? "pending" : "open" },
+      { lastMessageAt: new Date(), status: sender === "agent" ? "pending" : "open", lockedAt: new Date() },
       { where: { id: req.params.id } }
     );
 

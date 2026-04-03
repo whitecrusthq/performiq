@@ -4,12 +4,16 @@ export { Conversation } from "./Conversation.js";
 export { Message } from "./Message.js";
 export { Campaign } from "./Campaign.js";
 export { Channel } from "./Channel.js";
+export { ClosedConversation } from "./ClosedConversation.js";
+export { ClosedMessage } from "./ClosedMessage.js";
 
 import { Agent } from "./Agent.js";
 import { Customer } from "./Customer.js";
 import { Conversation } from "./Conversation.js";
 import { Message } from "./Message.js";
 import { Channel } from "./Channel.js";
+import { ClosedConversation } from "./ClosedConversation.js";
+import { ClosedMessage } from "./ClosedMessage.js";
 
 Customer.hasMany(Conversation, { foreignKey: "customerId", as: "conversations" });
 Conversation.belongsTo(Customer, { foreignKey: "customerId", as: "customer" });
@@ -17,5 +21,11 @@ Conversation.belongsTo(Customer, { foreignKey: "customerId", as: "customer" });
 Agent.hasMany(Conversation, { foreignKey: "assignedAgentId", as: "conversations" });
 Conversation.belongsTo(Agent, { foreignKey: "assignedAgentId", as: "assignedAgent" });
 
+Agent.hasMany(Conversation, { foreignKey: "lockedByAgentId", as: "lockedConversations" });
+Conversation.belongsTo(Agent, { foreignKey: "lockedByAgentId", as: "lockedByAgent" });
+
 Conversation.hasMany(Message, { foreignKey: "conversationId", as: "messages" });
 Message.belongsTo(Conversation, { foreignKey: "conversationId", as: "conversation" });
+
+ClosedConversation.hasMany(ClosedMessage, { foreignKey: "closedConversationId", as: "messages" });
+ClosedMessage.belongsTo(ClosedConversation, { foreignKey: "closedConversationId", as: "closedConversation" });

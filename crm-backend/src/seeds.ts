@@ -43,7 +43,7 @@ export async function seedDatabase(): Promise<void> {
     { customerId: customers[4].id, assignedAgentId: agents[1].id, channel: "whatsapp", status: "open", unreadCount: 1, lastMessageAt: h(3) },
     { customerId: customers[5].id, assignedAgentId: agents[3].id, channel: "facebook", status: "pending", unreadCount: 0, lastMessageAt: h(4) },
     { customerId: customers[6].id, assignedAgentId: null, channel: "instagram", status: "open", unreadCount: 4, lastMessageAt: h(0.25) },
-    { customerId: customers[7].id, assignedAgentId: agents[4].id, channel: "whatsapp", status: "closed", unreadCount: 0, lastMessageAt: h(24) },
+    { customerId: customers[7].id, assignedAgentId: agents[4].id, channel: "whatsapp", status: "resolved", unreadCount: 0, lastMessageAt: h(24) },
   ]);
 
   await Message.bulkCreate([

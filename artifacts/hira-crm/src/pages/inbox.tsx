@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useCallback } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { getChannelIcon, getChannelColor, getStatusColor } from "@/lib/mock-data";
 import { Input } from "@/components/ui/input";
@@ -7,32 +7,70 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import { Search, MoreVertical, Send, CheckCircle, Paperclip, Smile, UserPlus, MessageSquare, Loader2, Sparkles, Bot, Zap, RefreshCw, ChevronUp } from "lucide-react";
-import { format } from "date-fns";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import {
+  Search, MoreVertical, Send, CheckCircle, Paperclip, Smile,
+  UserPlus, MessageSquare, Loader2, Sparkles, Bot, Zap, RefreshCw,
+  ChevronUp, Lock, AlertTriangle, XCircle, Archive, Clock
+} from "lucide-react";
+import { format, formatDistanceToNow } from "date-fns";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import {
+  DropdownMenu, DropdownMenuContent, DropdownMenuItem,
+  DropdownMenuTrigger, DropdownMenuSeparator
+} from "@/components/ui/dropdown-menu";
+import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel,
+  AlertDialogContent, AlertDialogDescription, AlertDialogFooter,
+  AlertDialogHeader, AlertDialogTitle
+} from "@/components/ui/alert-dialog";
 import { apiGet, apiPost, apiPut } from "@/lib/api";
 import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/lib/auth-context";
 
 interface ApiAgent { id: number; name: string; avatar: string | null; email: string; role: string; }
 interface ApiCustomer { id: number; name: string; phone: string | null; channel: string; }
 interface ApiConversation {
   id: number;
   channel: "whatsapp" | "facebook" | "instagram";
-  status: "open" | "pending" | "resolved" | "closed";
+  status: "open" | "pending" | "resolved";
   unreadCount: number;
   lastMessageAt: string | null;
   customer: ApiCustomer;
   assignedAgent: ApiAgent | null;
+  isLocked: boolean;
+  lockedByAgent: { id: number; name: string } | null;
+  lockedByAgentId: number | null;
 }
 interface ApiMessage { id: number; sender: "customer" | "agent" | "bot"; content: string; isRead: boolean; createdAt: string; }
 interface ConversationListResponse { total: number; conversations: ApiConversation[]; }
 interface AiSuggestResponse { suggestions: string[]; }
 
+interface ClosedConversation {
+  id: number;
+  originalId: number;
+  customerName: string;
+  customerPhone: string | null;
+  channel: "whatsapp" | "facebook" | "instagram";
+  assignedAgentName: string | null;
+  closedByAgentName: string | null;
+  messageCount: number;
+  closedAt: string;
+  originalCreatedAt: string;
+}
+interface ClosedConversationListResponse { total: number; conversations: ClosedConversation[]; }
+interface ClosedMessage { id: number; sender: "customer" | "agent" | "bot"; content: string; originalCreatedAt: string; }
+
+type InboxTab = "active" | "closed";
+
 export default function Inbox() {
   const qc = useQueryClient();
   const { toast } = useToast();
+  const { agent } = useAuth();
+  const [tab, setTab] = useState<InboxTab>("active");
   const [selectedId, setSelectedId] = useState<number | null>(null);
+  const [selectedClosedId, setSelectedClosedId] = useState<number | null>(null);
   const [filter, setFilter] = useState<string>("all");
   const [searchQuery, setSearchQuery] = useState("");
   const [replyText, setReplyText] = useState("");
@@ -40,6 +78,8 @@ export default function Inbox() {
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [isLoadingSuggestions, setIsLoadingSuggestions] = useState(false);
   const [isAutoResponding, setIsAutoResponding] = useState(false);
+  const [lockConflict, setLockConflict] = useState<{ name: string } | null>(null);
+  const [showCloseDialog, setShowCloseDialog] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
 
   const convParams = new URLSearchParams();
@@ -50,16 +90,35 @@ export default function Inbox() {
   const { data: convData, isLoading: convLoading } = useQuery<ConversationListResponse>({
     queryKey: ["conversations", filter, searchQuery],
     queryFn: () => apiGet(`/conversations?${convParams.toString()}`),
-    refetchInterval: 8000,
+    refetchInterval: 5000,
+    enabled: tab === "active",
+  });
+
+  const closedParams = new URLSearchParams();
+  if (searchQuery) closedParams.set("search", searchQuery);
+  closedParams.set("limit", "50");
+
+  const { data: closedData, isLoading: closedLoading } = useQuery<ClosedConversationListResponse>({
+    queryKey: ["closed-conversations", searchQuery],
+    queryFn: () => apiGet(`/closed-conversations?${closedParams.toString()}`),
+    refetchInterval: 15000,
+    enabled: tab === "closed",
   });
 
   const conversations = convData?.conversations ?? [];
+  const closedConversations = closedData?.conversations ?? [];
 
   const { data: messages = [], isLoading: messagesLoading } = useQuery<ApiMessage[]>({
     queryKey: ["messages", selectedId],
     queryFn: () => apiGet(`/conversations/${selectedId}/messages`),
     enabled: !!selectedId,
-    refetchInterval: 5000,
+    refetchInterval: 4000,
+  });
+
+  const { data: closedMessages = [], isLoading: closedMessagesLoading } = useQuery<ClosedMessage[]>({
+    queryKey: ["closed-messages", selectedClosedId],
+    queryFn: () => apiGet(`/closed-conversations/${selectedClosedId}/messages`),
+    enabled: !!selectedClosedId,
   });
 
   const { data: agentsList = [] } = useQuery<ApiAgent[]>({
@@ -67,22 +126,59 @@ export default function Inbox() {
     queryFn: () => apiGet("/agents"),
   });
 
-  useEffect(() => {
-    if (conversations.length > 0 && !selectedId) {
-      setSelectedId(conversations[0].id);
+  const claimConversation = useCallback(async (id: number, force = false) => {
+    try {
+      const endpoint = force ? `/conversations/${id}/force-claim` : `/conversations/${id}/claim`;
+      await apiPost(endpoint, {});
+    } catch (err: unknown) {
+      const error = err as { message?: string };
+      if (!force && error?.message?.includes("conversation_locked")) {
+        const match = error.message.match(/by (.+)\./);
+        const name = match?.[1] ?? "another agent";
+        setLockConflict({ name });
+        return false;
+      }
     }
-  }, [conversations, selectedId]);
+    return true;
+  }, []);
+
+  const releaseConversation = useCallback(async (id: number) => {
+    try {
+      await apiPost(`/conversations/${id}/release`, {});
+    } catch {}
+  }, []);
+
+  useEffect(() => {
+    if (conversations.length > 0 && !selectedId && tab === "active") {
+      const firstUnlocked = conversations.find((c) => !c.isLocked || c.lockedByAgentId === agent?.id);
+      setSelectedId(firstUnlocked?.id ?? conversations[0].id);
+    }
+  }, [conversations, selectedId, tab, agent?.id]);
+
+  useEffect(() => {
+    if (closedConversations.length > 0 && !selectedClosedId && tab === "closed") {
+      setSelectedClosedId(closedConversations[0].id);
+    }
+  }, [closedConversations, selectedClosedId, tab]);
 
   useEffect(() => {
     if (scrollRef.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }
-  }, [messages]);
+  }, [messages, closedMessages]);
 
   useEffect(() => {
     setAiSuggestions([]);
     setShowSuggestions(false);
   }, [selectedId]);
+
+  useEffect(() => {
+    if (!selectedId) return;
+    claimConversation(selectedId);
+    return () => {
+      releaseConversation(selectedId);
+    };
+  }, [selectedId, claimConversation, releaseConversation]);
 
   const sendMessageMutation = useMutation({
     mutationFn: ({ content }: { content: string }) =>
@@ -96,8 +192,14 @@ export default function Inbox() {
   const updateConvMutation = useMutation({
     mutationFn: ({ id, ...data }: { id: number; status?: string; assignedAgentId?: number | null }) =>
       apiPut(`/conversations/${id}`, data),
-    onSuccess: () => {
+    onSuccess: (result: unknown) => {
+      const r = result as { archived?: boolean };
+      if (r?.archived) {
+        setSelectedId(null);
+        toast({ title: "Conversation closed", description: "Moved to the Closed tab." });
+      }
       qc.invalidateQueries({ queryKey: ["conversations"] });
+      qc.invalidateQueries({ queryKey: ["closed-conversations"] });
     },
   });
 
@@ -130,111 +232,231 @@ export default function Inbox() {
       await apiPost("/ai/auto-respond", { conversationId: selectedId });
       qc.invalidateQueries({ queryKey: ["messages", selectedId] });
       qc.invalidateQueries({ queryKey: ["conversations"] });
-      toast({ title: "Bot responded", description: "AI sent an automated reply." });
+      toast({ title: "CommsBot responded", description: "AI sent an automated reply." });
     } catch {
-      toast({ title: "Auto-respond failed", description: "AI could not respond.", variant: "destructive" });
+      toast({ title: "Auto-respond failed", variant: "destructive" });
     } finally {
       setIsAutoResponding(false);
     }
   };
 
-  const handleAcceptSuggestion = (s: string) => {
-    setReplyText(s);
-    setShowSuggestions(false);
+  const handleCloseConversation = () => {
+    if (!selectedId) return;
+    updateConvMutation.mutate({ id: selectedId, status: "closed" });
+    setShowCloseDialog(false);
+  };
+
+  const handleSelectConversation = async (id: number) => {
+    if (selectedId === id) return;
+    if (selectedId) await releaseConversation(selectedId);
+    const claimed = await claimConversation(id);
+    if (claimed !== false) {
+      setSelectedId(id);
+      setReplyText("");
+    }
+  };
+
+  const handleForceClaim = async () => {
+    if (!lockConflict || !selectedId) return;
+    setLockConflict(null);
+    await claimConversation(selectedId, true);
+    qc.invalidateQueries({ queryKey: ["conversations"] });
   };
 
   const selectedConv = conversations.find((c) => c.id === selectedId) ?? null;
+  const selectedClosed = closedConversations.find((c) => c.id === selectedClosedId) ?? null;
+  const isLockedByOther = selectedConv?.isLocked && selectedConv.lockedByAgentId !== agent?.id;
 
   return (
     <div className="flex h-full bg-background overflow-hidden">
       {/* Left Panel */}
       <div className="w-[380px] border-r flex flex-col bg-card shrink-0">
-        <div className="p-4 border-b flex flex-col gap-4">
-          <h2 className="font-semibold text-lg">Inbox</h2>
+        <div className="p-4 border-b flex flex-col gap-3">
+          <div className="flex items-center justify-between">
+            <h2 className="font-semibold text-lg">Inbox</h2>
+            <Tabs value={tab} onValueChange={(v) => { setTab(v as InboxTab); setSelectedId(null); setSelectedClosedId(null); }}>
+              <TabsList className="h-7">
+                <TabsTrigger value="active" className="text-xs h-6 px-2">Active</TabsTrigger>
+                <TabsTrigger value="closed" className="text-xs h-6 px-2 gap-1">
+                  <Archive className="h-3 w-3" /> Closed
+                </TabsTrigger>
+              </TabsList>
+            </Tabs>
+          </div>
           <div className="flex items-center gap-2">
             <div className="relative flex-1">
               <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
               <Input
-                placeholder="Search messages..."
+                placeholder="Search..."
                 className="pl-9 bg-muted/50 border-none"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 data-testid="input-search-inbox"
               />
             </div>
-            <Select value={filter} onValueChange={setFilter}>
-              <SelectTrigger className="w-[110px] bg-muted/50 border-none" data-testid="select-filter-status">
-                <SelectValue placeholder="Status" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All</SelectItem>
-                <SelectItem value="open">Open</SelectItem>
-                <SelectItem value="pending">Pending</SelectItem>
-                <SelectItem value="resolved">Resolved</SelectItem>
-              </SelectContent>
-            </Select>
+            {tab === "active" && (
+              <Select value={filter} onValueChange={setFilter}>
+                <SelectTrigger className="w-[100px] bg-muted/50 border-none" data-testid="select-filter-status">
+                  <SelectValue placeholder="Status" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All</SelectItem>
+                  <SelectItem value="open">Open</SelectItem>
+                  <SelectItem value="pending">Pending</SelectItem>
+                  <SelectItem value="resolved">Resolved</SelectItem>
+                </SelectContent>
+              </Select>
+            )}
           </div>
         </div>
 
         <ScrollArea className="flex-1">
           <div className="divide-y">
-            {convLoading && (
-              <div className="flex justify-center py-8">
-                <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
-              </div>
+            {/* Active Conversations */}
+            {tab === "active" && (
+              <>
+                {convLoading && <div className="flex justify-center py-8"><Loader2 className="h-5 w-5 animate-spin text-muted-foreground" /></div>}
+                {conversations.map((conv) => {
+                  const Icon = getChannelIcon(conv.channel);
+                  const isSelected = conv.id === selectedId;
+                  const lockedByOther = conv.isLocked && conv.lockedByAgentId !== agent?.id;
+                  return (
+                    <div
+                      key={conv.id}
+                      onClick={() => handleSelectConversation(conv.id)}
+                      className={`p-4 cursor-pointer hover:bg-muted/50 transition-colors relative ${isSelected ? 'bg-primary/5 border-l-2 border-l-primary' : 'border-l-2 border-l-transparent'}`}
+                      data-testid={`conversation-item-${conv.id}`}
+                    >
+                      <div className="flex justify-between items-start mb-1">
+                        <div className="flex items-center gap-2 flex-1 min-w-0">
+                          <div className="font-medium text-sm truncate">{conv.customer.name}</div>
+                          <Icon className={`h-3 w-3 shrink-0 ${getChannelColor(conv.channel)}`} />
+                          {lockedByOther && (
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <Lock className="h-3 w-3 text-amber-500 shrink-0" />
+                              </TooltipTrigger>
+                              <TooltipContent>{conv.lockedByAgent?.name} is handling this</TooltipContent>
+                            </Tooltip>
+                          )}
+                        </div>
+                        <div className="text-xs text-muted-foreground shrink-0">
+                          {conv.lastMessageAt ? format(new Date(conv.lastMessageAt), "HH:mm") : ""}
+                        </div>
+                      </div>
+                      <div className="flex justify-between items-center mt-1">
+                        <div className="text-xs text-muted-foreground truncate pr-4 flex-1">
+                          {lockedByOther
+                            ? <span className="text-amber-600 dark:text-amber-400 flex items-center gap-1"><Lock className="h-3 w-3" /> {conv.lockedByAgent?.name}</span>
+                            : (conv.customer.phone ?? conv.channel)
+                          }
+                        </div>
+                        {conv.unreadCount > 0 && (
+                          <Badge variant="default" className="h-5 min-w-[20px] flex items-center justify-center rounded-full px-1.5 shrink-0">
+                            {conv.unreadCount}
+                          </Badge>
+                        )}
+                      </div>
+                      <div className="flex gap-2 mt-2">
+                        <Badge variant="secondary" className={`text-[10px] px-1.5 py-0 h-4 ${getStatusColor(conv.status)}`}>
+                          {conv.status}
+                        </Badge>
+                        {conv.assignedAgent && (
+                          <Badge variant="outline" className="text-[10px] px-1.5 py-0 h-4 bg-muted/50 border-none">
+                            {conv.assignedAgent.name.split(' ')[0]}
+                          </Badge>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+                {!convLoading && conversations.length === 0 && (
+                  <div className="p-8 text-center text-muted-foreground text-sm">No active conversations.</div>
+                )}
+              </>
             )}
-            {conversations.map((conv) => {
-              const Icon = getChannelIcon(conv.channel);
-              const isSelected = conv.id === selectedId;
-              return (
-                <div
-                  key={conv.id}
-                  onClick={() => setSelectedId(conv.id)}
-                  className={`p-4 cursor-pointer hover:bg-muted/50 transition-colors ${isSelected ? 'bg-primary/5 border-l-2 border-l-primary' : 'border-l-2 border-l-transparent'}`}
-                  data-testid={`conversation-item-${conv.id}`}
-                >
-                  <div className="flex justify-between items-start mb-1">
-                    <div className="flex items-center gap-2">
-                      <div className="font-medium text-sm">{conv.customer.name}</div>
-                      <Icon className={`h-3 w-3 ${getChannelColor(conv.channel)}`} />
+
+            {/* Closed Conversations */}
+            {tab === "closed" && (
+              <>
+                {closedLoading && <div className="flex justify-center py-8"><Loader2 className="h-5 w-5 animate-spin text-muted-foreground" /></div>}
+                {closedConversations.map((conv) => {
+                  const Icon = getChannelIcon(conv.channel);
+                  const isSelected = conv.id === selectedClosedId;
+                  return (
+                    <div
+                      key={conv.id}
+                      onClick={() => setSelectedClosedId(conv.id)}
+                      className={`p-4 cursor-pointer hover:bg-muted/50 transition-colors ${isSelected ? 'bg-muted/30 border-l-2 border-l-muted-foreground' : 'border-l-2 border-l-transparent'}`}
+                    >
+                      <div className="flex justify-between items-start mb-1">
+                        <div className="flex items-center gap-2 flex-1 min-w-0">
+                          <div className="font-medium text-sm truncate text-muted-foreground">{conv.customerName}</div>
+                          <Icon className={`h-3 w-3 shrink-0 ${getChannelColor(conv.channel)}`} />
+                        </div>
+                        <div className="text-xs text-muted-foreground shrink-0">
+                          {formatDistanceToNow(new Date(conv.closedAt), { addSuffix: true })}
+                        </div>
+                      </div>
+                      <div className="flex justify-between items-center mt-1">
+                        <div className="text-xs text-muted-foreground">{conv.customerPhone ?? conv.channel}</div>
+                        <Badge variant="secondary" className="text-[10px] px-1.5 py-0 h-4 bg-muted/50">
+                          {conv.messageCount} msgs
+                        </Badge>
+                      </div>
+                      <div className="flex gap-2 mt-2">
+                        <Badge variant="outline" className="text-[10px] px-1.5 py-0 h-4 text-muted-foreground">
+                          <Archive className="h-2.5 w-2.5 mr-1" /> Closed
+                        </Badge>
+                        {conv.closedByAgentName && (
+                          <Badge variant="outline" className="text-[10px] px-1.5 py-0 h-4 bg-muted/50 border-none text-muted-foreground">
+                            by {conv.closedByAgentName.split(' ')[0]}
+                          </Badge>
+                        )}
+                      </div>
                     </div>
-                    <div className="text-xs text-muted-foreground">
-                      {conv.lastMessageAt ? format(new Date(conv.lastMessageAt), "HH:mm") : ""}
-                    </div>
-                  </div>
-                  <div className="flex justify-between items-center mt-1">
-                    <div className="text-sm text-muted-foreground truncate pr-4 flex-1">
-                      {conv.customer.phone ?? conv.channel}
-                    </div>
-                    {conv.unreadCount > 0 && (
-                      <Badge variant="default" className="h-5 min-w-[20px] flex items-center justify-center rounded-full px-1.5 shrink-0">
-                        {conv.unreadCount}
-                      </Badge>
-                    )}
-                  </div>
-                  <div className="flex gap-2 mt-2">
-                    <Badge variant="secondary" className={`text-[10px] px-1.5 py-0 h-4 ${getStatusColor(conv.status)}`}>
-                      {conv.status}
-                    </Badge>
-                    {conv.assignedAgent && (
-                      <Badge variant="outline" className="text-[10px] px-1.5 py-0 h-4 bg-muted/50 border-none">
-                        {conv.assignedAgent.name.split(' ')[0]}
-                      </Badge>
-                    )}
-                  </div>
-                </div>
-              );
-            })}
-            {!convLoading && conversations.length === 0 && (
-              <div className="p-8 text-center text-muted-foreground text-sm">No conversations found.</div>
+                  );
+                })}
+                {!closedLoading && closedConversations.length === 0 && (
+                  <div className="p-8 text-center text-muted-foreground text-sm">No closed conversations yet.</div>
+                )}
+              </>
             )}
           </div>
         </ScrollArea>
       </div>
 
-      {/* Right Panel: Chat Thread */}
-      {selectedConv ? (
-        <div className="flex-1 flex flex-col bg-background">
+      {/* Right Panel */}
+      {tab === "active" && selectedConv ? (
+        <div className="flex-1 flex flex-col bg-background min-w-0">
+          {/* Lock Conflict Warning */}
+          {lockConflict && (
+            <Alert className="m-4 mb-0 border-amber-200 bg-amber-50 dark:bg-amber-950/20">
+              <AlertTriangle className="h-4 w-4 text-amber-600" />
+              <AlertDescription className="flex items-center justify-between">
+                <span className="text-sm text-amber-700 dark:text-amber-400">
+                  <strong>{lockConflict.name}</strong> is currently handling this conversation.
+                </span>
+                <div className="flex gap-2 ml-4 shrink-0">
+                  <Button size="sm" variant="outline" className="h-7 text-xs border-amber-300" onClick={() => setLockConflict(null)}>
+                    Go back
+                  </Button>
+                  <Button size="sm" variant="outline" className="h-7 text-xs text-amber-700 border-amber-300 hover:bg-amber-100" onClick={handleForceClaim}>
+                    Take over anyway
+                  </Button>
+                </div>
+              </AlertDescription>
+            </Alert>
+          )}
+
+          {/* Agent lock notice for the active conversation */}
+          {isLockedByOther && !lockConflict && (
+            <div className="mx-4 mt-4 px-4 py-2 rounded-lg bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-900 flex items-center gap-2 text-sm text-amber-700 dark:text-amber-400">
+              <Lock className="h-4 w-4 shrink-0" />
+              <span>This conversation is being handled by <strong>{selectedConv.lockedByAgent?.name}</strong></span>
+            </div>
+          )}
+
           {/* Chat Header */}
           <div className="h-[72px] border-b flex items-center justify-between px-6 bg-card shrink-0">
             <div className="flex items-center gap-4">
@@ -250,14 +472,14 @@ export default function Inbox() {
               </div>
             </div>
 
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2">
               <Tooltip>
                 <TooltipTrigger asChild>
                   <Button
                     variant="outline"
                     size="sm"
                     onClick={handleAutoRespond}
-                    disabled={isAutoResponding}
+                    disabled={isAutoResponding || !!isLockedByOther}
                     className="gap-2 text-blue-600 border-blue-200 hover:bg-blue-50 dark:text-blue-400 dark:border-blue-900 dark:hover:bg-blue-950"
                     data-testid="button-auto-respond"
                   >
@@ -272,10 +494,10 @@ export default function Inbox() {
                 value={selectedConv.assignedAgent?.id.toString() ?? "unassigned"}
                 onValueChange={(val) => updateConvMutation.mutate({ id: selectedConv.id, assignedAgentId: val === "unassigned" ? null : parseInt(val) })}
               >
-                <SelectTrigger className="w-[160px] h-9" data-testid="select-assign-agent">
+                <SelectTrigger className="w-[150px] h-9" data-testid="select-assign-agent">
                   <div className="flex items-center gap-2">
                     <UserPlus className="h-4 w-4 text-muted-foreground" />
-                    <span className="truncate">{selectedConv.assignedAgent?.name ?? "Unassigned"}</span>
+                    <span className="truncate text-sm">{selectedConv.assignedAgent?.name ?? "Unassigned"}</span>
                   </div>
                 </SelectTrigger>
                 <SelectContent>
@@ -290,14 +512,13 @@ export default function Inbox() {
                 value={selectedConv.status}
                 onValueChange={(val) => updateConvMutation.mutate({ id: selectedConv.id, status: val })}
               >
-                <SelectTrigger className={`w-[130px] h-9 ${getStatusColor(selectedConv.status)} border-none`} data-testid="select-change-status">
+                <SelectTrigger className={`w-[120px] h-9 ${getStatusColor(selectedConv.status)} border-none`} data-testid="select-change-status">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="open">Open</SelectItem>
                   <SelectItem value="pending">Pending</SelectItem>
                   <SelectItem value="resolved">Resolved</SelectItem>
-                  <SelectItem value="closed">Closed</SelectItem>
                 </SelectContent>
               </Select>
 
@@ -308,9 +529,16 @@ export default function Inbox() {
                   </Button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end">
-                  <DropdownMenuItem>View Profile</DropdownMenuItem>
-                  <DropdownMenuItem>Block Contact</DropdownMenuItem>
-                  <DropdownMenuItem className="text-destructive">Delete Conversation</DropdownMenuItem>
+                  <DropdownMenuItem>View Customer Profile</DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem
+                    className="text-destructive focus:text-destructive"
+                    onClick={() => setShowCloseDialog(true)}
+                    data-testid="menu-item-close-conversation"
+                  >
+                    <Archive className="h-4 w-4 mr-2" />
+                    Close & Archive Conversation
+                  </DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>
             </div>
@@ -318,14 +546,11 @@ export default function Inbox() {
 
           {/* Messages */}
           <div className="flex-1 overflow-y-auto p-6 space-y-6 bg-slate-50/50 dark:bg-slate-900/20" ref={scrollRef}>
-            {messagesLoading && (
-              <div className="flex justify-center py-8"><Loader2 className="h-5 w-5 animate-spin text-muted-foreground" /></div>
-            )}
+            {messagesLoading && <div className="flex justify-center py-8"><Loader2 className="h-5 w-5 animate-spin text-muted-foreground" /></div>}
             {messages.map((msg, i) => {
               const isMe = msg.sender === 'agent';
               const isBot = msg.sender === 'bot';
-              const showDateDivider = i === 0 ||
-                new Date(messages[i - 1].createdAt).toDateString() !== new Date(msg.createdAt).toDateString();
+              const showDateDivider = i === 0 || new Date(messages[i - 1].createdAt).toDateString() !== new Date(msg.createdAt).toDateString();
               return (
                 <React.Fragment key={msg.id}>
                   {showDateDivider && (
@@ -336,13 +561,7 @@ export default function Inbox() {
                     </div>
                   )}
                   <div className={`flex flex-col ${isMe || isBot ? 'items-end' : 'items-start'}`}>
-                    <div className={`max-w-[70%] rounded-2xl px-4 py-2.5 ${
-                      isMe
-                        ? 'bg-primary text-primary-foreground rounded-tr-sm'
-                        : isBot
-                          ? 'bg-blue-100 text-blue-900 dark:bg-blue-900/30 dark:text-blue-100 rounded-tr-sm'
-                          : 'bg-card border shadow-sm text-card-foreground rounded-tl-sm'
-                    }`}>
+                    <div className={`max-w-[70%] rounded-2xl px-4 py-2.5 ${isMe ? 'bg-primary text-primary-foreground rounded-tr-sm' : isBot ? 'bg-blue-100 text-blue-900 dark:bg-blue-900/30 dark:text-blue-100 rounded-tr-sm' : 'bg-card border shadow-sm rounded-tl-sm'}`}>
                       <div className="text-sm whitespace-pre-wrap">{msg.content}</div>
                     </div>
                     <div className="flex items-center gap-2 mt-1.5 px-1">
@@ -364,13 +583,11 @@ export default function Inbox() {
             <div className="border-t bg-gradient-to-r from-violet-50 to-blue-50 dark:from-violet-950/30 dark:to-blue-950/30 px-4 py-3">
               <div className="flex items-center justify-between mb-2">
                 <div className="flex items-center gap-2 text-sm font-medium text-violet-700 dark:text-violet-400">
-                  <Sparkles className="h-4 w-4" />
-                  AI Reply Suggestions
+                  <Sparkles className="h-4 w-4" /> AI Reply Suggestions
                 </div>
                 <div className="flex gap-2">
                   <Button variant="ghost" size="sm" onClick={handleGetSuggestions} disabled={isLoadingSuggestions} className="h-6 px-2 text-xs">
-                    <RefreshCw className={`h-3 w-3 mr-1 ${isLoadingSuggestions ? 'animate-spin' : ''}`} />
-                    Refresh
+                    <RefreshCw className={`h-3 w-3 mr-1 ${isLoadingSuggestions ? 'animate-spin' : ''}`} /> Refresh
                   </Button>
                   <Button variant="ghost" size="sm" onClick={() => setShowSuggestions(false)} className="h-6 px-2 text-xs">
                     <ChevronUp className="h-3 w-3" />
@@ -379,17 +596,13 @@ export default function Inbox() {
               </div>
               {isLoadingSuggestions ? (
                 <div className="flex items-center gap-2 text-sm text-muted-foreground py-2">
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                  Generating suggestions...
+                  <Loader2 className="h-4 w-4 animate-spin" /> Generating suggestions...
                 </div>
               ) : (
                 <div className="space-y-1.5">
                   {aiSuggestions.map((s, i) => (
-                    <button
-                      key={i}
-                      onClick={() => handleAcceptSuggestion(s)}
-                      className="w-full text-left text-sm px-3 py-2 rounded-lg bg-white/70 dark:bg-white/10 hover:bg-white dark:hover:bg-white/20 border border-violet-200/60 dark:border-violet-800/60 transition-colors text-foreground"
-                    >
+                    <button key={i} onClick={() => { setReplyText(s); setShowSuggestions(false); }}
+                      className="w-full text-left text-sm px-3 py-2 rounded-lg bg-white/70 dark:bg-white/10 hover:bg-white dark:hover:bg-white/20 border border-violet-200/60 dark:border-violet-800/60 transition-colors">
                       {s}
                     </button>
                   ))}
@@ -400,66 +613,145 @@ export default function Inbox() {
 
           {/* Reply Box */}
           <div className="p-4 bg-card border-t shrink-0">
-            <div className="flex items-end gap-2 bg-muted/30 rounded-xl border p-2 focus-within:ring-1 focus-within:ring-ring transition-all">
-              <div className="flex gap-1 pb-1">
-                <Button variant="ghost" size="icon" className="h-8 w-8 rounded-full text-muted-foreground hover:text-foreground">
-                  <Paperclip className="h-4 w-4" />
-                </Button>
-                <Button variant="ghost" size="icon" className="h-8 w-8 rounded-full text-muted-foreground hover:text-foreground">
-                  <Smile className="h-4 w-4" />
-                </Button>
+            {isLockedByOther ? (
+              <div className="flex items-center justify-center gap-2 py-3 text-sm text-muted-foreground bg-muted/30 rounded-xl border">
+                <Lock className="h-4 w-4" />
+                <span>Read-only — <strong>{selectedConv.lockedByAgent?.name}</strong> is handling this</span>
               </div>
-              <textarea
-                value={replyText}
-                onChange={(e) => setReplyText(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(); }
-                }}
-                placeholder="Type a message... (Enter to send)"
-                className="flex-1 bg-transparent border-none resize-none outline-none max-h-32 min-h-[40px] py-2 px-2 text-sm"
-                rows={1}
-                data-testid="textarea-reply"
-              />
-              <div className="flex gap-2 pb-1">
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      onClick={handleGetSuggestions}
-                      disabled={isLoadingSuggestions}
-                      className="h-9 w-9 rounded-lg text-violet-600 hover:bg-violet-50 dark:hover:bg-violet-950"
-                      data-testid="button-ai-suggest"
-                    >
-                      {isLoadingSuggestions ? <Loader2 className="h-4 w-4 animate-spin" /> : <Zap className="h-4 w-4" />}
+            ) : (
+              <>
+                <div className="flex items-end gap-2 bg-muted/30 rounded-xl border p-2 focus-within:ring-1 focus-within:ring-ring transition-all">
+                  <div className="flex gap-1 pb-1">
+                    <Button variant="ghost" size="icon" className="h-8 w-8 rounded-full text-muted-foreground hover:text-foreground">
+                      <Paperclip className="h-4 w-4" />
                     </Button>
-                  </TooltipTrigger>
-                  <TooltipContent>Get AI reply suggestions</TooltipContent>
-                </Tooltip>
-
-                <Button
-                  onClick={handleSend}
-                  disabled={!replyText.trim() || sendMessageMutation.isPending}
-                  className="h-9 px-4 rounded-lg bg-primary hover:bg-primary/90"
-                  data-testid="button-send-reply"
-                >
-                  {sendMessageMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <><Send className="h-4 w-4 mr-2" />Send</>}
-                </Button>
+                    <Button variant="ghost" size="icon" className="h-8 w-8 rounded-full text-muted-foreground hover:text-foreground">
+                      <Smile className="h-4 w-4" />
+                    </Button>
+                  </div>
+                  <textarea
+                    value={replyText}
+                    onChange={(e) => setReplyText(e.target.value)}
+                    onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(); } }}
+                    placeholder="Type a message... (Enter to send)"
+                    className="flex-1 bg-transparent border-none resize-none outline-none max-h-32 min-h-[40px] py-2 px-2 text-sm"
+                    rows={1}
+                    data-testid="textarea-reply"
+                  />
+                  <div className="flex gap-2 pb-1">
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Button variant="ghost" size="icon" onClick={handleGetSuggestions} disabled={isLoadingSuggestions}
+                          className="h-9 w-9 rounded-lg text-violet-600 hover:bg-violet-50 dark:hover:bg-violet-950" data-testid="button-ai-suggest">
+                          {isLoadingSuggestions ? <Loader2 className="h-4 w-4 animate-spin" /> : <Zap className="h-4 w-4" />}
+                        </Button>
+                      </TooltipTrigger>
+                      <TooltipContent>AI reply suggestions</TooltipContent>
+                    </Tooltip>
+                    <Button onClick={handleSend} disabled={!replyText.trim() || sendMessageMutation.isPending}
+                      className="h-9 px-4 rounded-lg" data-testid="button-send-reply">
+                      {sendMessageMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <><Send className="h-4 w-4 mr-2" />Send</>}
+                    </Button>
+                  </div>
+                </div>
+                <p className="text-[11px] text-muted-foreground mt-1.5 px-2">
+                  ⚡ AI suggestions · Bot Reply to auto-respond · Options menu to close & archive
+                </p>
+              </>
+            )}
+          </div>
+        </div>
+      ) : tab === "closed" && selectedClosed ? (
+        /* Closed Conversation Thread */
+        <div className="flex-1 flex flex-col bg-background min-w-0">
+          <div className="h-[72px] border-b flex items-center justify-between px-6 bg-card shrink-0">
+            <div className="flex items-center gap-4">
+              <Avatar className="h-10 w-10 border bg-muted">
+                <AvatarFallback className="text-muted-foreground">{selectedClosed.customerName.charAt(0)}</AvatarFallback>
+              </Avatar>
+              <div>
+                <div className="font-semibold flex items-center gap-2 text-muted-foreground">
+                  {selectedClosed.customerName}
+                  {React.createElement(getChannelIcon(selectedClosed.channel), { className: `h-4 w-4 ${getChannelColor(selectedClosed.channel)}` })}
+                </div>
+                <div className="text-xs text-muted-foreground flex items-center gap-2">
+                  <Clock className="h-3 w-3" />
+                  Closed {format(new Date(selectedClosed.closedAt), "MMM d, yyyy 'at' HH:mm")}
+                  {selectedClosed.closedByAgentName && ` · by ${selectedClosed.closedByAgentName}`}
+                </div>
               </div>
             </div>
-            <p className="text-[11px] text-muted-foreground mt-1.5 px-2">
-              Press <kbd className="text-[10px] px-1 py-0.5 rounded border bg-muted">⚡</kbd> for AI suggestions · <kbd className="text-[10px] px-1 py-0.5 rounded border bg-muted">Bot Reply</kbd> to auto-respond
-            </p>
+            <Badge variant="outline" className="gap-1 text-muted-foreground">
+              <Archive className="h-3 w-3" /> Archived · Read-only
+            </Badge>
+          </div>
+
+          <div className="flex-1 overflow-y-auto p-6 space-y-6 bg-slate-50/50 dark:bg-slate-900/20" ref={scrollRef}>
+            {closedMessagesLoading && <div className="flex justify-center py-8"><Loader2 className="h-5 w-5 animate-spin text-muted-foreground" /></div>}
+            {closedMessages.map((msg, i) => {
+              const isMe = msg.sender === 'agent';
+              const isBot = msg.sender === 'bot';
+              const showDateDivider = i === 0 || new Date(closedMessages[i - 1].originalCreatedAt).toDateString() !== new Date(msg.originalCreatedAt).toDateString();
+              return (
+                <React.Fragment key={msg.id}>
+                  {showDateDivider && (
+                    <div className="flex justify-center my-6">
+                      <div className="bg-muted/50 px-3 py-1 rounded-full text-xs text-muted-foreground font-medium">
+                        {format(new Date(msg.originalCreatedAt), "MMMM d, yyyy")}
+                      </div>
+                    </div>
+                  )}
+                  <div className={`flex flex-col ${isMe || isBot ? 'items-end' : 'items-start'}`}>
+                    <div className={`max-w-[70%] rounded-2xl px-4 py-2.5 opacity-80 ${isMe ? 'bg-primary/70 text-primary-foreground rounded-tr-sm' : isBot ? 'bg-blue-100 text-blue-900 dark:bg-blue-900/30 dark:text-blue-100 rounded-tr-sm' : 'bg-card border shadow-sm rounded-tl-sm'}`}>
+                      <div className="text-sm whitespace-pre-wrap">{msg.content}</div>
+                    </div>
+                    <div className="flex items-center gap-2 mt-1.5 px-1">
+                      <span className="text-[11px] text-muted-foreground">{format(new Date(msg.originalCreatedAt), "HH:mm")}</span>
+                      {isBot && <span className="text-[11px] text-blue-600 dark:text-blue-400 font-medium flex items-center gap-1"><Bot className="h-3 w-3" /> CommsBot</span>}
+                    </div>
+                  </div>
+                </React.Fragment>
+              );
+            })}
+            {!closedMessagesLoading && closedMessages.length === 0 && (
+              <div className="flex justify-center items-center py-12 text-muted-foreground text-sm">No messages in this conversation</div>
+            )}
+          </div>
+
+          <div className="p-4 bg-card border-t shrink-0">
+            <div className="flex items-center justify-center gap-2 py-3 text-sm text-muted-foreground bg-muted/30 rounded-xl border">
+              <Archive className="h-4 w-4" /> This conversation is archived and read-only
+            </div>
           </div>
         </div>
       ) : (
         <div className="flex-1 flex items-center justify-center bg-muted/10">
           <div className="text-center text-muted-foreground">
-            <MessageSquare className="h-12 w-12 mx-auto mb-4 opacity-20" />
-            <p>Select a conversation to start chatting</p>
+            {tab === "closed" ? <Archive className="h-12 w-12 mx-auto mb-4 opacity-20" /> : <MessageSquare className="h-12 w-12 mx-auto mb-4 opacity-20" />}
+            <p>{tab === "closed" ? "Select a closed conversation to view" : "Select a conversation to start chatting"}</p>
           </div>
         </div>
       )}
+
+      {/* Close Confirmation Dialog */}
+      <AlertDialog open={showCloseDialog} onOpenChange={setShowCloseDialog}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2">
+              <Archive className="h-5 w-5 text-muted-foreground" /> Close & Archive Conversation
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              This will move the conversation and all its messages to the Closed archive. This action cannot be undone. The conversation will no longer appear in the active inbox.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={handleCloseConversation} className="bg-destructive hover:bg-destructive/90">
+              Close & Archive
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
