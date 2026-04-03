@@ -1,8 +1,17 @@
 import { Request, Response, NextFunction } from "express";
 import jwt from "jsonwebtoken";
+import { randomBytes } from "crypto";
 import { Agent } from "../models/index.js";
 
-const JWT_SECRET = process.env.JWT_SECRET ?? "crm-secret-fallback";
+if (!process.env.JWT_SECRET) {
+  if (process.env.NODE_ENV === "production") {
+    console.error("FATAL: JWT_SECRET environment variable is not set. Refusing to start in production.");
+    process.exit(1);
+  } else {
+    console.warn("WARNING: JWT_SECRET is not set. Using a random ephemeral secret — all sessions will be invalidated on restart.");
+  }
+}
+const JWT_SECRET: string = process.env.JWT_SECRET ?? randomBytes(32).toString("hex");
 
 // Throttle: only write lastActiveAt at most once per 60 seconds per agent
 const lastActiveWritten = new Map<number, number>();
