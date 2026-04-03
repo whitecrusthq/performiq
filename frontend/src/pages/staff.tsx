@@ -163,6 +163,7 @@ function StaffPanel({ staffId, canEdit, onClose, onUpdated }: {
       bankAccountNumber: staff.bankAccountNumber ?? "",
       bankAccountName: staff.bankAccountName ?? "",
       taxId: staff.taxId ?? "",
+      pensionId: staff.pensionId ?? "",
       notes: staff.notes ?? "",
     });
     setEditing(true);
@@ -363,8 +364,11 @@ function StaffPanel({ staffId, canEdit, onClose, onUpdated }: {
                       </div>
                     </div>
                     <div className="border border-border rounded-xl p-4 space-y-3">
-                      <h4 className="text-sm font-semibold flex items-center gap-1.5"><Hash className="w-4 h-4" /> Tax Information</h4>
-                      <Field label="Tax ID / TIN" value={d.taxId} editing={editing} placeholder="Tax identification number" onChange={set("taxId")} />
+                      <h4 className="text-sm font-semibold flex items-center gap-1.5"><Hash className="w-4 h-4" /> Tax & Pension Information</h4>
+                      <div className="grid grid-cols-2 gap-3">
+                        <Field label="Tax ID / TIN" value={d.taxId} editing={editing} placeholder="Tax identification number" onChange={set("taxId")} />
+                        <Field label="Pension ID" value={d.pensionId} editing={editing} placeholder="Pension scheme ID" onChange={set("pensionId")} />
+                      </div>
                     </div>
                   </div>
                 </div>

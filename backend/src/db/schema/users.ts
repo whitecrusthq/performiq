@@ -47,6 +47,7 @@ export const usersTable = pgTable("users", {
   bankAccountNumber: text("bank_account_number"),
   bankAccountName: text("bank_account_name"),
   taxId: text("tax_id"),
+  pensionId: text("pension_id"),
   notes: text("notes"),
 });
 
