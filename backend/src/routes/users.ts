@@ -1,7 +1,7 @@
 import { Router } from "express";
 import bcrypt from "bcryptjs";
-import { db, usersTable, customRolesTable } from "../db/index.js";
-import { eq } from "drizzle-orm";
+import { db, usersTable, customRolesTable, staffDocumentsTable } from "../db/index.js";
+import { eq, desc } from "drizzle-orm";
 import { requireAuth, requireRole, AuthRequest } from "../middlewares/auth";
 
 const ELEVATED_ROLES = ["admin", "super_admin"];
@@ -240,6 +240,80 @@ router.delete("/users/:id", requireAuth, requireRole("admin"), async (req: AuthR
     await db.delete(usersTable).where(eq(usersTable.id, Number(req.params.id)));
     res.json({ message: "User deleted" });
   } catch {
+    res.status(500).json({ error: "Server error" });
+  }
+});
+
+// ── Staff Documents ───────────────────────────────────────────────────────────
+
+// GET /users/:id/documents
+router.get("/users/:id/documents", requireAuth, async (req: AuthRequest, res) => {
+  try {
+    const { role, id: actorId } = req.user!;
+    const targetId = Number(req.params.id);
+    if (role === "employee" && actorId !== targetId) return res.status(403).json({ error: "Forbidden" });
+
+    const docs = await db.select({
+      id: staffDocumentsTable.id,
+      name: staffDocumentsTable.name,
+      documentType: staffDocumentsTable.documentType,
+      receivedDate: staffDocumentsTable.receivedDate,
+      notes: staffDocumentsTable.notes,
+      createdAt: staffDocumentsTable.createdAt,
+      uploadedById: staffDocumentsTable.uploadedById,
+      uploadedByName: usersTable.name,
+    })
+    .from(staffDocumentsTable)
+    .leftJoin(usersTable, eq(staffDocumentsTable.uploadedById, usersTable.id))
+    .where(eq(staffDocumentsTable.userId, targetId))
+    .orderBy(desc(staffDocumentsTable.createdAt));
+
+    res.json(docs);
+  } catch (err) {
+    console.error("GET /users/:id/documents error:", err);
+    res.status(500).json({ error: "Server error" });
+  }
+});
+
+// POST /users/:id/documents
+router.post("/users/:id/documents", requireAuth, async (req: AuthRequest, res) => {
+  try {
+    const { role, id: actorId } = req.user!;
+    const targetId = Number(req.params.id);
+    if (role === "employee" && actorId !== targetId) return res.status(403).json({ error: "Forbidden" });
+
+    const { name, documentType, receivedDate, notes } = req.body;
+    if (!name?.trim()) return res.status(400).json({ error: "Document name is required" });
+
+    const [doc] = await db.insert(staffDocumentsTable).values({
+      userId: targetId,
+      name: name.trim(),
+      documentType: documentType || "other",
+      receivedDate: receivedDate || null,
+      notes: notes || null,
+      uploadedById: actorId,
+    }).returning();
+
+    res.status(201).json({ ...doc, uploadedByName: req.user!.name });
+  } catch (err) {
+    console.error("POST /users/:id/documents error:", err);
+    res.status(500).json({ error: "Server error" });
+  }
+});
+
+// DELETE /users/:id/documents/:docId
+router.delete("/users/:id/documents/:docId", requireAuth, async (req: AuthRequest, res) => {
+  try {
+    const { role, id: actorId } = req.user!;
+    const targetId = Number(req.params.id);
+    const docId = Number(req.params.docId);
+    if (role === "employee" && actorId !== targetId) return res.status(403).json({ error: "Forbidden" });
+
+    await db.delete(staffDocumentsTable)
+      .where(eq(staffDocumentsTable.id, docId));
+    res.json({ message: "Document deleted" });
+  } catch (err) {
+    console.error("DELETE /users/:id/documents/:docId error:", err);
     res.status(500).json({ error: "Server error" });
   }
 });

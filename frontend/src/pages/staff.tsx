@@ -5,7 +5,7 @@ import { useToast } from "@/hooks/use-toast";
 import {
   Users, Search, ChevronRight, X, User, Briefcase, Heart,
   CreditCard, FileText, Edit2, Check, Phone, Mail, MapPin,
-  Calendar, Shield, Building2, Hash, Plus, RefreshCw,
+  Building2, Hash, Plus, RefreshCw, Trash2, FolderOpen, AlertCircle,
 } from "lucide-react";
 import { apiFetch } from "@/lib/utils";
 
@@ -33,15 +33,33 @@ function Avatar({ name, photo, size = 40 }: { name: string; photo?: string | nul
   );
 }
 
-type Tab = "personal" | "employment" | "financial" | "emergency" | "notes";
+type Tab = "personal" | "employment" | "financial" | "emergency" | "notes" | "documents";
 
 const TABS: { id: Tab; label: string; icon: any }[] = [
   { id: "personal",   label: "Personal",   icon: User },
   { id: "employment", label: "Employment", icon: Briefcase },
   { id: "financial",  label: "Financial",  icon: CreditCard },
   { id: "emergency",  label: "Emergency",  icon: Heart },
+  { id: "documents",  label: "Documents",  icon: FolderOpen },
   { id: "notes",      label: "Notes",      icon: FileText },
 ];
+
+const DOC_TYPES: { value: string; label: string; color: string }[] = [
+  { value: "contract",         label: "Employment Contract", color: "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400" },
+  { value: "guarantor",        label: "Guarantor Form",      color: "bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400" },
+  { value: "id_copy",          label: "ID / Passport Copy",  color: "bg-violet-100 text-violet-700 dark:bg-violet-900/30 dark:text-violet-400" },
+  { value: "offer_letter",     label: "Offer Letter",        color: "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400" },
+  { value: "reference_letter", label: "Reference Letter",    color: "bg-teal-100 text-teal-700 dark:bg-teal-900/30 dark:text-teal-400" },
+  { value: "certificate",      label: "Certificate / Qualification", color: "bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400" },
+  { value: "nda",              label: "NDA",                 color: "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400" },
+  { value: "policy",           label: "Policy Acknowledgement", color: "bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300" },
+  { value: "medical",          label: "Medical Record",      color: "bg-pink-100 text-pink-700 dark:bg-pink-900/30 dark:text-pink-400" },
+  { value: "other",            label: "Other",               color: "bg-muted text-muted-foreground" },
+];
+
+function docTypeInfo(type: string) {
+  return DOC_TYPES.find(d => d.value === type) ?? DOC_TYPES[DOC_TYPES.length - 1];
+}
 
 function Field({ label, value, editing, type = "text", placeholder, onChange }: {
   label: string; value?: string | null; editing: boolean;
@@ -140,6 +158,35 @@ function StaffPanel({ staffId, canEdit, onClose, onUpdated }: {
       setEditing(false);
       toast({ title: "Profile updated" });
     },
+    onError: (e: any) => toast({ title: "Error", description: e.message, variant: "destructive" }),
+  });
+
+  // Documents
+  const [addingDoc, setAddingDoc] = useState(false);
+  const [docDraft, setDocDraft] = useState({ name: "", documentType: "contract", receivedDate: "", notes: "" });
+
+  const { data: documents = [], refetch: refetchDocs } = useQuery<any[]>({
+    queryKey: ["staff-docs", staffId],
+    queryFn: () => apiFetchJson(`/api/users/${staffId}/documents`),
+    enabled: tab === "documents",
+  });
+
+  const addDoc = useMutation({
+    mutationFn: (body: any) => apiFetchJson(`/api/users/${staffId}/documents`, {
+      method: "POST", body: JSON.stringify(body),
+    }),
+    onSuccess: () => {
+      refetchDocs();
+      setAddingDoc(false);
+      setDocDraft({ name: "", documentType: "contract", receivedDate: "", notes: "" });
+      toast({ title: "Document added" });
+    },
+    onError: (e: any) => toast({ title: "Error", description: e.message, variant: "destructive" }),
+  });
+
+  const deleteDoc = useMutation({
+    mutationFn: (docId: number) => apiFetchJson(`/api/users/${staffId}/documents/${docId}`, { method: "DELETE" }),
+    onSuccess: () => { refetchDocs(); toast({ title: "Document removed" }); },
     onError: (e: any) => toast({ title: "Error", description: e.message, variant: "destructive" }),
   });
 
@@ -387,6 +434,127 @@ function StaffPanel({ staffId, canEdit, onClose, onUpdated }: {
                       <Field label="Relationship" value={d.emergencyContactRelation} editing={editing} placeholder="e.g. Spouse, Parent" onChange={set("emergencyContactRelation")} />
                     </div>
                   </div>
+                </div>
+              )}
+
+              {/* Documents Tab */}
+              {tab === "documents" && (
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between">
+                    <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-widest flex items-center gap-2">
+                      <FolderOpen className="w-3.5 h-3.5" /> Received Documents
+                    </h3>
+                    {canEdit && !addingDoc && (
+                      <button onClick={() => setAddingDoc(true)}
+                        className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-primary text-primary-foreground text-xs font-semibold hover:bg-primary/90 transition-colors">
+                        <Plus className="w-3.5 h-3.5" /> Add Document
+                      </button>
+                    )}
+                  </div>
+
+                  {/* Add Document Form */}
+                  {addingDoc && (
+                    <div className="border border-primary/30 bg-primary/5 rounded-xl p-4 space-y-3">
+                      <p className="text-xs font-semibold text-primary">New Document Record</p>
+                      <div className="space-y-3">
+                        <div>
+                          <label className="block text-xs font-semibold text-muted-foreground mb-1 uppercase tracking-wide">Document Name *</label>
+                          <input
+                            value={docDraft.name}
+                            onChange={e => setDocDraft(p => ({ ...p, name: e.target.value }))}
+                            placeholder="e.g. John's Guarantor Form"
+                            className="w-full px-3 py-2 rounded-xl border border-border bg-background text-sm outline-none focus:ring-2 focus:ring-primary/20"
+                          />
+                        </div>
+                        <div className="grid grid-cols-2 gap-3">
+                          <div>
+                            <label className="block text-xs font-semibold text-muted-foreground mb-1 uppercase tracking-wide">Document Type</label>
+                            <select
+                              value={docDraft.documentType}
+                              onChange={e => setDocDraft(p => ({ ...p, documentType: e.target.value }))}
+                              className="w-full px-3 py-2 rounded-xl border border-border bg-background text-sm outline-none focus:ring-2 focus:ring-primary/20">
+                              {DOC_TYPES.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
+                            </select>
+                          </div>
+                          <div>
+                            <label className="block text-xs font-semibold text-muted-foreground mb-1 uppercase tracking-wide">Date Received</label>
+                            <input
+                              type="date"
+                              value={docDraft.receivedDate}
+                              onChange={e => setDocDraft(p => ({ ...p, receivedDate: e.target.value }))}
+                              className="w-full px-3 py-2 rounded-xl border border-border bg-background text-sm outline-none focus:ring-2 focus:ring-primary/20"
+                            />
+                          </div>
+                        </div>
+                        <div>
+                          <label className="block text-xs font-semibold text-muted-foreground mb-1 uppercase tracking-wide">Notes</label>
+                          <textarea
+                            value={docDraft.notes}
+                            onChange={e => setDocDraft(p => ({ ...p, notes: e.target.value }))}
+                            placeholder="Any notes about this document…"
+                            rows={2}
+                            className="w-full px-3 py-2 rounded-xl border border-border bg-background text-sm outline-none focus:ring-2 focus:ring-primary/20 resize-none"
+                          />
+                        </div>
+                        <div className="flex gap-2 justify-end">
+                          <button onClick={() => { setAddingDoc(false); setDocDraft({ name: "", documentType: "contract", receivedDate: "", notes: "" }); }}
+                            className="px-3 py-1.5 rounded-xl border border-border text-xs font-medium hover:bg-muted transition-colors">
+                            Cancel
+                          </button>
+                          <button
+                            onClick={() => addDoc.mutate(docDraft)}
+                            disabled={!docDraft.name.trim() || addDoc.isPending}
+                            className="px-3 py-1.5 rounded-xl bg-primary text-primary-foreground text-xs font-medium hover:bg-primary/90 disabled:opacity-50 transition-colors flex items-center gap-1">
+                            <Check className="w-3.5 h-3.5" />
+                            {addDoc.isPending ? "Saving…" : "Save Document"}
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Document List */}
+                  {(documents as any[]).length === 0 && !addingDoc ? (
+                    <div className="text-center py-10 text-muted-foreground">
+                      <AlertCircle className="w-8 h-8 mx-auto mb-2 opacity-30" />
+                      <p className="text-sm">No documents recorded yet</p>
+                      <p className="text-xs mt-1">Add guarantor forms, contracts, ID copies and more</p>
+                    </div>
+                  ) : (
+                    <div className="space-y-2">
+                      {(documents as any[]).map((doc: any) => {
+                        const info = docTypeInfo(doc.documentType);
+                        return (
+                          <div key={doc.id} className="border border-border rounded-xl p-3.5 flex items-start gap-3 hover:bg-muted/20 transition-colors">
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <p className="font-semibold text-sm truncate">{doc.name}</p>
+                                <span className={`text-xs font-medium px-2 py-0.5 rounded-full shrink-0 ${info.color}`}>{info.label}</span>
+                              </div>
+                              <div className="flex items-center gap-3 mt-1 text-xs text-muted-foreground flex-wrap">
+                                {doc.receivedDate && (
+                                  <span>Received: {new Date(doc.receivedDate).toLocaleDateString([], { year: "numeric", month: "short", day: "numeric" })}</span>
+                                )}
+                                {doc.uploadedByName && <span>Logged by: {doc.uploadedByName}</span>}
+                              </div>
+                              {doc.notes && <p className="text-xs text-muted-foreground mt-1 italic">{doc.notes}</p>}
+                            </div>
+                            {canEdit && (
+                              <button
+                                onClick={() => { if (confirm("Remove this document record?")) deleteDoc.mutate(doc.id); }}
+                                className="p-1.5 rounded-lg text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors shrink-0">
+                                <Trash2 className="w-4 h-4" />
+                              </button>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+
+                  <p className="text-xs text-muted-foreground italic">
+                    This is a record of documents received — attach physical files or scans in your file management system.
+                  </p>
                 </div>
               )}
 

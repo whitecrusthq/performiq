@@ -51,5 +51,17 @@ export const usersTable = pgTable("users", {
   notes: text("notes"),
 });
 
+export const staffDocumentsTable = pgTable("staff_documents", {
+  id: serial("id").primaryKey(),
+  userId: integer("user_id").notNull(),
+  name: text("name").notNull(),
+  documentType: text("document_type").notNull().default("other"),
+  receivedDate: date("received_date"),
+  notes: text("notes"),
+  uploadedById: integer("uploaded_by_id"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
 export type User = typeof usersTable.$inferSelect;
 export type CustomRole = typeof customRolesTable.$inferSelect;
+export type StaffDocument = typeof staffDocumentsTable.$inferSelect;
