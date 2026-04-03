@@ -112,6 +112,19 @@ The Vite proxy rewrites `/crm/api/*` → `http://localhost:3002/api/*` at dev ti
 - AI Assistant page: 4-tab layout — AI Provider (provider selector + model/key/URL/temp), Knowledge Base, Test Chat, System Prompt
 - Inbox: ⚡ button to get AI suggestions (click to insert); "Bot Reply" button for auto-respond
 
+### Customer Intelligence (`/insights`)
+- **Route**: `GET /api/insights/customer?days=30` — full analytics on customer messages
+- **Keyword-based analysis** (no AI cost) extracts:
+  - **Top customer questions**: messages containing `?`, grouped by bigram frequency into recurring topic clusters
+  - **Top issues raised**: 7 categories (Shipping & Delivery, Returns & Refunds, Billing & Payment, Technical Support, Product Information, Account & Profile, Complaints) matched via keyword lists — counted per conversation
+  - **Top products mentioned**: capitalised terms and bigrams that appear in product-related message context, with frequency ranking
+  - **Compliance & risk flags**: 22 keywords across `high` (legal action, fraud, lawsuit, GDPR) and `medium` (data protection, discrimination, mis-sold) severity — deduplicated per conversation
+- **AI Analysis button**: `POST /api/insights/ai-summary` — sends a sample of recent messages to the configured AI provider for sentiment, key themes, product detection, and recommendations
+- **Period selector**: 7 / 14 / 30 / 60 / 90 days
+- **Page**: `artifacts/hira-crm/src/pages/insights.tsx` — stat cards, horizontal bar chart (issues), ranked question list, product bubble chart, compliance flag feed
+- **Backend**: `crm-backend/src/routes/insights.ts`
+- **Sidebar entry**: "Intelligence" (Brain icon)
+
 ### Channel Integrations
 - `crm_channels` table stores credentials (accessToken, phoneNumberId, pageAccessToken, etc.)
 - `GET/POST/PUT/DELETE /api/channels` — CRUD for channel config

@@ -12,6 +12,7 @@ import aiSettingsRouter from "./ai-settings.js";
 import webhooksRouter from "./webhooks.js";
 import closedRouter from "./closed.js";
 import feedbackRouter from "./feedback.js";
+import insightsRouter from "./insights.js";
 
 const router = Router();
 
@@ -31,5 +32,6 @@ router.use(aiRouter);
 router.use(aiSettingsRouter);
 router.use(closedRouter);
 router.use(feedbackRouter);
+router.use(insightsRouter);
 
 export default router;

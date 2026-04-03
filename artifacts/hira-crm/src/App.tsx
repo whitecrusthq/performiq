@@ -17,6 +17,7 @@ import AiChat from "@/pages/ai-chat";
 import Admin from "@/pages/admin";
 import Feedback from "@/pages/feedback";
 import FollowUps from "@/pages/follow-ups";
+import Insights from "@/pages/insights";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -62,6 +63,7 @@ function Router() {
       <Route path="/admin" component={() => <AdminRoute component={Admin} />} />
       <Route path="/feedback" component={() => <PrivateRoute component={Feedback} />} />
       <Route path="/follow-ups" component={() => <PrivateRoute component={FollowUps} />} />
+      <Route path="/insights" component={() => <PrivateRoute component={Insights} />} />
       <Route component={NotFound} />
     </Switch>
   );
