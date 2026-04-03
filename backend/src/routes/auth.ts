@@ -5,6 +5,7 @@ import { eq } from "drizzle-orm";
 import { requireAuth, generateToken, AuthRequest } from "../middlewares/auth";
 import { sendOtpEmail } from "../lib/mailgun.js";
 import { generateOtp, storeOtp, verifyOtp } from "../lib/otp-store.js";
+import { getSettings } from "./security.js";
 
 const router = Router();
 
@@ -40,8 +41,44 @@ router.post("/auth/login", async (req, res) => {
     const [user] = await db.select().from(usersTable).where(eq(usersTable.email, email.toLowerCase().trim())).limit(1);
     if (!user) { res.status(401).json({ error: "Invalid credentials" }); return; }
 
+    const settings = await getSettings();
+
+    if (settings.lockoutEnabled && user.isLocked) {
+      const lockedAt = user.lockedAt ? new Date(user.lockedAt).getTime() : 0;
+      const unlockAt = lockedAt + settings.lockoutDurationMinutes * 60 * 1000;
+      if (Date.now() < unlockAt) {
+        const minsLeft = Math.ceil((unlockAt - Date.now()) / 60000);
+        res.status(403).json({ error: `Account is locked. Try again in ${minsLeft} minute${minsLeft === 1 ? "" : "s"} or contact your administrator.` });
+        return;
+      }
+      await db.update(usersTable).set({ isLocked: false, failedLoginAttempts: 0, lockedAt: null }).where(eq(usersTable.id, user.id));
+      user.isLocked = false;
+      user.failedLoginAttempts = 0;
+    }
+
     const valid = await bcrypt.compare(password, user.passwordHash);
-    if (!valid) { res.status(401).json({ error: "Invalid credentials" }); return; }
+    if (!valid) {
+      if (settings.lockoutEnabled) {
+        const newAttempts = user.failedLoginAttempts + 1;
+        const shouldLock = newAttempts >= settings.maxAttempts;
+        await db.update(usersTable).set({
+          failedLoginAttempts: newAttempts,
+          isLocked: shouldLock,
+          lockedAt: shouldLock ? new Date() : user.lockedAt,
+        }).where(eq(usersTable.id, user.id));
+        if (shouldLock) {
+          res.status(403).json({ error: `Account locked after ${settings.maxAttempts} failed attempts. Contact your administrator to unlock.` });
+          return;
+        }
+        const remaining = settings.maxAttempts - newAttempts;
+        res.status(401).json({ error: `Invalid credentials. ${remaining} attempt${remaining === 1 ? "" : "s"} remaining before lockout.` });
+      } else {
+        res.status(401).json({ error: "Invalid credentials" });
+      }
+      return;
+    }
+
+    await db.update(usersTable).set({ failedLoginAttempts: 0, isLocked: false, lockedAt: null }).where(eq(usersTable.id, user.id));
 
     if (OTP_ENABLED) {
       const otp = generateOtp();

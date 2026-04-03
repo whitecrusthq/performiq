@@ -45,11 +45,10 @@ app.use(express.urlencoded({ extended: true, limit: "5mb" }));
 
 const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 5,
+  max: 30,
   standardHeaders: true,
   legacyHeaders: false,
-  message: { error: "Too many login attempts, please try again after 15 minutes." },
-  skip: (req) => req.path === "/auth/verify-otp",
+  message: { error: "Too many requests from this IP, please try again after 15 minutes." },
 });
 
 app.use("/api/auth/login", authLimiter);

@@ -1,4 +1,4 @@
-import { pgTable, serial, text, integer, timestamp, pgEnum, unique } from "drizzle-orm/pg-core";
+import { pgTable, serial, text, integer, timestamp, boolean, pgEnum, unique } from "drizzle-orm/pg-core";
 
 export const roleEnum = pgEnum("role", ["super_admin", "admin", "manager", "employee"]);
 
@@ -25,6 +25,9 @@ export const usersTable = pgTable("users", {
   phone: text("phone"),
   staffId: text("staff_id"),
   profilePhoto: text("profile_photo"),
+  isLocked: boolean("is_locked").notNull().default(false),
+  failedLoginAttempts: integer("failed_login_attempts").notNull().default(0),
+  lockedAt: timestamp("locked_at"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 

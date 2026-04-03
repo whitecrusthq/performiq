@@ -25,6 +25,7 @@ import Timesheets from "@/pages/timesheets";
 import Onboarding from "@/pages/onboarding";
 import HrQueries from "@/pages/hr-queries";
 import Profile from "@/pages/profile";
+import Security from "@/pages/security";
 
 const queryClient = new QueryClient();
 
@@ -101,6 +102,9 @@ function Router() {
       </Route>
       <Route path="/profile">
         <AppLayout><ProtectedRoute component={Profile} /></AppLayout>
+      </Route>
+      <Route path="/security">
+        <AppLayout><ProtectedRoute component={Security} /></AppLayout>
       </Route>
 
       <Route component={NotFound} />

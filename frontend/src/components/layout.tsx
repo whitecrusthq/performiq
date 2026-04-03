@@ -22,6 +22,7 @@ import {
   ClipboardCheck,
   UserPlus,
   MessageSquareWarning,
+  ShieldAlert,
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { User } from "@/lib";
@@ -42,6 +43,7 @@ const NAV_ITEMS: { name: string; path: string; icon: any; roles: string[]; custo
   { name: "Departments", path: "/departments",  icon: Building2,       roles: ["super_admin", "admin"] },
   { name: "Sites",       path: "/sites",        icon: MapPin,          roles: ["super_admin", "admin"] },
   { name: "Roles",       path: "/roles",        icon: Shield,          roles: ["super_admin", "admin"] },
+  { name: "Security",    path: "/security",     icon: ShieldAlert,     roles: ["super_admin", "admin"] },
 ];
 
 interface NavLinksProps {

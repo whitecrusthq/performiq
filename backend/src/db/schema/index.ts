@@ -9,3 +9,4 @@ export * from "./leave";
 export * from "./attendance";
 export * from "./onboarding";
 export * from "./hr-queries";
+export * from "./security-settings";
