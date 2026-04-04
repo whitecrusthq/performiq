@@ -10,10 +10,12 @@ import {
 } from "recharts";
 import {
   Search, Package, AlertTriangle, ShoppingCart, RefreshCw, Loader2,
-  TrendingUp, TrendingDown, ChevronUp, ChevronDown, Minus,
+  TrendingUp, TrendingDown, ChevronUp, ChevronDown, Minus, ArrowUpDown,
 } from "lucide-react";
 import { SiWhatsapp, SiFacebook, SiInstagram } from "react-icons/si";
 import { apiGet } from "@/lib/api";
+import { ExportButton } from "@/components/export-button";
+import { exportToExcel, exportToPdf } from "@/lib/export-utils";
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -164,6 +166,63 @@ export default function ProductDemand() {
   const maxCount = Math.max(...topProducts.map((p) => p.count), 1);
 
   const channelBreakdown = Object.entries(data?.channelBreakdown ?? {});
+
+  // ── Table sort state ────────────────────────────────────────────────────────
+  type SortCol = "rank" | "product" | "searches" | "share";
+  const [sortCol, setSortCol] = useState<SortCol>("rank");
+  const [sortAsc, setSortAsc] = useState(true);
+
+  const totalSearches = data?.stats.totalSearches ?? 0;
+
+  const sortedProducts = [...topProducts].sort((a, b) => {
+    let diff = 0;
+    if (sortCol === "rank" || sortCol === "searches") diff = b.count - a.count;
+    else if (sortCol === "product") diff = a.display.localeCompare(b.display);
+    else if (sortCol === "share") diff = b.count - a.count;
+    return sortAsc ? diff : -diff;
+  });
+
+  function toggleSort(col: SortCol) {
+    if (sortCol === col) setSortAsc((v) => !v);
+    else { setSortCol(col); setSortAsc(true); }
+  }
+
+  function SortIcon({ col }: { col: SortCol }) {
+    if (sortCol !== col) return <ArrowUpDown className="h-3.5 w-3.5 text-muted-foreground/50" />;
+    return sortAsc ? <ChevronUp className="h-3.5 w-3.5 text-primary" /> : <ChevronDown className="h-3.5 w-3.5 text-primary" />;
+  }
+
+  // ── Export helpers ──────────────────────────────────────────────────────────
+  function buildDemandSheets() {
+    return [
+      {
+        name: "Top Products",
+        headers: ["Rank", "Product Name", "Searches", "Share (%)"],
+        rows: topProducts.map((p, i) => [
+          i + 1, p.display, p.count,
+          totalSearches > 0 ? `${((p.count / totalSearches) * 100).toFixed(1)}%` : "0%",
+        ]),
+      },
+      {
+        name: "Channel Breakdown",
+        headers: ["Channel", "Searches"],
+        rows: channelBreakdown.map(([ch, cnt]) => [ch.toUpperCase(), cnt]),
+      },
+      {
+        name: "Summary",
+        headers: ["Metric", "Value"],
+        rows: [
+          ["Total Searches", data?.stats.totalSearches ?? 0],
+          ["Unique Products", data?.stats.uniqueProductCount ?? 0],
+          ["Not Available Rate", `${(data?.stats.notAvailableRate ?? 0).toFixed(1)}%`],
+          ["Search-to-Order Rate", `${(data?.stats.searchToOrderRate ?? 0).toFixed(1)}%`],
+        ],
+      },
+    ];
+  }
+
+  function handleDemandExcel() { exportToExcel("product-demand", buildDemandSheets()); }
+  function handleDemandPdf() { exportToPdf("product-demand", "Product Demand Intelligence Report", buildDemandSheets()); }
   const totalChannelSearches = channelBreakdown.reduce((s, [, v]) => s + v, 0);
 
   return (
@@ -187,6 +246,7 @@ export default function ProductDemand() {
             <RefreshCw className={`h-4 w-4 ${isFetching ? "animate-spin" : ""}`} />
             Refresh
           </Button>
+          <ExportButton onExcel={handleDemandExcel} onPdf={handleDemandPdf} loading={isLoading} />
         </div>
       </div>
 
@@ -465,6 +525,92 @@ export default function ProductDemand() {
                   </CardContent>
                 </Card>
               )}
+
+              {/* ── Frequently Requested Products — sortable table ── */}
+              <Card>
+                <CardHeader className="pb-3">
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <CardTitle className="text-base flex items-center gap-2">
+                        <Package className="h-4 w-4 text-primary" />
+                        Frequently Requested Products
+                      </CardTitle>
+                      <p className="text-xs text-muted-foreground mt-0.5">
+                        All products asked about by customers — click column headers to sort
+                      </p>
+                    </div>
+                    <Badge variant="secondary" className="shrink-0">{topProducts.length} products</Badge>
+                  </div>
+                </CardHeader>
+                <CardContent className="p-0">
+                  {topProducts.length === 0 ? (
+                    <div className="flex flex-col items-center justify-center py-12 text-muted-foreground gap-2">
+                      <Package className="h-8 w-8 opacity-30" />
+                      <p className="text-sm">No product requests detected yet</p>
+                    </div>
+                  ) : (
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-sm">
+                        <thead>
+                          <tr className="border-b bg-muted/40">
+                            {([
+                              { key: "rank", label: "#", cls: "w-12 text-center" },
+                              { key: "product", label: "Product Name", cls: "text-left" },
+                              { key: "searches", label: "Searches", cls: "text-right" },
+                              { key: "share", label: "Share", cls: "text-right" },
+                            ] as { key: SortCol; label: string; cls: string }[]).map((col) => (
+                              <th
+                                key={col.key}
+                                className={`px-4 py-3 font-medium text-muted-foreground cursor-pointer hover:text-foreground transition-colors select-none ${col.cls}`}
+                                onClick={() => toggleSort(col.key)}
+                              >
+                                <span className="inline-flex items-center gap-1">
+                                  {col.label}
+                                  <SortIcon col={col.key} />
+                                </span>
+                              </th>
+                            ))}
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {sortedProducts.map((product, i) => {
+                            const originalRank = topProducts.findIndex((p) => p.term === product.term) + 1;
+                            const share = totalSearches > 0 ? ((product.count / totalSearches) * 100).toFixed(1) : "0.0";
+                            const colour = PRODUCT_COLOURS[(originalRank - 1) % PRODUCT_COLOURS.length];
+                            return (
+                              <tr key={product.term} className="border-b last:border-0 hover:bg-muted/30 transition-colors">
+                                <td className="px-4 py-3 text-center">
+                                  <span className="text-xs font-mono text-muted-foreground">{originalRank}</span>
+                                </td>
+                                <td className="px-4 py-3">
+                                  <div className="flex items-center gap-2">
+                                    <div className="h-2 w-2 rounded-full shrink-0" style={{ background: colour }} />
+                                    <span className="font-medium">{product.display}</span>
+                                  </div>
+                                </td>
+                                <td className="px-4 py-3 text-right">
+                                  <span className="font-semibold" style={{ color: colour }}>{product.count.toLocaleString()}</span>
+                                </td>
+                                <td className="px-4 py-3 text-right">
+                                  <div className="inline-flex items-center gap-2">
+                                    <div className="w-16 h-1.5 rounded-full bg-muted overflow-hidden hidden sm:block">
+                                      <div
+                                        className="h-full rounded-full"
+                                        style={{ width: `${share}%`, background: colour }}
+                                      />
+                                    </div>
+                                    <span className="text-xs text-muted-foreground w-10 text-right">{share}%</span>
+                                  </div>
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
             </>
           )}
         </>

@@ -18,6 +18,8 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/lib/auth-context";
 import { format } from "date-fns";
+import { ExportButton } from "@/components/export-button";
+import { exportToExcel, exportToPdf } from "@/lib/export-utils";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -359,6 +361,33 @@ export default function KpiPage() {
     .map((s) => ({ stat: s, score: computeScore(s) }))
     .sort((a, b) => b.score - a.score);
 
+  function buildKpiSheets() {
+    return [
+      {
+        name: "Agent KPI Leaderboard",
+        headers: ["Rank", "Agent", "Score", "Conversations", "Resolution Rate", "CSAT Score", "Avg Response (min)", "Avg Handle (min)"],
+        rows: ranked.map((r, i) => [
+          i + 1,
+          r.stat.agent.name,
+          `${r.score}%`,
+          r.stat.totalConversations,
+          `${r.stat.resolutionRate.toFixed(1)}%`,
+          r.stat.csatScore !== null ? r.stat.csatScore.toFixed(2) : "N/A",
+          r.stat.avgResponseTime !== null ? r.stat.avgResponseTime.toFixed(1) : "N/A",
+          r.stat.avgHandleTime !== null ? r.stat.avgHandleTime.toFixed(1) : "N/A",
+        ]),
+      },
+    ];
+  }
+
+  function handleKpiExcelExport() {
+    exportToExcel(`kpi-leaderboard-${period}`, buildKpiSheets());
+  }
+
+  function handleKpiPdfExport() {
+    exportToPdf(`kpi-leaderboard-${period}`, `Agent KPI Leaderboard — ${period.charAt(0).toUpperCase() + period.slice(1)}`, buildKpiSheets());
+  }
+
   const topAgent = ranked[0];
   const teamAvgScore = ranked.length ? Math.round(ranked.reduce((s, r) => s + r.score, 0) / ranked.length) : 0;
   const now = new Date();
@@ -376,8 +405,9 @@ export default function KpiPage() {
             Real-time performance ranking · {format(now, "EEEE, d MMMM yyyy")}
           </p>
         </div>
-        {isAdmin && (
-          <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
+          <ExportButton onExcel={handleKpiExcelExport} onPdf={handleKpiPdfExport} loading={isLoading} />
+          {isAdmin && (
             <Button
               variant="outline"
               size="sm"
@@ -389,8 +419,8 @@ export default function KpiPage() {
               {bestPracticeMutation.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}
               Apply Best Practices
             </Button>
-          </div>
-        )}
+          )}
+        </div>
       </div>
 
       {/* Period tabs */}

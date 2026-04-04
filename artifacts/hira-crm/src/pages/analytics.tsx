@@ -12,6 +12,8 @@ import {
   Instagram, Facebook,
 } from "lucide-react";
 import { apiGet } from "@/lib/api";
+import { ExportButton } from "@/components/export-button";
+import { exportToExcel, exportToPdf } from "@/lib/export-utils";
 
 interface AnalyticsSummary {
   totalReceived: number;
@@ -170,6 +172,41 @@ export default function Analytics() {
   const trend = data?.dailyTrend ?? [];
   const channels = data?.channelStats ?? [];
 
+  function buildExportSheets() {
+    return [
+      {
+        name: "Summary",
+        headers: ["Metric", "Value"],
+        rows: [
+          ["Total Messages Received", summary?.totalReceived ?? 0],
+          ["Total Messages Sent", summary?.totalSent ?? 0],
+          ["AI-Generated Messages", summary?.aiMessages ?? 0],
+          ["AI Percentage", `${(summary?.aiPercentage ?? 0).toFixed(1)}%`],
+          ["Top Channel", summary?.topChannel ?? ""],
+          ["Top Channel Messages", summary?.topChannelCount ?? 0],
+        ] as (string | number | null)[][],
+      },
+      {
+        name: "Channel Breakdown",
+        headers: ["Channel", "Received", "Sent", "AI Messages"],
+        rows: channels.map((c) => [c.channel.toUpperCase(), c.received, c.sent, c.aiMessages]),
+      },
+      {
+        name: "Daily Trend",
+        headers: ["Date", "Received", "Sent"],
+        rows: trend.map((t) => [t.date, t.received, t.sent]),
+      },
+    ];
+  }
+
+  function handleExcelExport() {
+    exportToExcel("messages-analytics", buildExportSheets());
+  }
+
+  function handlePdfExport() {
+    exportToPdf("messages-analytics", "Messages Analytics Report", buildExportSheets());
+  }
+
   return (
     <div className="p-6 space-y-6 overflow-auto h-full">
       {/* Header */}
@@ -187,6 +224,7 @@ export default function Analytics() {
             <RefreshCw className={`h-4 w-4 ${isFetching ? "animate-spin" : ""}`} />
             Refresh
           </Button>
+          <ExportButton onExcel={handleExcelExport} onPdf={handlePdfExport} loading={isLoading} />
         </div>
       </div>
 

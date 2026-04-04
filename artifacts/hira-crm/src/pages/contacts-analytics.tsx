@@ -12,6 +12,8 @@ import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
 } from "recharts";
 import { apiGet } from "@/lib/api";
+import { ExportButton } from "@/components/export-button";
+import { exportToExcel, exportToPdf } from "@/lib/export-utils";
 
 interface ContactsAnalytics {
   summary: { totalContacts: number; newToday: number; newThisWeek: number; newThisMonth: number; monthlyGrowthPct: number };
@@ -112,6 +114,41 @@ export default function ContactsAnalytics() {
   const s = data?.summary;
   const gSummary = data?.growthSummary;
 
+  function buildContactsSheets() {
+    const platformRows: (string | number)[][] = (data?.contactsByPlatform ?? []).map((p) => [
+      p.channel.toUpperCase(), p.count, `${p.percentage.toFixed(1)}%`,
+    ]);
+    return [
+      {
+        name: "Summary",
+        headers: ["Metric", "Value"],
+        rows: [
+          ["Total Contacts", s?.totalContacts ?? 0],
+          ["New Today", s?.newToday ?? 0],
+          ["New This Week", s?.newThisWeek ?? 0],
+          ["New This Month", s?.newThisMonth ?? 0],
+          ["Monthly Growth (%)", `${(s?.monthlyGrowthPct ?? 0).toFixed(1)}%`],
+          ["Active in Period", gSummary?.activeInPeriod ?? 0],
+          ["Top Platform", gSummary?.topPlatform ?? ""],
+          ["Avg Conversations", gSummary?.avgConversations ?? 0],
+        ] as (string | number)[][],
+      },
+      {
+        name: "By Platform",
+        headers: ["Platform", "Contacts", "Share"],
+        rows: platformRows,
+      },
+    ];
+  }
+
+  function handleExcelExport() {
+    exportToExcel("contacts-analytics", buildContactsSheets());
+  }
+
+  function handlePdfExport() {
+    exportToPdf("contacts-analytics", "Contacts Analytics Report", buildContactsSheets());
+  }
+
   return (
     <div className="p-6 space-y-6 overflow-auto h-full">
       {/* Header */}
@@ -140,6 +177,7 @@ export default function ContactsAnalytics() {
             <RefreshCw className={`h-4 w-4 ${isFetching ? "animate-spin" : ""}`} />
             Refresh
           </Button>
+          <ExportButton onExcel={handleExcelExport} onPdf={handlePdfExport} loading={isLoading} />
         </div>
       </div>
 
