@@ -16,6 +16,7 @@ export { AgentAttendance } from "./AgentAttendance.js";
 export { AgentAttendancePing } from "./AgentAttendancePing.js";
 export { AgentShift } from "./AgentShift.js";
 export { BrandingSettings } from "./BrandingSettings.js";
+export { RetentionSettings } from "./RetentionSettings.js";
 
 import { Agent } from "./Agent.js";
 import { Customer } from "./Customer.js";

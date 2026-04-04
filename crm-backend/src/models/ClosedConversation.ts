@@ -15,12 +15,14 @@ export interface ClosedConversationAttributes {
   messageCount: number;
   closedAt: Date;
   originalCreatedAt: Date;
+  summary: string | null;
+  messagesDeleted: boolean;
   createdAt?: Date;
   updatedAt?: Date;
 }
 
 export interface ClosedConversationCreationAttributes
-  extends Optional<ClosedConversationAttributes, "id" | "assignedAgentId" | "assignedAgentName" | "closedByAgentId" | "closedByAgentName" | "customerPhone"> {}
+  extends Optional<ClosedConversationAttributes, "id" | "assignedAgentId" | "assignedAgentName" | "closedByAgentId" | "closedByAgentName" | "customerPhone" | "summary" | "messagesDeleted"> {}
 
 export class ClosedConversation extends Model<ClosedConversationAttributes, ClosedConversationCreationAttributes> implements ClosedConversationAttributes {
   declare id: number;
@@ -36,6 +38,8 @@ export class ClosedConversation extends Model<ClosedConversationAttributes, Clos
   declare messageCount: number;
   declare closedAt: Date;
   declare originalCreatedAt: Date;
+  declare summary: string | null;
+  declare messagesDeleted: boolean;
   declare readonly createdAt: Date;
   declare readonly updatedAt: Date;
 }
@@ -55,6 +59,8 @@ ClosedConversation.init(
     messageCount: { type: DataTypes.INTEGER, allowNull: false, defaultValue: 0, field: "message_count" },
     closedAt: { type: DataTypes.DATE, allowNull: false, field: "closed_at" },
     originalCreatedAt: { type: DataTypes.DATE, allowNull: false, field: "original_created_at" },
+    summary: { type: DataTypes.TEXT, allowNull: true, defaultValue: null },
+    messagesDeleted: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: false, field: "messages_deleted" },
   },
   {
     sequelize,

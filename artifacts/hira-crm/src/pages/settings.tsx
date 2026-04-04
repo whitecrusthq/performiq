@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -13,7 +13,8 @@ import { SiWhatsapp, SiFacebook, SiInstagram, SiMailgun } from "react-icons/si";
 import {
   CheckCircle2, Bot, Trash2, Loader2, Eye, EyeOff, XCircle, Zap, Send,
   Globe, Palette, Upload, X, Image as ImageIcon, Wifi, Settings2, Users,
-  Mail, ChevronRight,
+  Mail, ChevronRight, DatabaseZap, Play, RefreshCw, Archive, MessageSquare,
+  AlertTriangle,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { apiGet, apiPost, apiPut, getBaseUrl } from "@/lib/api";
@@ -43,7 +44,7 @@ interface BrandingData {
 
 interface ApiAgent { id: number; name: string; email: string; role: string; isActive: boolean; }
 
-type SettingsSection = "channels" | "automation" | "email" | "team" | "appearance";
+type SettingsSection = "channels" | "automation" | "email" | "team" | "appearance" | "retention";
 
 interface NavItem {
   id: SettingsSection;
@@ -59,6 +60,7 @@ const NAV_ITEMS: NavItem[] = [
   { id: "email",       label: "Email",           description: "Mailgun broadcasting",  icon: Mail },
   { id: "team",        label: "Team",            description: "Agents & roles",        icon: Users },
   { id: "appearance",  label: "Appearance",      description: "Branding & colors",     icon: Palette, adminOnly: true },
+  { id: "retention",   label: "Data Retention",  description: "Transcript storage",    icon: DatabaseZap, adminOnly: true },
 ];
 
 export default function Settings() {
@@ -753,8 +755,226 @@ export default function Settings() {
             </>
           )}
 
+          {/* ── DATA RETENTION ───────────────────────────────────── */}
+          {activeSection === "retention" && <RetentionSection />}
+
         </div>
       </main>
+    </div>
+  );
+}
+
+// ── Retention Section (separate component to keep state clean) ────────────────
+
+function RetentionSection() {
+  const { toast } = useToast();
+  const qc = useQueryClient();
+
+  const { data: settings, isLoading: settingsLoading } = useQuery<{
+    retentionDays: number; summarizeBeforeDelete: boolean; autoRunEnabled: boolean;
+  }>({
+    queryKey: ["retention-settings"],
+    queryFn: () => apiGet("/retention/settings"),
+  });
+
+  const { data: stats, isLoading: statsLoading, refetch: refetchStats } = useQuery<{
+    retentionDays: number; eligible: number; alreadySummarized: number;
+    totalTranscripts: number; totalRawMessages: number; cutoffDate: string;
+  }>({
+    queryKey: ["retention-stats"],
+    queryFn: () => apiGet("/retention/stats"),
+  });
+
+  const [retentionDays, setRetentionDays] = useState<string>("");
+  const [summarize, setSummarize] = useState(true);
+  const [running, setRunning] = useState(false);
+  const [settingsSaved, setSettingsSaved] = useState(false);
+
+  // Sync from API
+  useEffect(() => {
+    if (settings) {
+      setRetentionDays(String(settings.retentionDays));
+      setSummarize(settings.summarizeBeforeDelete);
+    }
+  }, [settings]);
+
+  const saveSettings = useMutation({
+    mutationFn: () => apiPut("/retention/settings", {
+      retentionDays: Number(retentionDays) || 90,
+      summarizeBeforeDelete: summarize,
+    }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["retention-settings"] });
+      qc.invalidateQueries({ queryKey: ["retention-stats"] });
+      toast({ title: "Retention settings saved" });
+      setSettingsSaved(true);
+      setTimeout(() => setSettingsSaved(false), 2000);
+    },
+    onError: () => toast({ title: "Failed to save settings", variant: "destructive" }),
+  });
+
+  const runRetention = async () => {
+    setRunning(true);
+    try {
+      const res = await apiPost("/retention/run", {});
+      refetchStats();
+      toast({ title: res.message ?? "Retention run complete" });
+    } catch {
+      toast({ title: "Retention run failed", variant: "destructive" });
+    } finally {
+      setRunning(false);
+    }
+  };
+
+  const cutoff = stats?.cutoffDate ? new Date(stats.cutoffDate).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" }) : null;
+
+  return (
+    <div className="space-y-6">
+      <div>
+        <h2 className="text-lg font-semibold">Data Retention</h2>
+        <p className="text-sm text-muted-foreground mt-1">
+          Control how long full transcript messages are kept. Older conversations can be auto-summarized by AI before their raw messages are deleted — saving storage while preserving context.
+        </p>
+      </div>
+
+      {/* Storage snapshot */}
+      <div className="grid grid-cols-3 gap-4">
+        {[
+          { label: "Total Transcripts", value: stats?.totalTranscripts ?? "—", icon: Archive, color: "text-blue-500" },
+          { label: "Raw Messages Stored", value: stats?.totalRawMessages ?? "—", icon: MessageSquare, color: "text-violet-500" },
+          { label: "Ready for Cleanup", value: statsLoading ? "—" : (stats?.eligible ?? 0), icon: AlertTriangle, color: stats?.eligible ? "text-orange-500" : "text-muted-foreground" },
+        ].map(({ label, value, icon: Icon, color }) => (
+          <Card key={label}>
+            <CardContent className="pt-5">
+              <div className="flex items-start justify-between">
+                <div>
+                  <p className="text-xs text-muted-foreground">{label}</p>
+                  <p className="text-2xl font-bold mt-1">{String(value)}</p>
+                </div>
+                <Icon className={`h-5 w-5 mt-0.5 ${color}`} />
+              </div>
+            </CardContent>
+          </Card>
+        ))}
+      </div>
+
+      {/* Settings card */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base flex items-center gap-2">
+            <DatabaseZap className="h-4 w-4 text-primary" />
+            Retention Policy
+          </CardTitle>
+          <CardDescription>
+            Messages from closed conversations older than your retention period will be eligible for cleanup.
+            {cutoff && <span className="ml-1">Current cutoff: <strong>{cutoff}</strong>.</span>}
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-6">
+          <div className="space-y-2">
+            <Label>Keep transcripts for</Label>
+            <Select
+              value={settingsLoading ? "90" : (retentionDays || String(settings?.retentionDays ?? "90"))}
+              onValueChange={setRetentionDays}
+            >
+              <SelectTrigger className="w-56">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="30">30 days</SelectItem>
+                <SelectItem value="60">60 days</SelectItem>
+                <SelectItem value="90">90 days (recommended)</SelectItem>
+                <SelectItem value="180">180 days (6 months)</SelectItem>
+                <SelectItem value="365">1 year</SelectItem>
+                <SelectItem value="730">2 years</SelectItem>
+                <SelectItem value="99999">Forever (never delete)</SelectItem>
+              </SelectContent>
+            </Select>
+            <p className="text-xs text-muted-foreground">
+              After this period, raw messages are deleted. Summaries are always kept.
+            </p>
+          </div>
+
+          <Separator />
+
+          <div className="flex items-start justify-between gap-4">
+            <div className="space-y-1">
+              <Label className="font-medium">Summarize before deleting</Label>
+              <p className="text-xs text-muted-foreground max-w-sm">
+                Before removing raw messages, AI generates a concise summary of each conversation. The summary is stored permanently on the transcript record.
+              </p>
+            </div>
+            <Switch
+              checked={settingsLoading ? true : (retentionDays ? summarize : (settings?.summarizeBeforeDelete ?? true))}
+              onCheckedChange={setSummarize}
+            />
+          </div>
+        </CardContent>
+        <CardFooter className="border-t bg-muted/20 px-6 py-4">
+          <Button onClick={() => saveSettings.mutate()} disabled={saveSettings.isPending} className="gap-2">
+            {saveSettings.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : settingsSaved ? <CheckCircle2 className="h-4 w-4 text-green-500" /> : <DatabaseZap className="h-4 w-4" />}
+            {settingsSaved ? "Saved!" : "Save Settings"}
+          </Button>
+        </CardFooter>
+      </Card>
+
+      {/* Run now card */}
+      <Card className="border-orange-200 dark:border-orange-900/40">
+        <CardHeader>
+          <CardTitle className="text-base flex items-center gap-2">
+            <Play className="h-4 w-4 text-orange-500" />
+            Run Retention Now
+          </CardTitle>
+          <CardDescription>
+            Manually trigger a cleanup pass. This will process up to 50 conversations per run that exceed your retention period.
+            {stats && stats.eligible > 0 && (
+              <span className="ml-1 text-orange-600 dark:text-orange-400 font-medium">
+                {stats.eligible} conversation{stats.eligible !== 1 ? "s" : ""} eligible right now.
+              </span>
+            )}
+            {stats && stats.eligible === 0 && (
+              <span className="ml-1 text-green-600 dark:text-green-400 font-medium"> No conversations eligible — all up to date!</span>
+            )}
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="rounded-lg bg-orange-50 dark:bg-orange-900/10 border border-orange-200 dark:border-orange-900/30 p-4 text-sm text-orange-700 dark:text-orange-300 flex items-start gap-2.5">
+            <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5" />
+            <div>
+              <p className="font-medium">This action is irreversible.</p>
+              <p>Raw message content will be permanently deleted. {summarize || settings?.summarizeBeforeDelete ? "AI summaries will be saved on each transcript before deletion." : "No summaries will be generated — enable that option above to preserve context."}</p>
+            </div>
+          </div>
+        </CardContent>
+        <CardFooter className="border-t bg-muted/20 px-6 py-4 flex gap-3">
+          <Button
+            variant="destructive"
+            onClick={runRetention}
+            disabled={running || (stats?.eligible === 0)}
+            className="gap-2"
+          >
+            {running ? <><Loader2 className="h-4 w-4 animate-spin" /> Processing…</> : <><Play className="h-4 w-4" /> Run Cleanup</>}
+          </Button>
+          <Button variant="outline" size="sm" className="gap-2" onClick={() => refetchStats()} disabled={statsLoading}>
+            <RefreshCw className={`h-3.5 w-3.5 ${statsLoading ? "animate-spin" : ""}`} /> Refresh Stats
+          </Button>
+        </CardFooter>
+      </Card>
+
+      {/* Already summarized */}
+      {stats && stats.alreadySummarized > 0 && (
+        <Card>
+          <CardContent className="pt-5 flex items-center gap-4">
+            <div className="h-10 w-10 rounded-full bg-green-100 dark:bg-green-900/30 flex items-center justify-center shrink-0">
+              <CheckCircle2 className="h-5 w-5 text-green-600" />
+            </div>
+            <div>
+              <p className="font-medium text-sm">{stats.alreadySummarized} transcript{stats.alreadySummarized !== 1 ? "s" : ""} already summarized</p>
+              <p className="text-xs text-muted-foreground">Raw messages deleted, AI summaries preserved. These conversations are still visible in Transcripts with their summary.</p>
+            </div>
+          </CardContent>
+        </Card>
+      )}
     </div>
   );
 }
