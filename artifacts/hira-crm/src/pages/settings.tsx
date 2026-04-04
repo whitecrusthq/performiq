@@ -17,7 +17,7 @@ import {
   Mail, ChevronRight, DatabaseZap, Play, RefreshCw, Archive, MessageSquare,
   AlertTriangle, CalendarClock, Plus, Pencil, ToggleLeft, ToggleRight,
   ShoppingCart, Bell, Package, Tag, UserCheck, Sparkles, Clock, ChevronDown,
-  Filter, FileText, MessageCircle, ThumbsUp,
+  Filter, FileText, MessageCircle, ThumbsUp, ShieldCheck,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { apiGet, apiPost, apiPut, apiDelete, getBaseUrl } from "@/lib/api";
