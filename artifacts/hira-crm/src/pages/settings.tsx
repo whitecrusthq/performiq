@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from "@/components/ui/card";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -16,6 +17,7 @@ import {
   Mail, ChevronRight, DatabaseZap, Play, RefreshCw, Archive, MessageSquare,
   AlertTriangle, CalendarClock, Plus, Pencil, ToggleLeft, ToggleRight,
   ShoppingCart, Bell, Package, Tag, UserCheck, Sparkles, Clock, ChevronDown,
+  Filter, FileText, MessageCircle, ThumbsUp,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { apiGet, apiPost, apiPut, apiDelete, getBaseUrl } from "@/lib/api";
@@ -771,42 +773,121 @@ export default function Settings() {
 
 // ── Retention Section (separate component to keep state clean) ────────────────
 
+const CHANNELS = [
+  { id: "whatsapp", label: "WhatsApp", Icon: SiWhatsapp, color: "text-green-500" },
+  { id: "facebook", label: "Facebook", Icon: SiFacebook, color: "text-blue-500" },
+  { id: "instagram", label: "Instagram", Icon: SiInstagram, color: "text-pink-500" },
+];
+
+type RetentionAction = "archive" | "delete";
+
+interface RetentionSettingsData {
+  retentionDays: number;
+  summarizeBeforeDelete: boolean;
+  autoRunEnabled: boolean;
+  action: RetentionAction;
+  channelFilter: string[];
+  includeClosedMessages: boolean;
+  includeFeedback: boolean;
+  minMessageCount: number;
+}
+
+interface RetentionStatsData {
+  retentionDays: number;
+  eligible: number;
+  alreadySummarized: number;
+  totalTranscripts: number;
+  totalRawMessages: number;
+  cutoffDate: string;
+  channelBreakdown: Record<string, number>;
+  feedbackEligible: number;
+  totalFeedback: number;
+  action: RetentionAction;
+}
+
+interface PreviewItem {
+  id: number;
+  customerName: string;
+  channel: string;
+  closedAt: string;
+  messageCount: number;
+}
+
+interface PreviewData {
+  eligible: number;
+  action: RetentionAction;
+  willSummarize: boolean;
+  items: PreviewItem[];
+  channelBreakdown: Record<string, number>;
+}
+
 function RetentionSection() {
   const { toast } = useToast();
   const qc = useQueryClient();
 
-  const { data: settings, isLoading: settingsLoading } = useQuery<{
-    retentionDays: number; summarizeBeforeDelete: boolean; autoRunEnabled: boolean;
-  }>({
+  const { data: settings, isLoading: settingsLoading } = useQuery<RetentionSettingsData>({
     queryKey: ["retention-settings"],
     queryFn: () => apiGet("/retention/settings"),
   });
 
-  const { data: stats, isLoading: statsLoading, refetch: refetchStats } = useQuery<{
-    retentionDays: number; eligible: number; alreadySummarized: number;
-    totalTranscripts: number; totalRawMessages: number; cutoffDate: string;
-  }>({
+  const { data: stats, isLoading: statsLoading, refetch: refetchStats } = useQuery<RetentionStatsData>({
     queryKey: ["retention-stats"],
     queryFn: () => apiGet("/retention/stats"),
   });
 
-  const [retentionDays, setRetentionDays] = useState<string>("");
+  // Local editable state
+  const [retentionDays, setRetentionDays] = useState<string>("90");
   const [summarize, setSummarize] = useState(true);
+  const [action, setAction] = useState<RetentionAction>("archive");
+  const [channelFilter, setChannelFilter] = useState<string[]>(["all"]);
+  const [includeClosedMessages, setIncludeClosedMessages] = useState(true);
+  const [includeFeedback, setIncludeFeedback] = useState(false);
+  const [minMessageCount, setMinMessageCount] = useState("0");
   const [running, setRunning] = useState(false);
   const [settingsSaved, setSettingsSaved] = useState(false);
+  const [preview, setPreview] = useState<PreviewData | null>(null);
+  const [previewing, setPreviewing] = useState(false);
 
-  // Sync from API
+  // Sync from API once loaded
   useEffect(() => {
     if (settings) {
       setRetentionDays(String(settings.retentionDays));
       setSummarize(settings.summarizeBeforeDelete);
+      setAction(settings.action ?? "archive");
+      setChannelFilter(Array.isArray(settings.channelFilter) ? settings.channelFilter : ["all"]);
+      setIncludeClosedMessages(settings.includeClosedMessages ?? true);
+      setIncludeFeedback(settings.includeFeedback ?? false);
+      setMinMessageCount(String(settings.minMessageCount ?? 0));
     }
   }, [settings]);
+
+  const toggleChannel = (ch: string) => {
+    if (ch === "all") {
+      setChannelFilter(["all"]);
+      return;
+    }
+    setChannelFilter((prev) => {
+      const without = prev.filter((c) => c !== "all");
+      if (without.includes(ch)) {
+        const next = without.filter((c) => c !== ch);
+        return next.length === 0 ? ["all"] : next;
+      } else {
+        return [...without, ch];
+      }
+    });
+  };
+
+  const allSelected = channelFilter.includes("all");
 
   const saveSettings = useMutation({
     mutationFn: () => apiPut("/retention/settings", {
       retentionDays: Number(retentionDays) || 90,
       summarizeBeforeDelete: summarize,
+      action,
+      channelFilter,
+      includeClosedMessages,
+      includeFeedback,
+      minMessageCount: Number(minMessageCount) || 0,
     }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["retention-settings"] });
@@ -818,11 +899,34 @@ function RetentionSection() {
     onError: () => toast({ title: "Failed to save settings", variant: "destructive" }),
   });
 
+  const runPreview = async () => {
+    setPreviewing(true);
+    try {
+      // Save settings first so backend uses latest config
+      await apiPut("/retention/settings", {
+        retentionDays: Number(retentionDays) || 90,
+        summarizeBeforeDelete: summarize,
+        action,
+        channelFilter,
+        includeClosedMessages,
+        includeFeedback,
+        minMessageCount: Number(minMessageCount) || 0,
+      });
+      const data = await apiPost("/retention/preview", {});
+      setPreview(data);
+    } catch {
+      toast({ title: "Failed to load preview", variant: "destructive" });
+    } finally {
+      setPreviewing(false);
+    }
+  };
+
   const runRetention = async () => {
     setRunning(true);
     try {
       const res = await apiPost("/retention/run", {});
       refetchStats();
+      setPreview(null);
       toast({ title: res.message ?? "Retention run complete" });
     } catch {
       toast({ title: "Retention run failed", variant: "destructive" });
@@ -831,30 +935,65 @@ function RetentionSection() {
     }
   };
 
-  const cutoff = stats?.cutoffDate ? new Date(stats.cutoffDate).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" }) : null;
+  const cutoff = stats?.cutoffDate
+    ? new Date(stats.cutoffDate).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })
+    : null;
+
+  const channelIcon = (ch: string) => {
+    const found = CHANNELS.find((c) => c.id === ch);
+    if (!found) return null;
+    const { Icon, color } = found;
+    return <Icon className={`h-3.5 w-3.5 ${color}`} />;
+  };
 
   return (
     <div className="space-y-6">
       <div>
         <h2 className="text-lg font-semibold">Data Retention</h2>
         <p className="text-sm text-muted-foreground mt-1">
-          Control how long full transcript messages are kept. Older conversations can be auto-summarized by AI before their raw messages are deleted — saving storage while preserving context.
+          Choose which data to archive or delete, filter by transcript type and channel, then run cleanup on demand. Archived conversations keep their record with an AI summary; fully deleted ones are removed entirely.
         </p>
       </div>
 
       {/* Storage snapshot */}
-      <div className="grid grid-cols-3 gap-4">
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
         {[
-          { label: "Total Transcripts", value: stats?.totalTranscripts ?? "—", icon: Archive, color: "text-blue-500" },
-          { label: "Raw Messages Stored", value: stats?.totalRawMessages ?? "—", icon: MessageSquare, color: "text-violet-500" },
-          { label: "Ready for Cleanup", value: statsLoading ? "—" : (stats?.eligible ?? 0), icon: AlertTriangle, color: stats?.eligible ? "text-orange-500" : "text-muted-foreground" },
-        ].map(({ label, value, icon: Icon, color }) => (
+          {
+            label: "Closed Transcripts",
+            value: stats?.totalTranscripts ?? "—",
+            icon: FileText,
+            color: "text-blue-500",
+            sub: stats?.alreadySummarized ? `${stats.alreadySummarized} summarized` : undefined,
+          },
+          {
+            label: "Raw Messages",
+            value: stats?.totalRawMessages ?? "—",
+            icon: MessageSquare,
+            color: "text-violet-500",
+            sub: "awaiting cleanup",
+          },
+          {
+            label: "Ready for Cleanup",
+            value: statsLoading ? "—" : (stats?.eligible ?? 0),
+            icon: AlertTriangle,
+            color: (stats?.eligible ?? 0) > 0 ? "text-orange-500" : "text-muted-foreground",
+            sub: cutoff ? `before ${cutoff}` : undefined,
+          },
+          {
+            label: "Feedback Records",
+            value: stats?.totalFeedback ?? "—",
+            icon: ThumbsUp,
+            color: "text-green-500",
+            sub: stats?.feedbackEligible ? `${stats.feedbackEligible} eligible` : undefined,
+          },
+        ].map(({ label, value, icon: Icon, color, sub }) => (
           <Card key={label}>
-            <CardContent className="pt-5">
+            <CardContent className="pt-4 pb-3">
               <div className="flex items-start justify-between">
                 <div>
                   <p className="text-xs text-muted-foreground">{label}</p>
                   <p className="text-2xl font-bold mt-1">{String(value)}</p>
+                  {sub && <p className="text-xs text-muted-foreground mt-0.5">{sub}</p>}
                 </div>
                 <Icon className={`h-5 w-5 mt-0.5 ${color}`} />
               </div>
@@ -863,29 +1002,97 @@ function RetentionSection() {
         ))}
       </div>
 
-      {/* Settings card */}
+      {/* ── Target Data ─────────────────────────────── */}
       <Card>
-        <CardHeader>
+        <CardHeader className="pb-3">
           <CardTitle className="text-base flex items-center gap-2">
             <DatabaseZap className="h-4 w-4 text-primary" />
-            Retention Policy
+            Target Data
+          </CardTitle>
+          <CardDescription>Select which types of data will be included in the retention run.</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            {/* Closed conversation messages */}
+            <label className={cn(
+              "flex items-start gap-3 rounded-lg border p-4 cursor-pointer transition-colors",
+              includeClosedMessages ? "border-primary/40 bg-primary/5" : "hover:bg-muted/50"
+            )}>
+              <Checkbox
+                checked={includeClosedMessages}
+                onCheckedChange={(v) => setIncludeClosedMessages(Boolean(v))}
+                className="mt-0.5"
+              />
+              <div className="space-y-0.5">
+                <div className="flex items-center gap-1.5 font-medium text-sm">
+                  <MessageCircle className="h-3.5 w-3.5 text-violet-500" />
+                  Closed Conversation Messages
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Raw message content from closed &amp; archived conversations. Conversation records are always kept (unless using Full Delete).
+                </p>
+                {stats && (
+                  <p className="text-xs font-medium text-violet-600 dark:text-violet-400">
+                    {stats.totalRawMessages} raw messages stored
+                  </p>
+                )}
+              </div>
+            </label>
+
+            {/* Feedback records */}
+            <label className={cn(
+              "flex items-start gap-3 rounded-lg border p-4 cursor-pointer transition-colors",
+              includeFeedback ? "border-primary/40 bg-primary/5" : "hover:bg-muted/50"
+            )}>
+              <Checkbox
+                checked={includeFeedback}
+                onCheckedChange={(v) => setIncludeFeedback(Boolean(v))}
+                className="mt-0.5"
+              />
+              <div className="space-y-0.5">
+                <div className="flex items-center gap-1.5 font-medium text-sm">
+                  <ThumbsUp className="h-3.5 w-3.5 text-green-500" />
+                  Feedback Records
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Customer satisfaction feedback older than the retention period. Only applies when action is set to Full Delete.
+                </p>
+                {stats && (
+                  <p className="text-xs font-medium text-green-600 dark:text-green-400">
+                    {stats.feedbackEligible} of {stats.totalFeedback} eligible
+                  </p>
+                )}
+              </div>
+            </label>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* ── Retention Period & Action ─────────────────── */}
+      <Card>
+        <CardHeader className="pb-3">
+          <CardTitle className="text-base flex items-center gap-2">
+            <CalendarClock className="h-4 w-4 text-primary" />
+            Retention Period &amp; Action
           </CardTitle>
           <CardDescription>
-            Messages from closed conversations older than your retention period will be eligible for cleanup.
+            Data older than your chosen period is eligible for cleanup.
             {cutoff && <span className="ml-1">Current cutoff: <strong>{cutoff}</strong>.</span>}
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">
           <div className="space-y-2">
-            <Label>Keep transcripts for</Label>
+            <Label>Keep data for</Label>
             <Select
-              value={settingsLoading ? "90" : (retentionDays || String(settings?.retentionDays ?? "90"))}
+              value={settingsLoading ? "90" : (retentionDays || "90")}
               onValueChange={setRetentionDays}
             >
               <SelectTrigger className="w-56">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
+                <SelectItem value="7">7 days</SelectItem>
+                <SelectItem value="14">14 days</SelectItem>
                 <SelectItem value="30">30 days</SelectItem>
                 <SelectItem value="60">60 days</SelectItem>
                 <SelectItem value="90">90 days (recommended)</SelectItem>
@@ -895,46 +1102,256 @@ function RetentionSection() {
                 <SelectItem value="99999">Forever (never delete)</SelectItem>
               </SelectContent>
             </Select>
+          </div>
+
+          <Separator />
+
+          <div className="space-y-3">
+            <Label>Action when eligible</Label>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              {/* Archive */}
+              <button
+                type="button"
+                onClick={() => setAction("archive")}
+                className={cn(
+                  "text-left rounded-lg border p-4 transition-colors",
+                  action === "archive"
+                    ? "border-primary bg-primary/5 ring-1 ring-primary/30"
+                    : "hover:bg-muted/50 border-border"
+                )}
+              >
+                <div className="flex items-center gap-2 font-medium text-sm mb-1">
+                  <Archive className="h-4 w-4 text-blue-500" />
+                  Archive
+                  {action === "archive" && <Badge variant="secondary" className="ml-auto text-xs">Selected</Badge>}
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Delete raw messages but keep the conversation record. AI can generate a summary before deletion so context is preserved.
+                </p>
+              </button>
+
+              {/* Full Delete */}
+              <button
+                type="button"
+                onClick={() => setAction("delete")}
+                className={cn(
+                  "text-left rounded-lg border p-4 transition-colors",
+                  action === "delete"
+                    ? "border-red-400 bg-red-50 dark:bg-red-900/10 ring-1 ring-red-400/30"
+                    : "hover:bg-muted/50 border-border"
+                )}
+              >
+                <div className="flex items-center gap-2 font-medium text-sm mb-1">
+                  <Trash2 className="h-4 w-4 text-red-500" />
+                  Full Delete
+                  {action === "delete" && <Badge variant="destructive" className="ml-auto text-xs">Selected</Badge>}
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Permanently remove the entire conversation record including all messages. Cannot be undone. Useful for strict data compliance.
+                </p>
+              </button>
+            </div>
+          </div>
+
+          {/* Summarize option — only for archive */}
+          {action === "archive" && (
+            <div className="flex items-start justify-between gap-4 rounded-lg bg-blue-50 dark:bg-blue-900/10 border border-blue-200 dark:border-blue-800/40 p-4">
+              <div className="space-y-1">
+                <Label className="font-medium flex items-center gap-1.5">
+                  <Sparkles className="h-3.5 w-3.5 text-blue-500" />
+                  AI summarize before archiving
+                </Label>
+                <p className="text-xs text-muted-foreground max-w-sm">
+                  Before deleting raw messages, AI generates a concise 3–5 sentence summary of the conversation. The summary is stored permanently on the transcript record.
+                </p>
+              </div>
+              <Switch checked={summarize} onCheckedChange={setSummarize} />
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* ── Transcript Filters ───────────────────────── */}
+      <Card>
+        <CardHeader className="pb-3">
+          <CardTitle className="text-base flex items-center gap-2">
+            <Filter className="h-4 w-4 text-primary" />
+            Transcript Filters
+          </CardTitle>
+          <CardDescription>Narrow which transcripts are included in the retention run.</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-5">
+          {/* Channel filter */}
+          <div className="space-y-2">
+            <Label className="text-sm font-medium">Channel</Label>
+            <div className="flex flex-wrap gap-2">
+              {/* All button */}
+              <button
+                type="button"
+                onClick={() => toggleChannel("all")}
+                className={cn(
+                  "flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-medium border transition-colors",
+                  allSelected
+                    ? "bg-primary text-primary-foreground border-primary"
+                    : "border-border hover:bg-muted"
+                )}
+              >
+                All Channels
+              </button>
+              {CHANNELS.map(({ id, label, Icon, color }) => {
+                const active = !allSelected && channelFilter.includes(id);
+                return (
+                  <button
+                    key={id}
+                    type="button"
+                    onClick={() => toggleChannel(id)}
+                    className={cn(
+                      "flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-medium border transition-colors",
+                      active
+                        ? "bg-primary/10 border-primary/40 text-primary"
+                        : "border-border hover:bg-muted"
+                    )}
+                  >
+                    <Icon className={`h-3 w-3 ${color}`} />
+                    {label}
+                    {stats?.channelBreakdown?.[id] !== undefined && (
+                      <span className={cn("rounded-full px-1.5 py-0.5 text-[10px]", active ? "bg-primary/20" : "bg-muted")}>
+                        {stats.channelBreakdown[id]}
+                      </span>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
             <p className="text-xs text-muted-foreground">
-              After this period, raw messages are deleted. Summaries are always kept.
+              Numbers show conversations currently eligible for cleanup per channel.
             </p>
           </div>
 
           <Separator />
 
-          <div className="flex items-start justify-between gap-4">
-            <div className="space-y-1">
-              <Label className="font-medium">Summarize before deleting</Label>
-              <p className="text-xs text-muted-foreground max-w-sm">
-                Before removing raw messages, AI generates a concise summary of each conversation. The summary is stored permanently on the transcript record.
-              </p>
+          {/* Min message count */}
+          <div className="space-y-2">
+            <Label className="text-sm font-medium">Minimum message count</Label>
+            <p className="text-xs text-muted-foreground">Only include conversations with at least this many messages. Set to 0 to include all.</p>
+            <div className="flex flex-wrap gap-2">
+              {["0", "5", "10", "20", "50"].map((v) => (
+                <button
+                  key={v}
+                  type="button"
+                  onClick={() => setMinMessageCount(v)}
+                  className={cn(
+                    "rounded-full px-3 py-1.5 text-xs font-medium border transition-colors",
+                    minMessageCount === v
+                      ? "bg-primary text-primary-foreground border-primary"
+                      : "border-border hover:bg-muted"
+                  )}
+                >
+                  {v === "0" ? "All" : `${v}+ messages`}
+                </button>
+              ))}
             </div>
-            <Switch
-              checked={settingsLoading ? true : (retentionDays ? summarize : (settings?.summarizeBeforeDelete ?? true))}
-              onCheckedChange={setSummarize}
-            />
           </div>
         </CardContent>
-        <CardFooter className="border-t bg-muted/20 px-6 py-4">
-          <Button onClick={() => saveSettings.mutate()} disabled={saveSettings.isPending} className="gap-2">
-            {saveSettings.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : settingsSaved ? <CheckCircle2 className="h-4 w-4 text-green-500" /> : <DatabaseZap className="h-4 w-4" />}
-            {settingsSaved ? "Saved!" : "Save Settings"}
-          </Button>
-        </CardFooter>
       </Card>
 
-      {/* Run now card */}
-      <Card className="border-orange-200 dark:border-orange-900/40">
+      {/* ── Save & Preview ───────────────────────────── */}
+      <div className="flex flex-wrap gap-3">
+        <Button onClick={() => saveSettings.mutate()} disabled={saveSettings.isPending} className="gap-2">
+          {saveSettings.isPending
+            ? <Loader2 className="h-4 w-4 animate-spin" />
+            : settingsSaved
+              ? <CheckCircle2 className="h-4 w-4 text-green-500" />
+              : <DatabaseZap className="h-4 w-4" />}
+          {settingsSaved ? "Saved!" : "Save Settings"}
+        </Button>
+        <Button variant="outline" onClick={runPreview} disabled={previewing} className="gap-2">
+          {previewing ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Eye className="h-3.5 w-3.5" />}
+          Preview Affected Data
+        </Button>
+        <Button variant="outline" size="sm" className="gap-2 ml-auto" onClick={() => refetchStats()} disabled={statsLoading}>
+          <RefreshCw className={`h-3.5 w-3.5 ${statsLoading ? "animate-spin" : ""}`} /> Refresh Stats
+        </Button>
+      </div>
+
+      {/* ── Preview Results ──────────────────────────── */}
+      {preview && (
+        <Card className="border-blue-200 dark:border-blue-900/40">
+          <CardHeader className="pb-3">
+            <CardTitle className="text-base flex items-center gap-2">
+              <Eye className="h-4 w-4 text-blue-500" />
+              Preview: {preview.eligible} record{preview.eligible !== 1 ? "s" : ""} would be affected
+            </CardTitle>
+            <CardDescription>
+              Action: <strong>{preview.action === "archive" ? "Archive" : "Full Delete"}</strong>
+              {preview.willSummarize && " · AI summaries will be generated"}
+              {" · "}
+              <button onClick={() => setPreview(null)} className="text-blue-500 underline text-xs">Dismiss</button>
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {/* Channel breakdown */}
+            <div className="flex flex-wrap gap-2">
+              {CHANNELS.map(({ id, label, Icon, color }) => (
+                <div key={id} className="flex items-center gap-1.5 text-xs rounded-full bg-muted px-3 py-1.5">
+                  <Icon className={`h-3 w-3 ${color}`} />
+                  {label}: <strong>{preview.channelBreakdown[id] ?? 0}</strong>
+                </div>
+              ))}
+            </div>
+
+            {preview.items.length > 0 && (
+              <div className="rounded-lg border overflow-hidden">
+                <table className="w-full text-xs">
+                  <thead className="bg-muted/50">
+                    <tr>
+                      <th className="text-left px-3 py-2 font-medium">Customer</th>
+                      <th className="text-left px-3 py-2 font-medium">Channel</th>
+                      <th className="text-left px-3 py-2 font-medium">Messages</th>
+                      <th className="text-left px-3 py-2 font-medium">Closed</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {preview.items.map((item, i) => (
+                      <tr key={item.id} className={i % 2 === 0 ? "bg-background" : "bg-muted/20"}>
+                        <td className="px-3 py-2 font-medium">{item.customerName}</td>
+                        <td className="px-3 py-2">
+                          <div className="flex items-center gap-1">
+                            {channelIcon(item.channel)}
+                            <span className="capitalize">{item.channel}</span>
+                          </div>
+                        </td>
+                        <td className="px-3 py-2 text-muted-foreground">{item.messageCount}</td>
+                        <td className="px-3 py-2 text-muted-foreground">
+                          {new Date(item.closedAt).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+                {preview.eligible > 20 && (
+                  <div className="px-3 py-2 border-t bg-muted/30 text-xs text-muted-foreground">
+                    Showing first 20 of {preview.eligible} records.
+                  </div>
+                )}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
+      {/* ── Run Now ─────────────────────────────────── */}
+      <Card className={action === "delete" ? "border-red-200 dark:border-red-900/40" : "border-orange-200 dark:border-orange-900/40"}>
         <CardHeader>
           <CardTitle className="text-base flex items-center gap-2">
-            <Play className="h-4 w-4 text-orange-500" />
+            <Play className={`h-4 w-4 ${action === "delete" ? "text-red-500" : "text-orange-500"}`} />
             Run Retention Now
           </CardTitle>
           <CardDescription>
-            Manually trigger a cleanup pass. This will process up to 50 conversations per run that exceed your retention period.
+            Manually trigger a cleanup pass (up to 50 conversations per run).
             {stats && stats.eligible > 0 && (
-              <span className="ml-1 text-orange-600 dark:text-orange-400 font-medium">
-                {stats.eligible} conversation{stats.eligible !== 1 ? "s" : ""} eligible right now.
+              <span className={`ml-1 font-medium ${action === "delete" ? "text-red-600 dark:text-red-400" : "text-orange-600 dark:text-orange-400"}`}>
+                {stats.eligible} conversation{stats.eligible !== 1 ? "s" : ""} currently eligible.
               </span>
             )}
             {stats && stats.eligible === 0 && (
@@ -943,11 +1360,24 @@ function RetentionSection() {
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <div className="rounded-lg bg-orange-50 dark:bg-orange-900/10 border border-orange-200 dark:border-orange-900/30 p-4 text-sm text-orange-700 dark:text-orange-300 flex items-start gap-2.5">
+          <div className={cn(
+            "rounded-lg border p-4 text-sm flex items-start gap-2.5",
+            action === "delete"
+              ? "bg-red-50 dark:bg-red-900/10 border-red-200 dark:border-red-900/30 text-red-700 dark:text-red-300"
+              : "bg-orange-50 dark:bg-orange-900/10 border-orange-200 dark:border-orange-900/30 text-orange-700 dark:text-orange-300"
+          )}>
             <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5" />
             <div>
-              <p className="font-medium">This action is irreversible.</p>
-              <p>Raw message content will be permanently deleted. {summarize || settings?.summarizeBeforeDelete ? "AI summaries will be saved on each transcript before deletion." : "No summaries will be generated — enable that option above to preserve context."}</p>
+              <p className="font-medium">
+                {action === "delete" ? "Full Delete — this is irreversible." : "Archive — raw messages will be permanently deleted."}
+              </p>
+              <p>
+                {action === "archive"
+                  ? (summarize
+                    ? "AI summaries will be saved before deletion. Conversation records are kept."
+                    : "No summaries — raw messages deleted, conversation records kept.")
+                  : "Entire conversation records + messages will be permanently removed. Feedback records will also be deleted if enabled above."}
+              </p>
             </div>
           </div>
         </CardContent>
@@ -955,18 +1385,19 @@ function RetentionSection() {
           <Button
             variant="destructive"
             onClick={runRetention}
-            disabled={running || (stats?.eligible === 0)}
+            disabled={running || (stats?.eligible === 0 && !includeFeedback)}
             className="gap-2"
           >
-            {running ? <><Loader2 className="h-4 w-4 animate-spin" /> Processing…</> : <><Play className="h-4 w-4" /> Run Cleanup</>}
-          </Button>
-          <Button variant="outline" size="sm" className="gap-2" onClick={() => refetchStats()} disabled={statsLoading}>
-            <RefreshCw className={`h-3.5 w-3.5 ${statsLoading ? "animate-spin" : ""}`} /> Refresh Stats
+            {running
+              ? <><Loader2 className="h-4 w-4 animate-spin" /> Processing…</>
+              : action === "delete"
+                ? <><Trash2 className="h-4 w-4" /> Run Full Delete</>
+                : <><Archive className="h-4 w-4" /> Run Archive</>}
           </Button>
         </CardFooter>
       </Card>
 
-      {/* Already summarized */}
+      {/* Already archived summary */}
       {stats && stats.alreadySummarized > 0 && (
         <Card>
           <CardContent className="pt-5 flex items-center gap-4">
@@ -974,8 +1405,12 @@ function RetentionSection() {
               <CheckCircle2 className="h-5 w-5 text-green-600" />
             </div>
             <div>
-              <p className="font-medium text-sm">{stats.alreadySummarized} transcript{stats.alreadySummarized !== 1 ? "s" : ""} already summarized</p>
-              <p className="text-xs text-muted-foreground">Raw messages deleted, AI summaries preserved. These conversations are still visible in Transcripts with their summary.</p>
+              <p className="font-medium text-sm">
+                {stats.alreadySummarized} transcript{stats.alreadySummarized !== 1 ? "s" : ""} already archived
+              </p>
+              <p className="text-xs text-muted-foreground">
+                Raw messages deleted, AI summaries preserved. These conversations are still visible in Transcripts with their summary.
+              </p>
             </div>
           </CardContent>
         </Card>
