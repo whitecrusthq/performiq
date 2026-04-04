@@ -358,17 +358,17 @@ export default function AiChat() {
 
       <Tabs defaultValue="settings">
         <TabsList className="mb-6">
-          <TabsTrigger value="settings" className="gap-2">
+          <TabsTrigger value="settings" className="gap-2 data-[state=active]:bg-blue-600 data-[state=active]:text-white data-[state=active]:shadow-sm">
             <Settings2 className="h-4 w-4" /> AI Provider
           </TabsTrigger>
-          <TabsTrigger value="knowledge" className="gap-2">
+          <TabsTrigger value="knowledge" className="gap-2 data-[state=active]:bg-blue-600 data-[state=active]:text-white data-[state=active]:shadow-sm">
             <BookOpen className="h-4 w-4" /> Knowledge Base
             {docs.length > 0 && <span className="ml-0.5 h-2 w-2 rounded-full bg-green-500 inline-block" />}
           </TabsTrigger>
-          <TabsTrigger value="chat" className="gap-2">
+          <TabsTrigger value="chat" className="gap-2 data-[state=active]:bg-blue-600 data-[state=active]:text-white data-[state=active]:shadow-sm">
             <MessageSquare className="h-4 w-4" /> Test Chat
           </TabsTrigger>
-          <TabsTrigger value="prompt" className="gap-2">
+          <TabsTrigger value="prompt" className="gap-2 data-[state=active]:bg-blue-600 data-[state=active]:text-white data-[state=active]:shadow-sm">
             <Zap className="h-4 w-4" /> System Prompt
           </TabsTrigger>
         </TabsList>

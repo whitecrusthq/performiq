@@ -531,7 +531,7 @@ export default function Channels() {
             </TabsTrigger>
           ))}
           <TabsTrigger value="email" className="gap-1.5 data-[state=active]:bg-blue-600 data-[state=active]:text-white data-[state=active]:shadow-sm">
-            <Mail className="h-3.5 w-3.5 text-indigo-500" /> Email
+            <Mail className="h-3.5 w-3.5" /> Email
             {emailSaved && <span className="ml-0.5 h-2 w-2 rounded-full bg-green-500 inline-block" />}
           </TabsTrigger>
         </TabsList>
