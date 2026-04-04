@@ -16,6 +16,7 @@ import insightsRouter from "./insights.js";
 import emailSettingsRouter from "./email-settings.js";
 import transcriptsRouter from "./transcripts.js";
 import crmAttendanceRouter from "./crm-attendance.js";
+import brandingRouter from "./branding.js";
 
 const router = Router();
 
@@ -39,5 +40,6 @@ router.use(insightsRouter);
 router.use(emailSettingsRouter);
 router.use(transcriptsRouter);
 router.use(crmAttendanceRouter);
+router.use(brandingRouter);
 
 export default router;

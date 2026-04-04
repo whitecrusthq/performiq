@@ -15,6 +15,7 @@ export { AgentKpi } from "./AgentKpi.js";
 export { AgentAttendance } from "./AgentAttendance.js";
 export { AgentAttendancePing } from "./AgentAttendancePing.js";
 export { AgentShift } from "./AgentShift.js";
+export { BrandingSettings } from "./BrandingSettings.js";
 
 import { Agent } from "./Agent.js";
 import { Customer } from "./Customer.js";

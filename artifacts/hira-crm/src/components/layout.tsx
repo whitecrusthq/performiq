@@ -22,11 +22,13 @@ import {
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/lib/auth-context";
+import { useBranding } from "@/lib/branding-context";
 import { clearToken } from "@/lib/api";
 
 export default function Layout({ children }: { children: React.ReactNode }) {
   const [location] = useLocation();
   const { agent } = useAuth();
+  const branding = useBranding();
 
   const navigation = [
     { name: "Dashboard", href: "/", icon: LayoutDashboard },
@@ -78,15 +80,27 @@ export default function Layout({ children }: { children: React.ReactNode }) {
     );
   }
 
+  const mainBg = branding.backgroundData
+    ? { backgroundImage: `url("${branding.backgroundData}")`, backgroundSize: "cover", backgroundPosition: "center", backgroundAttachment: "fixed" }
+    : undefined;
+
   return (
-    <div className="min-h-screen w-full flex bg-background">
+    <div className="min-h-screen w-full flex bg-background" style={mainBg}>
       {/* Sidebar */}
       <div className="w-64 flex flex-col border-r bg-sidebar text-sidebar-foreground shrink-0">
         <div className="p-4 flex items-center gap-3 border-b border-sidebar-border">
-          <div className="h-8 w-8 bg-primary rounded-md flex items-center justify-center text-primary-foreground font-bold text-sm">
-            H
-          </div>
-          <span className="font-bold text-lg tracking-tight">CommsCRM</span>
+          {branding.logoData ? (
+            <img
+              src={branding.logoData}
+              alt={branding.appName}
+              className="h-8 w-8 rounded-md object-contain bg-white/10 p-0.5"
+            />
+          ) : (
+            <div className="h-8 w-8 bg-primary rounded-md flex items-center justify-center text-primary-foreground font-bold text-sm shrink-0">
+              {branding.appName.charAt(0).toUpperCase()}
+            </div>
+          )}
+          <span className="font-bold text-lg tracking-tight truncate">{branding.appName}</span>
         </div>
 
         <nav className="flex-1 p-3 space-y-0.5 overflow-y-auto">
@@ -128,11 +142,11 @@ export default function Layout({ children }: { children: React.ReactNode }) {
       {/* Main Content */}
       <div className="flex-1 flex flex-col h-screen overflow-hidden min-w-0">
         {/* Header */}
-        <header className="h-14 border-b bg-card flex items-center justify-between px-6 shrink-0">
+        <header className="h-14 border-b bg-card/90 backdrop-blur-sm flex items-center justify-between px-6 shrink-0">
           <div className="flex items-center gap-2">
             <div className="flex items-center gap-1.5 text-sm text-muted-foreground">
               <span className="text-foreground font-medium">
-                {allNav.find((n) => n.href === location)?.name ?? "CommsCRM"}
+                {allNav.find((n) => n.href === location)?.name ?? branding.appName}
               </span>
             </div>
           </div>

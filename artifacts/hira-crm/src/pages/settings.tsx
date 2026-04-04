@@ -10,10 +10,11 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Separator } from "@/components/ui/separator";
 import { Badge } from "@/components/ui/badge";
 import { SiWhatsapp, SiFacebook, SiInstagram, SiMailgun } from "react-icons/si";
-import { CheckCircle2, Bot, Trash2, Loader2, Eye, EyeOff, XCircle, Zap, Send, Globe } from "lucide-react";
+import { CheckCircle2, Bot, Trash2, Loader2, Eye, EyeOff, XCircle, Zap, Send, Globe, Palette, Upload, X, Image as ImageIcon } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { apiGet, apiPost, apiPut, getBaseUrl } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
+import { applyBrandingToDOM, useBranding } from "@/lib/branding-context";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 
 interface EmailConfig {
@@ -27,11 +28,20 @@ interface EmailConfig {
   isActive: boolean;
 }
 
+interface BrandingData {
+  appName: string;
+  primaryColor: string;
+  sidebarColor: string;
+  logoData: string | null;
+  backgroundData: string | null;
+}
+
 interface ApiAgent { id: number; name: string; email: string; role: string; isActive: boolean; }
 
 export default function Settings() {
   const { toast } = useToast();
   const { agent: currentAgent, logout } = useAuth();
+  const { setBrandingData } = useBranding();
   const qc = useQueryClient();
   const [isAddOpen, setIsAddOpen] = useState(false);
   const [newName, setNewName] = useState("");
@@ -64,6 +74,115 @@ export default function Settings() {
       qc.invalidateQueries({ queryKey: ["agents"] });
     },
   });
+
+  // ── Branding state ─────────────────────────────────────────────────────────
+  const [brandingName, setBrandingName] = useState("CommsCRM");
+  const [brandingPrimary, setBrandingPrimary] = useState("#4F46E5");
+  const [brandingSidebar, setBrandingSidebar] = useState("#3F0E40");
+  const [logoPreview, setLogoPreview] = useState<string | null>(null);
+  const [bgPreview, setBgPreview] = useState<string | null>(null);
+  const [brandingSaving, setBrandingSaving] = useState(false);
+  const [logoUploading, setLogoUploading] = useState(false);
+  const [bgUploading, setBgUploading] = useState(false);
+
+  useQuery<BrandingData>({
+    queryKey: ["branding"],
+    queryFn: () => apiGet("/branding"),
+    onSuccess: (d: BrandingData) => {
+      setBrandingName(d.appName ?? "CommsCRM");
+      setBrandingPrimary(d.primaryColor ?? "#4F46E5");
+      setBrandingSidebar(d.sidebarColor ?? "#3F0E40");
+      setLogoPreview(d.logoData ?? null);
+      setBgPreview(d.backgroundData ?? null);
+    },
+  } as Parameters<typeof useQuery>[0]);
+
+  const saveBranding = async () => {
+    setBrandingSaving(true);
+    try {
+      const token = localStorage.getItem("crm_token");
+      const baseUrl = getBaseUrl();
+      const res = await fetch(`${baseUrl}/branding`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ appName: brandingName, primaryColor: brandingPrimary, sidebarColor: brandingSidebar }),
+      });
+      if (!res.ok) throw new Error("Failed to save");
+      const updated = { appName: brandingName, primaryColor: brandingPrimary, sidebarColor: brandingSidebar, logoData: logoPreview, backgroundData: bgPreview };
+      applyBrandingToDOM(updated);
+      setBrandingData(updated);
+      toast({ title: "Appearance saved!", description: "Your branding changes are now live." });
+    } catch {
+      toast({ title: "Failed to save appearance", variant: "destructive" });
+    } finally {
+      setBrandingSaving(false);
+    }
+  };
+
+  const uploadBrandingFile = async (file: File, type: "logo" | "background") => {
+    const setter = type === "logo" ? setLogoUploading : setBgUploading;
+    setter(true);
+    try {
+      const token = localStorage.getItem("crm_token");
+      const baseUrl = getBaseUrl();
+      const form = new FormData();
+      form.append("file", file);
+      const res = await fetch(`${baseUrl}/branding/upload/${type}`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}` },
+        body: form,
+      });
+      const data = await res.json() as Record<string, string>;
+      if (!res.ok) throw new Error(data.error ?? "Upload failed");
+      if (type === "logo") {
+        setLogoPreview(data.logoData ?? null);
+        toast({ title: "Logo uploaded", description: "Your new logo is now showing in the sidebar." });
+      } else {
+        setBgPreview(data.backgroundData ?? null);
+        toast({ title: "Background uploaded", description: "Background image applied to the app." });
+      }
+      const after = {
+        appName: brandingName,
+        primaryColor: brandingPrimary,
+        sidebarColor: brandingSidebar,
+        logoData: type === "logo" ? (data.logoData ?? null) : logoPreview,
+        backgroundData: type === "background" ? (data.backgroundData ?? null) : bgPreview,
+      };
+      applyBrandingToDOM(after);
+      setBrandingData(after);
+    } catch (err) {
+      toast({ title: "Upload failed", description: err instanceof Error ? err.message : "Unknown error", variant: "destructive" });
+    } finally {
+      setter(false);
+    }
+  };
+
+  const clearBrandingImage = async (type: "logo" | "background") => {
+    try {
+      const token = localStorage.getItem("crm_token");
+      const baseUrl = getBaseUrl();
+      const res = await fetch(`${baseUrl}/branding`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify(type === "logo" ? { clearLogo: true } : { clearBackground: true }),
+      });
+      if (!res.ok) throw new Error("Failed to clear");
+      if (type === "logo") setLogoPreview(null);
+      else setBgPreview(null);
+      const after = {
+        appName: brandingName,
+        primaryColor: brandingPrimary,
+        sidebarColor: brandingSidebar,
+        logoData: type === "logo" ? null : logoPreview,
+        backgroundData: type === "background" ? null : bgPreview,
+      };
+      applyBrandingToDOM(after);
+      setBrandingData(after);
+      toast({ title: type === "logo" ? "Logo removed" : "Background removed" });
+    } catch {
+      toast({ title: "Failed to clear image", variant: "destructive" });
+    }
+  };
 
   // ── Mailgun state ──────────────────────────────────────────────────────────
   const [mgApiKey, setMgApiKey] = useState("");
@@ -480,6 +599,186 @@ export default function Settings() {
             )}
           </CardContent>
         </Card>
+
+        {currentAgent?.role === "admin" && (
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Palette className="h-5 w-5 text-primary" /> Appearance
+              </CardTitle>
+              <CardDescription>Customize your app's name, colors, logo, and background image.</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-6">
+              {/* App Name */}
+              <div className="space-y-2">
+                <Label>App Name</Label>
+                <Input
+                  value={brandingName}
+                  onChange={(e) => setBrandingName(e.target.value)}
+                  placeholder="CommsCRM"
+                  maxLength={100}
+                  className="max-w-xs"
+                />
+                <p className="text-xs text-muted-foreground">Displayed in the sidebar header and browser title.</p>
+              </div>
+
+              <Separator />
+
+              {/* Color Pickers */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+                <div className="space-y-2">
+                  <Label>Primary Color</Label>
+                  <div className="flex items-center gap-3">
+                    <div className="relative">
+                      <input
+                        type="color"
+                        value={brandingPrimary}
+                        onChange={(e) => setBrandingPrimary(e.target.value)}
+                        className="h-10 w-10 rounded-md border cursor-pointer p-0.5 bg-transparent"
+                        title="Pick primary color"
+                      />
+                    </div>
+                    <Input
+                      value={brandingPrimary}
+                      onChange={(e) => {
+                        if (/^#[0-9a-fA-F]{0,6}$/.test(e.target.value)) setBrandingPrimary(e.target.value);
+                      }}
+                      className="font-mono text-sm w-32"
+                      maxLength={7}
+                    />
+                    <div className="h-10 w-10 rounded-md border" style={{ backgroundColor: brandingPrimary }} />
+                  </div>
+                  <p className="text-xs text-muted-foreground">Buttons, links, badges, and accents.</p>
+                </div>
+
+                <div className="space-y-2">
+                  <Label>Sidebar Color</Label>
+                  <div className="flex items-center gap-3">
+                    <input
+                      type="color"
+                      value={brandingSidebar}
+                      onChange={(e) => setBrandingSidebar(e.target.value)}
+                      className="h-10 w-10 rounded-md border cursor-pointer p-0.5 bg-transparent"
+                      title="Pick sidebar color"
+                    />
+                    <Input
+                      value={brandingSidebar}
+                      onChange={(e) => {
+                        if (/^#[0-9a-fA-F]{0,6}$/.test(e.target.value)) setBrandingSidebar(e.target.value);
+                      }}
+                      className="font-mono text-sm w-32"
+                      maxLength={7}
+                    />
+                    <div className="h-10 w-10 rounded-md border" style={{ backgroundColor: brandingSidebar }} />
+                  </div>
+                  <p className="text-xs text-muted-foreground">The left navigation sidebar background.</p>
+                </div>
+              </div>
+
+              <Separator />
+
+              {/* Logo Upload */}
+              <div className="space-y-3">
+                <Label>Logo</Label>
+                <div className="flex items-start gap-4">
+                  <div className="h-16 w-16 rounded-xl border bg-muted flex items-center justify-center overflow-hidden shrink-0">
+                    {logoPreview ? (
+                      <img src={logoPreview} alt="Logo" className="h-full w-full object-contain p-1" />
+                    ) : (
+                      <ImageIcon className="h-6 w-6 text-muted-foreground" />
+                    )}
+                  </div>
+                  <div className="space-y-2">
+                    <div className="flex gap-2">
+                      <label className="cursor-pointer">
+                        <input
+                          type="file"
+                          className="hidden"
+                          accept="image/png,image/jpeg,image/jpg,image/gif,image/webp,image/svg+xml"
+                          onChange={(e) => {
+                            const file = e.target.files?.[0];
+                            if (file) uploadBrandingFile(file, "logo");
+                            e.target.value = "";
+                          }}
+                        />
+                        <Button variant="outline" size="sm" className="gap-2 pointer-events-none" disabled={logoUploading}>
+                          {logoUploading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
+                          Upload Logo
+                        </Button>
+                      </label>
+                      {logoPreview && (
+                        <Button variant="ghost" size="sm" className="gap-2 text-muted-foreground hover:text-destructive" onClick={() => clearBrandingImage("logo")}>
+                          <X className="h-4 w-4" /> Remove
+                        </Button>
+                      )}
+                    </div>
+                    <p className="text-xs text-muted-foreground">PNG, SVG, or JPG. Max 8MB. Shown in the sidebar header.</p>
+                  </div>
+                </div>
+              </div>
+
+              <Separator />
+
+              {/* Background Image Upload */}
+              <div className="space-y-3">
+                <Label>Background Image</Label>
+                <div className="flex items-start gap-4">
+                  <div className="h-16 w-24 rounded-xl border bg-muted flex items-center justify-center overflow-hidden shrink-0">
+                    {bgPreview ? (
+                      <img src={bgPreview} alt="Background" className="h-full w-full object-cover" />
+                    ) : (
+                      <ImageIcon className="h-6 w-6 text-muted-foreground" />
+                    )}
+                  </div>
+                  <div className="space-y-2">
+                    <div className="flex gap-2">
+                      <label className="cursor-pointer">
+                        <input
+                          type="file"
+                          className="hidden"
+                          accept="image/png,image/jpeg,image/jpg,image/gif,image/webp"
+                          onChange={(e) => {
+                            const file = e.target.files?.[0];
+                            if (file) uploadBrandingFile(file, "background");
+                            e.target.value = "";
+                          }}
+                        />
+                        <Button variant="outline" size="sm" className="gap-2 pointer-events-none" disabled={bgUploading}>
+                          {bgUploading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
+                          Upload Background
+                        </Button>
+                      </label>
+                      {bgPreview && (
+                        <Button variant="ghost" size="sm" className="gap-2 text-muted-foreground hover:text-destructive" onClick={() => clearBrandingImage("background")}>
+                          <X className="h-4 w-4" /> Remove
+                        </Button>
+                      )}
+                    </div>
+                    <p className="text-xs text-muted-foreground">PNG or JPG. Max 8MB. Applied as a full-screen background behind the app.</p>
+                  </div>
+                </div>
+              </div>
+            </CardContent>
+            <CardFooter className="border-t bg-muted/20 px-6 py-4 flex gap-3">
+              <Button onClick={saveBranding} disabled={brandingSaving} className="gap-2" data-testid="button-save-appearance">
+                {brandingSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Palette className="h-4 w-4" />}
+                Save Appearance
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  setBrandingName("CommsCRM");
+                  setBrandingPrimary("#4F46E5");
+                  setBrandingSidebar("#3F0E40");
+                }}
+                className="text-muted-foreground"
+              >
+                Reset to Defaults
+              </Button>
+            </CardFooter>
+          </Card>
+        )}
 
         <Card>
           <CardHeader>
