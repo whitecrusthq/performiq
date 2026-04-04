@@ -332,7 +332,7 @@ export default function AiChat() {
   const currentMeta = PROVIDER_META[aiSettings?.provider ?? "gemini"];
 
   return (
-    <div className="p-6 max-w-5xl mx-auto">
+    <div className="p-6 max-w-5xl mx-auto h-full overflow-y-auto">
       <div className="flex items-center justify-between mb-6">
         <div>
           <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2">
