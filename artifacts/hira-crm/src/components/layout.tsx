@@ -65,7 +65,6 @@ export default function Layout({ children }: { children: React.ReactNode }) {
       { name: "Intelligence",     href: "/insights",       icon: Brain,         slug: "intelligence" },
       { name: "Product Demand",   href: "/product-demand", icon: PackageSearch, slug: "product-demand" },
       { name: "Transcripts",      href: "/transcripts",    icon: ScrollText,    slug: "transcripts" },
-      { name: "Customers",        href: "/customers",      icon: Users,         slug: "customers" },
     ],
   };
 
@@ -80,6 +79,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
   const coreNav: NavItem[] = [
     { name: "Dashboard",   href: "/",           icon: LayoutDashboard, slug: "dashboard" },
     { name: "Inbox",       href: "/inbox",       icon: Inbox,           slug: "inbox" },
+    { name: "Customers",   href: "/customers",   icon: Users,           slug: "customers" },
     { name: "Follow-ups",  href: "/follow-ups",  icon: CalendarClock,   slug: "follow-ups" },
     { name: "Feedback",    href: "/feedback",    icon: Star,            slug: "feedback" },
     { name: "Campaigns",   href: "/campaigns",   icon: Megaphone,       slug: "campaigns" },
