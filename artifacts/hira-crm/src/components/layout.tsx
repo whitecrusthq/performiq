@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useRef, useEffect } from "react";
 import { Link, useLocation } from "wouter";
 import {
   LayoutDashboard,
@@ -21,12 +21,22 @@ import {
   ChevronDown,
   ChevronRight,
   Trophy,
+  AlertCircle,
+  ArrowRight,
+  MessageSquare,
+  Mail,
+  Phone,
+  Facebook,
+  Instagram,
+  MessageCircle,
 } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/lib/auth-context";
 import { useBranding } from "@/lib/branding-context";
 import { clearToken } from "@/lib/api";
+import { useFollowUpNotifications, DueFollowUp } from "@/hooks/use-follow-up-notifications";
+import { format, isToday, isPast } from "date-fns";
 
 type NavItem = { name: string; href: string; icon: React.ElementType; slug: string };
 type NavGroup = {
@@ -46,16 +56,159 @@ function filterGroupByMenus(group: NavGroup, allowedMenus: string[] | null): Nav
   return { ...group, children: group.children.filter((c) => allowedMenus.includes(c.slug)) };
 }
 
+const FOLLOW_UP_TYPE_ICONS: Record<string, { icon: React.ElementType; color: string }> = {
+  whatsapp:  { icon: MessageSquare, color: "text-green-600"  },
+  sms:       { icon: MessageCircle, color: "text-blue-600"   },
+  email:     { icon: Mail,          color: "text-purple-600" },
+  facebook:  { icon: Facebook,      color: "text-blue-500"   },
+  instagram: { icon: Instagram,     color: "text-pink-600"   },
+  phone:     { icon: Phone,         color: "text-orange-600" },
+};
+
+function FollowUpNotifPanel({
+  dueItems,
+  overdueItems,
+  todayItems,
+  onClose,
+  onNavigate,
+}: {
+  dueItems: DueFollowUp[];
+  overdueItems: DueFollowUp[];
+  todayItems: DueFollowUp[];
+  onClose: () => void;
+  onNavigate: (href: string) => void;
+}) {
+  return (
+    <div className="absolute right-0 top-full mt-2 w-80 bg-popover border rounded-xl shadow-2xl z-50 overflow-hidden">
+      {/* Header */}
+      <div className="flex items-center justify-between px-4 py-3 border-b bg-muted/40">
+        <div className="flex items-center gap-2">
+          <Bell className="h-4 w-4 text-primary" />
+          <span className="text-sm font-semibold">Follow-up Reminders</span>
+          {dueItems.length > 0 && (
+            <span className="h-5 min-w-5 px-1 rounded-full bg-destructive text-destructive-foreground text-[10px] font-bold flex items-center justify-center">
+              {dueItems.length}
+            </span>
+          )}
+        </div>
+        <button
+          className="text-xs text-primary hover:underline font-medium"
+          onClick={() => { onNavigate("/follow-ups"); onClose(); }}
+        >
+          View all
+        </button>
+      </div>
+
+      {/* Items */}
+      <div className="max-h-80 overflow-y-auto">
+        {dueItems.length === 0 ? (
+          <div className="py-8 text-center space-y-2">
+            <CalendarClock className="h-8 w-8 mx-auto text-muted-foreground/30" />
+            <p className="text-sm text-muted-foreground">No follow-ups due right now</p>
+          </div>
+        ) : (
+          <div>
+            {overdueItems.length > 0 && (
+              <div>
+                <p className="text-[10px] font-semibold uppercase tracking-wider text-red-500 px-4 pt-3 pb-1.5">
+                  Overdue — {overdueItems.length}
+                </p>
+                {overdueItems.map((fu) => <NotifItem key={fu.id} fu={fu} isOverdue onClose={onClose} onNavigate={onNavigate} />)}
+              </div>
+            )}
+            {todayItems.length > 0 && (
+              <div>
+                <p className="text-[10px] font-semibold uppercase tracking-wider text-orange-500 px-4 pt-3 pb-1.5">
+                  Due Today — {todayItems.length}
+                </p>
+                {todayItems.map((fu) => <NotifItem key={fu.id} fu={fu} isOverdue={false} onClose={onClose} onNavigate={onNavigate} />)}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* Footer */}
+      {dueItems.length > 0 && (
+        <div className="px-4 py-3 border-t bg-muted/20">
+          <button
+            className="w-full flex items-center justify-center gap-2 text-sm text-primary font-medium hover:underline"
+            onClick={() => { onNavigate("/follow-ups"); onClose(); }}
+          >
+            Open Follow-ups <ArrowRight className="h-3.5 w-3.5" />
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function NotifItem({
+  fu,
+  isOverdue,
+  onClose,
+  onNavigate,
+}: {
+  fu: DueFollowUp;
+  isOverdue: boolean;
+  onClose: () => void;
+  onNavigate: (href: string) => void;
+}) {
+  const typeConfig = fu.followUpType ? FOLLOW_UP_TYPE_ICONS[fu.followUpType] : null;
+  const TypeIcon = typeConfig?.icon;
+
+  return (
+    <button
+      className="w-full flex items-start gap-3 px-4 py-3 hover:bg-accent/60 transition-colors text-left border-b last:border-0"
+      onClick={() => { onNavigate("/follow-ups"); onClose(); }}
+    >
+      <div className={`h-8 w-8 rounded-full flex items-center justify-center text-xs font-bold shrink-0 ${isOverdue ? "bg-red-100 text-red-700 dark:bg-red-900/30" : "bg-orange-100 text-orange-700 dark:bg-orange-900/30"}`}>
+        {fu.customer.name.charAt(0).toUpperCase()}
+      </div>
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center gap-1.5 flex-wrap">
+          <span className="text-sm font-medium truncate">{fu.customer.name}</span>
+          {TypeIcon && typeConfig && (
+            <TypeIcon className={`h-3 w-3 shrink-0 ${typeConfig.color}`} />
+          )}
+        </div>
+        {fu.followUpNote && (
+          <p className="text-xs text-muted-foreground truncate mt-0.5">{fu.followUpNote}</p>
+        )}
+        <p className={`text-[10px] font-medium mt-0.5 ${isOverdue ? "text-red-500" : "text-orange-500"}`}>
+          {isOverdue ? `Overdue · ${format(new Date(fu.followUpAt), "MMM d 'at' HH:mm")}` : `Today · ${format(new Date(fu.followUpAt), "HH:mm")}`}
+        </p>
+      </div>
+      {isOverdue && <AlertCircle className="h-4 w-4 text-red-400 shrink-0 mt-0.5" />}
+    </button>
+  );
+}
+
 export default function Layout({ children }: { children: React.ReactNode }) {
-  const [location] = useLocation();
+  const [location, setLocation] = useLocation();
   const { agent } = useAuth();
   const branding = useBranding();
+  const [showNotifPanel, setShowNotifPanel] = useState(false);
+  const notifRef = useRef<HTMLDivElement>(null);
+
+  const { dueItems, overdueItems, todayItems, totalDue } = useFollowUpNotifications();
 
   const isSuperAdmin = agent?.role === "super_admin";
   const isAdmin = agent?.role === "admin" || isSuperAdmin;
   const allowedMenus = agent?.allowedMenus ?? null;
 
-  // Analytics sub-pages
+  useEffect(() => {
+    function handleClickOutside(e: MouseEvent) {
+      if (notifRef.current && !notifRef.current.contains(e.target as Node)) {
+        setShowNotifPanel(false);
+      }
+    }
+    if (showNotifPanel) {
+      document.addEventListener("mousedown", handleClickOutside);
+    }
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, [showNotifPanel]);
+
   const analyticsGroup: NavGroup = {
     name: "Analytics",
     icon: LineChart,
@@ -70,11 +223,8 @@ export default function Layout({ children }: { children: React.ReactNode }) {
   };
 
   const visibleAnalyticsGroup = filterGroupByMenus(analyticsGroup, allowedMenus);
-
-  // Determine if Analytics group is active (any child matches current route)
   const analyticsChildPaths = analyticsGroup.children.map((c) => c.href);
   const isAnalyticsActive = analyticsChildPaths.includes(location);
-
   const [analyticsOpen, setAnalyticsOpen] = useState(isAnalyticsActive);
 
   const coreNav: NavItem[] = [
@@ -114,6 +264,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
 
   function FlatNavItem({ item }: { item: NavItem }) {
     const isActive = location === item.href;
+    const isDueFollowUp = item.href === "/follow-ups" && totalDue > 0;
     return (
       <Link href={item.href}>
         <div
@@ -125,7 +276,12 @@ export default function Layout({ children }: { children: React.ReactNode }) {
           data-testid={`nav-${item.name.toLowerCase().replace(/\s+/g, "-")}`}
         >
           <item.icon className="h-4 w-4 shrink-0" />
-          <span className="text-sm">{item.name}</span>
+          <span className="text-sm flex-1">{item.name}</span>
+          {isDueFollowUp && (
+            <span className="h-4 min-w-4 px-1 rounded-full bg-destructive text-destructive-foreground text-[9px] font-bold flex items-center justify-center">
+              {totalDue}
+            </span>
+          )}
         </div>
       </Link>
     );
@@ -269,10 +425,36 @@ export default function Layout({ children }: { children: React.ReactNode }) {
               <div className="h-1.5 w-1.5 rounded-full bg-green-500" />
               Online
             </div>
-            <Button variant="ghost" size="icon" className="relative text-muted-foreground h-8 w-8">
-              <Bell className="h-4 w-4" />
-              <span className="absolute top-1.5 right-1.5 h-1.5 w-1.5 bg-destructive rounded-full" />
-            </Button>
+
+            {/* Notification bell */}
+            <div className="relative" ref={notifRef}>
+              <Button
+                variant="ghost"
+                size="icon"
+                className={`relative h-8 w-8 ${totalDue > 0 ? "text-destructive" : "text-muted-foreground"}`}
+                onClick={() => setShowNotifPanel((p) => !p)}
+                title="Follow-up reminders"
+              >
+                <Bell className="h-4 w-4" />
+                {totalDue > 0 ? (
+                  <span className="absolute -top-0.5 -right-0.5 h-4 min-w-4 px-0.5 rounded-full bg-destructive text-destructive-foreground text-[9px] font-bold flex items-center justify-center">
+                    {totalDue > 9 ? "9+" : totalDue}
+                  </span>
+                ) : (
+                  <span className="absolute top-1.5 right-1.5 h-1.5 w-1.5 bg-muted-foreground/30 rounded-full" />
+                )}
+              </Button>
+
+              {showNotifPanel && (
+                <FollowUpNotifPanel
+                  dueItems={dueItems}
+                  overdueItems={overdueItems}
+                  todayItems={todayItems}
+                  onClose={() => setShowNotifPanel(false)}
+                  onNavigate={(href) => setLocation(href)}
+                />
+              )}
+            </div>
           </div>
         </header>
 
