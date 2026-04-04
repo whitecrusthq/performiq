@@ -344,7 +344,7 @@ export default function FollowUpsPage() {
                 />
                 <button
                   type="button"
-                  className="absolute right-2.5 top-2 h-5 w-5 flex items-center justify-center text-foreground hover:text-primary transition-colors"
+                  className="absolute right-2.5 top-2 h-5 w-5 flex items-center justify-center text-primary hover:text-primary/70 transition-colors"
                   onClick={() => setShowCustomerDropdown((prev) => !prev)}
                   tabIndex={-1}
                 >
