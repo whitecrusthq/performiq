@@ -226,6 +226,15 @@ function ChannelCard({ channel, onEdit }: { channel: ApiChannel; onEdit: (c: Api
     },
   });
 
+  const regenerateMutation = useMutation({
+    mutationFn: () => apiPost(`/channels/${channel.id}/regenerate`, {}),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["channels"] });
+      toast({ title: "Token regenerated", description: "Your new token has been generated. Update your webhook settings." });
+    },
+    onError: () => toast({ title: "Failed to regenerate token", variant: "destructive" }),
+  });
+
   const backendUrl = window.location.origin.replace(/\/crm.*/, "");
   const webhookUrl = channel.type === "twitter"
     ? `${backendUrl}/api/webhooks/twitter`
@@ -273,13 +282,28 @@ function ChannelCard({ channel, onEdit }: { channel: ApiChannel; onEdit: (c: Api
               </button>
             </div>
           </div>
-          <div className="flex items-center justify-end gap-2 pt-1">
+          <div className="flex items-center justify-between pt-1">
             <Button variant="ghost" size="sm" onClick={() => deleteMutation.mutate()} className="text-destructive hover:text-destructive gap-1.5 h-8">
               <Trash2 className="h-3.5 w-3.5" /> Remove
             </Button>
-            <Button size="sm" variant="outline" className="gap-1.5 h-8" onClick={() => onEdit(channel)}>
-              <Settings2 className="h-3.5 w-3.5" /> Customize Widget
-            </Button>
+            <div className="flex items-center gap-2">
+              <Button
+                size="sm"
+                variant="outline"
+                className="gap-1.5 h-8"
+                onClick={() => regenerateMutation.mutate()}
+                disabled={regenerateMutation.isPending}
+                title="Generate a new Widget ID — update your embed code after regenerating"
+              >
+                {regenerateMutation.isPending
+                  ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  : <RefreshCw className="h-3.5 w-3.5" />}
+                Regenerate ID
+              </Button>
+              <Button size="sm" variant="outline" className="gap-1.5 h-8" onClick={() => onEdit(channel)}>
+                <Settings2 className="h-3.5 w-3.5" /> Customize Widget
+              </Button>
+            </div>
           </div>
         </div>
       </div>
@@ -321,13 +345,28 @@ function ChannelCard({ channel, onEdit }: { channel: ApiChannel; onEdit: (c: Api
           hint="Use this token when setting up your webhook in the developer portal"
           onCopy={() => copy(channel.webhookVerifyToken)}
         />
-        <div className="flex items-center justify-end gap-2 pt-1">
+        <div className="flex items-center justify-between pt-1">
           <Button variant="ghost" size="sm" onClick={() => deleteMutation.mutate()} className="text-destructive hover:text-destructive gap-1.5 h-8">
             <Trash2 className="h-3.5 w-3.5" /> Remove
           </Button>
-          <Button size="sm" variant="outline" className="gap-1.5 h-8" onClick={() => onEdit(channel)}>
-            <Settings2 className="h-3.5 w-3.5" /> Configure API Keys
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button
+              size="sm"
+              variant="outline"
+              className="gap-1.5 h-8"
+              onClick={() => regenerateMutation.mutate()}
+              disabled={regenerateMutation.isPending}
+              title="Generate a new Verify Token — update your webhook settings after regenerating"
+            >
+              {regenerateMutation.isPending
+                ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                : <RefreshCw className="h-3.5 w-3.5" />}
+              Regenerate Token
+            </Button>
+            <Button size="sm" variant="outline" className="gap-1.5 h-8" onClick={() => onEdit(channel)}>
+              <Settings2 className="h-3.5 w-3.5" /> Configure API Keys
+            </Button>
+          </div>
         </div>
       </div>
     </div>
