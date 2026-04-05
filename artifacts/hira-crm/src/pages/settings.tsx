@@ -10,7 +10,7 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
 import { Badge } from "@/components/ui/badge";
-import { SiWhatsapp, SiFacebook, SiInstagram, SiMailgun, SiX } from "react-icons/si";
+import { SiWhatsapp, SiFacebook, SiInstagram, SiMailgun, SiX, SiAuthy } from "react-icons/si";
 import {
   CheckCircle2, Bot, Trash2, Loader2, Eye, EyeOff, XCircle, Zap, Send,
   Globe, Palette, Upload, X, Image as ImageIcon, Wifi, Settings2, Users,
@@ -1030,119 +1030,237 @@ export default function Settings() {
             <>
               <div>
                 <h2 className="text-xl font-bold">Security</h2>
-                <p className="text-sm text-muted-foreground mt-1">Manage two-factor authentication and account security settings.</p>
+                <p className="text-sm text-muted-foreground mt-1">Manage two-factor authentication to protect your account.</p>
               </div>
 
+              {/* Status + action card */}
               <Card>
-                <CardHeader>
+                <CardHeader className="pb-4">
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-3">
                       <div className={`h-10 w-10 rounded-full flex items-center justify-center ${twoFaStatus?.totpEnabled ? "bg-green-100" : "bg-muted"}`}>
                         <ShieldCheck className={`h-5 w-5 ${twoFaStatus?.totpEnabled ? "text-green-600" : "text-muted-foreground"}`} />
                       </div>
                       <div>
-                        <CardTitle className="text-base">Two-Factor Authentication (2FA)</CardTitle>
+                        <CardTitle className="text-base">Authenticator App (TOTP)</CardTitle>
                         <p className="text-sm text-muted-foreground mt-0.5">
                           {twoFaStatus?.totpEnabled
-                            ? "2FA is active — your account is protected."
-                            : "Add an extra layer of security with an authenticator app."}
+                            ? "Two-factor authentication is active — your account is protected."
+                            : "Use Google Authenticator or any TOTP app for a second login step."}
                         </p>
                       </div>
                     </div>
-                    <span className={`text-xs font-semibold px-2.5 py-1 rounded-full ${twoFaStatus?.totpEnabled ? "bg-green-100 text-green-700" : "bg-muted text-muted-foreground"}`}>
-                      {twoFaStatus?.totpEnabled ? "Enabled" : "Disabled"}
+                    <span className={`text-xs font-semibold px-2.5 py-1 rounded-full ${twoFaStatus?.totpEnabled ? "bg-green-100 text-green-700" : "bg-amber-100 text-amber-700"}`}>
+                      {twoFaStatus?.totpEnabled ? "Enabled" : "Not enabled"}
                     </span>
                   </div>
                 </CardHeader>
+
                 <CardContent className="space-y-5">
-                  {/* ── IDLE: show enable or disable button ── */}
-                  {twoFaStep === "idle" && (
-                    <>
-                      {!twoFaStatus?.totpEnabled ? (
-                        <div className="space-y-4">
-                          <div className="bg-muted/40 rounded-lg p-4 text-sm text-muted-foreground space-y-2">
-                            <p className="font-medium text-foreground">How it works:</p>
-                            <ol className="list-decimal list-inside space-y-1">
-                              <li>Click "Set up 2FA" to get a QR code</li>
-                              <li>Scan it with Google Authenticator, Authy, or any TOTP app</li>
-                              <li>Enter the 6-digit code from the app to confirm</li>
-                              <li>On future logins, you'll need your code after your password</li>
-                            </ol>
-                          </div>
-                          <Button onClick={startTwoFaSetup} disabled={twoFaLoading} className="gap-2">
-                            {twoFaLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <ShieldCheck className="h-4 w-4" />}
-                            Set up 2FA
-                          </Button>
+
+                  {/* ── IDLE state ── */}
+                  {twoFaStep === "idle" && !twoFaStatus?.totpEnabled && (
+                    <div className="space-y-5">
+                      {/* Supported apps */}
+                      <div>
+                        <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-3">Works with any TOTP authenticator app</p>
+                        <div className="grid grid-cols-3 gap-3">
+                          {/* Google Authenticator */}
+                          <a href="https://play.google.com/store/apps/details?id=com.google.android.apps.authenticator2" target="_blank" rel="noopener noreferrer"
+                             className="flex flex-col items-center gap-2 p-3 rounded-xl border bg-muted/30 hover:bg-muted/60 transition-colors group">
+                            <div className="h-10 w-10 rounded-xl bg-white shadow-sm flex items-center justify-center border">
+                              <svg viewBox="0 0 48 48" className="h-6 w-6">
+                                <path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/>
+                                <path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/>
+                                <path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/>
+                                <path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.18 1.48-4.97 2.31-8.16 2.31-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/>
+                              </svg>
+                            </div>
+                            <div className="text-center">
+                              <p className="text-xs font-medium leading-tight">Google</p>
+                              <p className="text-xs font-medium leading-tight">Authenticator</p>
+                              <p className="text-[10px] text-muted-foreground mt-0.5 group-hover:text-primary transition-colors">Download →</p>
+                            </div>
+                          </a>
+
+                          {/* Authy */}
+                          <a href="https://authy.com/download/" target="_blank" rel="noopener noreferrer"
+                             className="flex flex-col items-center gap-2 p-3 rounded-xl border bg-muted/30 hover:bg-muted/60 transition-colors group">
+                            <div className="h-10 w-10 rounded-xl bg-[#EC1C24] flex items-center justify-center shadow-sm">
+                              <SiAuthy className="h-5 w-5 text-white" />
+                            </div>
+                            <div className="text-center">
+                              <p className="text-xs font-medium leading-tight">Twilio Authy</p>
+                              <p className="text-xs text-muted-foreground leading-tight">Multi-device</p>
+                              <p className="text-[10px] text-muted-foreground mt-0.5 group-hover:text-primary transition-colors">Download →</p>
+                            </div>
+                          </a>
+
+                          {/* Microsoft Authenticator */}
+                          <a href="https://www.microsoft.com/en-us/security/mobile-authenticator-app" target="_blank" rel="noopener noreferrer"
+                             className="flex flex-col items-center gap-2 p-3 rounded-xl border bg-muted/30 hover:bg-muted/60 transition-colors group">
+                            <div className="h-10 w-10 rounded-xl bg-[#00A4EF] flex items-center justify-center shadow-sm">
+                              <svg viewBox="0 0 21 21" className="h-5 w-5" fill="white">
+                                <rect x="1" y="1" width="9" height="9"/>
+                                <rect x="11" y="1" width="9" height="9"/>
+                                <rect x="1" y="11" width="9" height="9"/>
+                                <rect x="11" y="11" width="9" height="9"/>
+                              </svg>
+                            </div>
+                            <div className="text-center">
+                              <p className="text-xs font-medium leading-tight">Microsoft</p>
+                              <p className="text-xs text-muted-foreground leading-tight">Authenticator</p>
+                              <p className="text-[10px] text-muted-foreground mt-0.5 group-hover:text-primary transition-colors">Download →</p>
+                            </div>
+                          </a>
                         </div>
-                      ) : (
-                        <div className="space-y-4">
-                          <p className="text-sm text-muted-foreground">To disable 2FA, enter a code from your authenticator app below.</p>
-                          <Button variant="destructive" onClick={() => { setTwoFaStep("disable"); setTwoFaCode(""); setTwoFaError(""); }}>
-                            Disable 2FA
-                          </Button>
+                        <p className="text-[11px] text-muted-foreground mt-2">Any other TOTP-compatible app (1Password, Bitwarden, etc.) also works.</p>
+                      </div>
+
+                      <Separator />
+
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <p className="text-sm font-medium">Ready to set up?</p>
+                          <p className="text-xs text-muted-foreground mt-0.5">You'll scan a QR code with your chosen app to link it to your account.</p>
                         </div>
-                      )}
-                    </>
+                        <Button onClick={startTwoFaSetup} disabled={twoFaLoading} className="gap-2 shrink-0">
+                          {twoFaLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <ShieldCheck className="h-4 w-4" />}
+                          Set up 2FA
+                        </Button>
+                      </div>
+                    </div>
                   )}
 
-                  {/* ── SETUP: show QR + verification ── */}
-                  {twoFaStep === "setup" && (
-                    <div className="space-y-5">
-                      <div className="flex flex-col sm:flex-row gap-6 items-start">
-                        <div className="shrink-0">
-                          {twoFaQr && (
-                            <img src={twoFaQr} alt="2FA QR Code" className="w-44 h-44 border rounded-lg" />
-                          )}
-                        </div>
-                        <div className="space-y-3 text-sm">
-                          <p className="font-medium">Scan with your authenticator app</p>
-                          <p className="text-muted-foreground">Open Google Authenticator, Authy, or any TOTP app and scan the QR code on the left.</p>
-                          {twoFaSecret && (
-                            <div className="bg-muted rounded p-3">
-                              <p className="text-xs text-muted-foreground mb-1">Or enter this key manually:</p>
-                              <code className="text-xs font-mono tracking-widest break-all">{twoFaSecret}</code>
-                            </div>
-                          )}
+                  {twoFaStep === "idle" && twoFaStatus?.totpEnabled && (
+                    <div className="space-y-4">
+                      <div className="flex items-start gap-3 p-3 rounded-lg bg-green-50 border border-green-200">
+                        <CheckCircle2 className="h-5 w-5 text-green-600 mt-0.5 shrink-0" />
+                        <div className="text-sm">
+                          <p className="font-medium text-green-800">Your account is protected</p>
+                          <p className="text-green-700 mt-0.5">Every login requires a time-based one-time code from your authenticator app in addition to your password.</p>
                         </div>
                       </div>
-                      <div className="space-y-2">
-                        <Label>Enter the 6-digit code from your app to confirm</Label>
-                        <div className="flex gap-3">
+                      <div className="flex items-center justify-between pt-1">
+                        <p className="text-sm text-muted-foreground">Want to remove 2FA from your account?</p>
+                        <Button variant="destructive" size="sm" onClick={() => { setTwoFaStep("disable"); setTwoFaCode(""); setTwoFaError(""); }}>
+                          Disable 2FA
+                        </Button>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* ── SETUP: guided 3-step flow ── */}
+                  {twoFaStep === "setup" && (
+                    <div className="space-y-6">
+                      {/* Step indicators */}
+                      <div className="flex items-center gap-0">
+                        {["Download app", "Scan QR code", "Verify code"].map((label, i) => (
+                          <div key={i} className="flex items-center flex-1">
+                            <div className="flex items-center gap-1.5 shrink-0">
+                              <div className={`h-6 w-6 rounded-full flex items-center justify-center text-xs font-bold ${i < 2 ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"}`}>
+                                {i + 1}
+                              </div>
+                              <span className={`text-xs font-medium ${i < 2 ? "text-foreground" : "text-muted-foreground"}`}>{label}</span>
+                            </div>
+                            {i < 2 && <div className="flex-1 h-px bg-border mx-2" />}
+                          </div>
+                        ))}
+                      </div>
+
+                      {/* QR + instructions */}
+                      <div className="flex flex-col sm:flex-row gap-6 items-start">
+                        <div className="shrink-0 p-2 bg-white border rounded-xl shadow-sm">
+                          {twoFaQr && (
+                            <img src={twoFaQr} alt="2FA QR Code" className="w-44 h-44 rounded" />
+                          )}
+                          <p className="text-[10px] text-center text-muted-foreground mt-1.5">Scan with your app</p>
+                        </div>
+                        <div className="flex-1 space-y-4 text-sm">
+                          <div>
+                            <p className="font-semibold text-base">Open your authenticator app and scan this QR code</p>
+                            <p className="text-muted-foreground mt-1">In Google Authenticator, Authy, or Microsoft Authenticator: tap the <strong>+</strong> button and choose <strong>Scan a QR code</strong>.</p>
+                          </div>
+                          {twoFaSecret && (
+                            <div className="bg-muted rounded-lg p-3 space-y-1">
+                              <p className="text-xs text-muted-foreground font-medium">Can't scan? Enter this key manually in your app:</p>
+                              <div className="flex items-center gap-2">
+                                <code className="text-xs font-mono tracking-widest break-all flex-1">{twoFaSecret}</code>
+                                <Button size="sm" variant="ghost" className="h-7 px-2 shrink-0"
+                                  onClick={() => navigator.clipboard.writeText(twoFaSecret!)}>
+                                  <Copy className="h-3 w-3" />
+                                </Button>
+                              </div>
+                            </div>
+                          )}
+                          <div className="flex gap-2 flex-wrap">
+                            <a href="https://play.google.com/store/apps/details?id=com.google.android.apps.authenticator2" target="_blank" rel="noopener noreferrer"
+                               className="inline-flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg border hover:bg-muted transition-colors">
+                              <svg viewBox="0 0 48 48" className="h-3.5 w-3.5"><path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/><path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/><path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/><path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.18 1.48-4.97 2.31-8.16 2.31-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/></svg>
+                              Google Authenticator
+                            </a>
+                            <a href="https://authy.com/download/" target="_blank" rel="noopener noreferrer"
+                               className="inline-flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg border hover:bg-muted transition-colors">
+                              <SiAuthy className="h-3.5 w-3.5 text-[#EC1C24]" /> Authy
+                            </a>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Code verification */}
+                      <div className="bg-muted/40 rounded-xl p-4 space-y-3">
+                        <div>
+                          <p className="text-sm font-semibold">Enter the 6-digit code from your app</p>
+                          <p className="text-xs text-muted-foreground mt-0.5">The code refreshes every 30 seconds — enter the current one shown in your app.</p>
+                        </div>
+                        <div className="flex gap-3 items-center">
                           <Input
                             value={twoFaCode}
                             onChange={(e) => setTwoFaCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
-                            placeholder="000000"
-                            className="w-40 font-mono text-center text-lg tracking-[0.3em]"
+                            placeholder="000 000"
+                            className="w-36 font-mono text-center text-xl tracking-[0.4em] h-11"
                             maxLength={6}
+                            autoFocus
                             onKeyDown={(e) => e.key === "Enter" && enableTwoFa()}
                           />
-                          <Button onClick={enableTwoFa} disabled={twoFaCode.length !== 6 || twoFaLoading} className="gap-2">
-                            {twoFaLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
-                            Verify & Enable
+                          <Button onClick={enableTwoFa} disabled={twoFaCode.length !== 6 || twoFaLoading} className="gap-2 h-11 px-5">
+                            {twoFaLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
+                            Verify &amp; Enable
                           </Button>
                           <Button variant="ghost" onClick={() => { setTwoFaStep("idle"); setTwoFaQr(null); setTwoFaSecret(null); setTwoFaCode(""); setTwoFaError(""); }}>
                             Cancel
                           </Button>
                         </div>
+                        {twoFaError && (
+                          <div className="flex items-center gap-2 text-sm text-destructive">
+                            <XCircle className="h-4 w-4 shrink-0" /> {twoFaError}
+                          </div>
+                        )}
                       </div>
-                      {twoFaError && <p className="text-sm text-destructive">{twoFaError}</p>}
                     </div>
                   )}
 
-                  {/* ── DISABLE: show code input ── */}
+                  {/* ── DISABLE: confirm with current code ── */}
                   {twoFaStep === "disable" && (
                     <div className="space-y-4">
-                      <p className="text-sm text-muted-foreground">Enter the current 6-digit code from your authenticator app to confirm disabling 2FA.</p>
-                      <div className="flex gap-3">
+                      <div className="flex items-start gap-3 p-3 rounded-lg bg-destructive/5 border border-destructive/20">
+                        <AlertTriangle className="h-5 w-5 text-destructive mt-0.5 shrink-0" />
+                        <div className="text-sm">
+                          <p className="font-medium text-destructive">Disabling 2FA reduces account security</p>
+                          <p className="text-muted-foreground mt-0.5">Enter your current 6-digit authenticator code to confirm you still have access to your app before disabling.</p>
+                        </div>
+                      </div>
+                      <div className="flex gap-3 items-center">
                         <Input
                           value={twoFaCode}
                           onChange={(e) => setTwoFaCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
-                          placeholder="000000"
-                          className="w-40 font-mono text-center text-lg tracking-[0.3em]"
+                          placeholder="000 000"
+                          className="w-36 font-mono text-center text-xl tracking-[0.4em] h-11"
                           maxLength={6}
+                          autoFocus
                           onKeyDown={(e) => e.key === "Enter" && disableTwoFa()}
                         />
-                        <Button variant="destructive" onClick={disableTwoFa} disabled={twoFaCode.length !== 6 || twoFaLoading} className="gap-2">
+                        <Button variant="destructive" onClick={disableTwoFa} disabled={twoFaCode.length !== 6 || twoFaLoading} className="gap-2 h-11">
                           {twoFaLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
                           Confirm Disable
                         </Button>
@@ -1150,7 +1268,11 @@ export default function Settings() {
                           Cancel
                         </Button>
                       </div>
-                      {twoFaError && <p className="text-sm text-destructive">{twoFaError}</p>}
+                      {twoFaError && (
+                        <div className="flex items-center gap-2 text-sm text-destructive">
+                          <XCircle className="h-4 w-4 shrink-0" /> {twoFaError}
+                        </div>
+                      )}
                     </div>
                   )}
                 </CardContent>
