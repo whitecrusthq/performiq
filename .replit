@@ -26,10 +26,6 @@ author = "agent"
 task = "workflow.run"
 args = "crm-backend: API Server"
 
-[[workflows.workflow.tasks]]
-task = "workflow.run"
-args = "artifacts/performiq: web"
-
 [[workflows.workflow]]
 name = "crm-backend: API Server"
 author = "agent"
@@ -41,18 +37,6 @@ waitForPort = 3002
 
 [workflows.workflow.metadata]
 outputType = "console"
-
-[[workflows.workflow]]
-name = "artifacts/performiq: web"
-author = "agent"
-
-[workflows.workflow.metadata]
-outputType = "webview"
-
-[[workflows.workflow.tasks]]
-task = "shell.exec"
-args = "PORT=3003 BASE_PATH=/piq/ pnpm --filter @workspace/performiq run dev"
-waitForPort = 3003
 
 [agent]
 stack = "PNPM_WORKSPACE"
