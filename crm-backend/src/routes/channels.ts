@@ -9,6 +9,7 @@ function serializeChannel(c: Channel) {
     id: c.id,
     type: c.type,
     name: c.name,
+    siteId: c.siteId,
     isConnected: c.isConnected,
     webhookVerifyToken: c.webhookVerifyToken,
     phoneNumberId: c.phoneNumberId,
@@ -53,17 +54,12 @@ router.get("/channels", requireAuth, async (_req: AuthRequest, res) => {
 
 router.post("/channels", requireAuth, async (req: AuthRequest, res) => {
   try {
-    const { type, name } = req.body;
+    const { type, name, siteId } = req.body;
     if (!type || !name) {
       res.status(400).json({ error: "type and name are required" });
       return;
     }
-    const existing = await Channel.findOne({ where: { type } });
-    if (existing) {
-      res.status(409).json({ error: "Channel of this type already exists. Update it instead." });
-      return;
-    }
-    const channel = await Channel.create({ type, name });
+    const channel = await Channel.create({ type, name, siteId: siteId ?? null });
     if (type === "widget") {
       channel.isConnected = true;
       await channel.save();
@@ -85,6 +81,7 @@ router.put("/channels/:id", requireAuth, async (req: AuthRequest, res) => {
 
     const {
       name,
+      siteId,
       accessToken,
       phoneNumberId,
       wabaId,
@@ -100,6 +97,7 @@ router.put("/channels/:id", requireAuth, async (req: AuthRequest, res) => {
     } = req.body;
 
     if (name) channel.name = name;
+    if (siteId !== undefined) channel.siteId = siteId ?? null;
     if (accessToken !== undefined) channel.accessToken = accessToken || null;
     if (phoneNumberId !== undefined) channel.phoneNumberId = phoneNumberId || null;
     if (wabaId !== undefined) channel.wabaId = wabaId || null;

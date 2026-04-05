@@ -12,7 +12,7 @@ function isAdminOrAbove(role: string) { return role === "admin" || role === "sup
 router.get("/agents", requireAuth, async (_req: AuthRequest, res) => {
   try {
     const agents = await Agent.findAll({
-      attributes: ["id", "name", "email", "role", "avatar", "isActive", "allowedMenus", "activeConversations", "resolvedToday", "rating", "createdAt"],
+      attributes: ["id", "name", "email", "role", "avatar", "isActive", "allowedMenus", "siteIds", "activeConversations", "resolvedToday", "rating", "createdAt"],
       order: [["createdAt", "ASC"]],
     });
     res.json(agents);
@@ -23,7 +23,7 @@ router.get("/agents", requireAuth, async (_req: AuthRequest, res) => {
 
 router.post("/agents", requireAuth, requireAdmin, async (req: AuthRequest, res) => {
   try {
-    const { name, email, password, role, allowedMenus } = req.body;
+    const { name, email, password, role, allowedMenus, siteIds } = req.body;
     if (!name || !email || !password) {
       res.status(400).json({ error: "Name, email, and password are required" });
       return;
@@ -57,6 +57,7 @@ router.post("/agents", requireAuth, requireAdmin, async (req: AuthRequest, res) 
       passwordHash,
       role: role ?? "agent",
       allowedMenus: allowedMenus ?? null,
+      siteIds: Array.isArray(siteIds) ? siteIds : null,
     });
     const { passwordHash: _, ...safe } = agent.toJSON() as AgentAttributes;
     res.status(201).json(safe);
@@ -81,7 +82,7 @@ router.put("/agents/:id", requireAuth, requireAdmin, async (req: AuthRequest, re
       return;
     }
 
-    const { name, role, isActive } = req.body;
+    const { name, role, isActive, siteIds } = req.body;
 
     if (role === "super_admin") {
       res.status(403).json({ error: "Cannot assign super admin role" });
@@ -95,6 +96,7 @@ router.put("/agents/:id", requireAuth, requireAdmin, async (req: AuthRequest, re
     if (name !== undefined) target.name = name;
     if (role !== undefined) target.role = role;
     if (isActive !== undefined) target.isActive = isActive;
+    if (siteIds !== undefined) target.siteIds = Array.isArray(siteIds) && siteIds.length > 0 ? siteIds : null;
     await target.save();
     const { passwordHash: _, ...safe } = target.toJSON() as AgentAttributes;
     res.json(safe);

@@ -7,6 +7,7 @@ export interface ChannelAttributes {
   id: number;
   type: ChannelType;
   name: string;
+  siteId: number | null;
   isConnected: boolean;
   accessToken: string | null;
   phoneNumberId: string | null;
@@ -26,12 +27,13 @@ export interface ChannelAttributes {
 }
 
 export interface ChannelCreationAttributes
-  extends Optional<ChannelAttributes, "id" | "isConnected" | "accessToken" | "phoneNumberId" | "wabaId" | "pageId" | "pageAccessToken" | "instagramAccountId" | "twitterApiKey" | "twitterApiSecret" | "twitterBearerToken" | "twitterAccessToken" | "twitterAccessTokenSecret" | "metadata"> {}
+  extends Optional<ChannelAttributes, "id" | "siteId" | "isConnected" | "accessToken" | "phoneNumberId" | "wabaId" | "pageId" | "pageAccessToken" | "instagramAccountId" | "twitterApiKey" | "twitterApiSecret" | "twitterBearerToken" | "twitterAccessToken" | "twitterAccessTokenSecret" | "metadata"> {}
 
 export class Channel extends Model<ChannelAttributes, ChannelCreationAttributes> implements ChannelAttributes {
   declare id: number;
   declare type: ChannelType;
   declare name: string;
+  declare siteId: number | null;
   declare isConnected: boolean;
   declare accessToken: string | null;
   declare phoneNumberId: string | null;
@@ -55,6 +57,7 @@ Channel.init(
     id: { type: DataTypes.INTEGER, autoIncrement: true, primaryKey: true },
     type: { type: DataTypes.STRING(50), allowNull: false },
     name: { type: DataTypes.STRING(100), allowNull: false },
+    siteId: { type: DataTypes.INTEGER, allowNull: true, defaultValue: null, field: "site_id" },
     isConnected: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: false, field: "is_connected" },
     accessToken: { type: DataTypes.TEXT, allowNull: true, field: "access_token" },
     phoneNumberId: { type: DataTypes.STRING(100), allowNull: true, field: "phone_number_id" },

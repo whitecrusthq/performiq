@@ -10,7 +10,7 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
 import { Badge } from "@/components/ui/badge";
-import { SiWhatsapp, SiFacebook, SiInstagram, SiMailgun } from "react-icons/si";
+import { SiWhatsapp, SiFacebook, SiInstagram, SiMailgun, SiX } from "react-icons/si";
 import {
   CheckCircle2, Bot, Trash2, Loader2, Eye, EyeOff, XCircle, Zap, Send,
   Globe, Palette, Upload, X, Image as ImageIcon, Wifi, Settings2, Users,
@@ -18,6 +18,7 @@ import {
   AlertTriangle, CalendarClock, Plus, Pencil, ToggleLeft, ToggleRight,
   ShoppingCart, Bell, Package, Tag, UserCheck, Sparkles, Clock, ChevronDown,
   Filter, FileText, MessageCircle, ThumbsUp, ShieldCheck,
+  MapPin, Building2, Plus as PlusIcon, Trash2 as TrashIcon, Pencil as PencilIcon,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { apiGet, apiPost, apiPut, apiDelete, getBaseUrl } from "@/lib/api";
@@ -45,7 +46,7 @@ interface BrandingData {
   backgroundData: string | null;
 }
 
-interface ApiAgent { id: number; name: string; email: string; role: string; isActive: boolean; allowedMenus: string[] | null; }
+interface ApiAgent { id: number; name: string; email: string; role: string; isActive: boolean; allowedMenus: string[] | null; siteIds: number[] | null; }
 
 // ── All menus available for permission control ────────────────────────────────
 const ALL_MENUS = [
@@ -75,7 +76,26 @@ const ALL_MENUS = [
 const MENU_GROUPS = ["Core", "Analytics", "Tools", "Admin"] as const;
 type MenuSlug = typeof ALL_MENUS[number]["slug"];
 
-type SettingsSection = "channels" | "automation" | "email" | "team" | "appearance" | "retention" | "followups";
+type SettingsSection = "channels" | "automation" | "email" | "team" | "appearance" | "retention" | "followups" | "sites";
+
+interface ApiSite {
+  id: number;
+  name: string;
+  description: string | null;
+  region: string | null;
+  isActive: boolean;
+}
+
+interface ApiChannel {
+  id: number;
+  type: string;
+  name: string;
+  siteId: number | null;
+  isConnected: boolean;
+  phoneNumberId?: string;
+  pageId?: string;
+  instagramAccountId?: string;
+}
 
 interface NavItem {
   id: SettingsSection;
@@ -87,6 +107,7 @@ interface NavItem {
 
 const NAV_ITEMS: NavItem[] = [
   { id: "channels",    label: "Channels",        description: "Connected platforms",   icon: Wifi },
+  { id: "sites",       label: "Sites",           description: "Branches & regions",    icon: Building2, adminOnly: true },
   { id: "automation",  label: "AI & Automation", description: "Bot & escalation",      icon: Bot },
   { id: "email",       label: "Email",           description: "Mailgun broadcasting",  icon: Mail },
   { id: "followups",   label: "Follow-ups",      description: "Automation rules",      icon: CalendarClock },
@@ -129,6 +150,7 @@ export default function Settings() {
       setIsAddOpen(false);
       setNewName(""); setNewEmail(""); setNewPassword(""); setNewRole("agent");
       setNewCustomPerms(false); setNewAllowedMenus([...ALL_MENUS.map((m) => m.slug)]);
+      setNewAgentSiteIds([]);
       toast({ title: "Agent added", description: "New agent has been created." });
     },
     onError: (err: Error) => {
@@ -178,6 +200,91 @@ export default function Settings() {
     if (checked) return [...new Set([...list, ...groupSlugs])];
     return list.filter((s) => !groupSlugs.includes(s));
   }
+
+  // ── Sites state ──────────────────────────────────────────────────────────────
+  const [isSiteAddOpen, setIsSiteAddOpen] = useState(false);
+  const [newSiteName, setNewSiteName] = useState("");
+  const [newSiteDesc, setNewSiteDesc] = useState("");
+  const [newSiteRegion, setNewSiteRegion] = useState("");
+  const [editSite, setEditSite] = useState<ApiSite | null>(null);
+  const [editSiteName, setEditSiteName] = useState("");
+  const [editSiteDesc, setEditSiteDesc] = useState("");
+  const [editSiteRegion, setEditSiteRegion] = useState("");
+
+  const { data: sites = [] } = useQuery<ApiSite[]>({
+    queryKey: ["sites"],
+    queryFn: () => apiGet("/sites"),
+  });
+
+  const addSiteMutation = useMutation({
+    mutationFn: (data: object) => apiPost("/sites", data),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["sites"] });
+      setIsSiteAddOpen(false);
+      setNewSiteName(""); setNewSiteDesc(""); setNewSiteRegion("");
+      toast({ title: "Site added" });
+    },
+    onError: (err: Error) => toast({ title: "Error", description: err.message, variant: "destructive" }),
+  });
+
+  const updateSiteMutation = useMutation({
+    mutationFn: ({ id, ...data }: { id: number; name: string; description: string; region: string }) =>
+      apiPut(`/sites/${id}`, data),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["sites"] });
+      setEditSite(null);
+      toast({ title: "Site updated" });
+    },
+    onError: (err: Error) => toast({ title: "Error", description: err.message, variant: "destructive" }),
+  });
+
+  const deleteSiteMutation = useMutation({
+    mutationFn: (id: number) => apiDelete(`/sites/${id}`),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["sites"] });
+      toast({ title: "Site deleted" });
+    },
+    onError: (err: Error) => toast({ title: "Error", description: err.message, variant: "destructive" }),
+  });
+
+  function openEditSite(s: ApiSite) {
+    setEditSite(s);
+    setEditSiteName(s.name);
+    setEditSiteDesc(s.description ?? "");
+    setEditSiteRegion(s.region ?? "");
+  }
+
+  // ── Channels (multi-account) state ────────────────────────────────────────
+  const [isAddChOpen, setIsAddChOpen] = useState(false);
+  const [addChType, setAddChType] = useState("whatsapp");
+  const [addChName, setAddChName] = useState("");
+  const [addChSiteId, setAddChSiteId] = useState<string>("");
+  const [newAgentSiteIds, setNewAgentSiteIds] = useState<number[]>([]);
+
+  const { data: settingsChannels = [], refetch: refetchChannels } = useQuery<ApiChannel[]>({
+    queryKey: ["settingsChannels"],
+    queryFn: () => apiGet("/channels"),
+  });
+
+  const addChMutation = useMutation({
+    mutationFn: (data: object) => apiPost("/channels", data),
+    onSuccess: () => {
+      refetchChannels();
+      setIsAddChOpen(false);
+      setAddChName(""); setAddChSiteId("");
+      toast({ title: "Channel account added" });
+    },
+    onError: (err: Error) => toast({ title: "Error", description: err.message, variant: "destructive" }),
+  });
+
+  const deleteChMutation = useMutation({
+    mutationFn: (id: number) => apiDelete(`/channels/${id}`),
+    onSuccess: () => {
+      refetchChannels();
+      toast({ title: "Channel account removed" });
+    },
+    onError: (err: Error) => toast({ title: "Error", description: err.message, variant: "destructive" }),
+  });
 
   // ── Branding state ─────────────────────────────────────────────────────────
   const [brandingName, setBrandingName] = useState("CommsCRM");
@@ -413,62 +520,225 @@ export default function Settings() {
         <div className="p-6 max-w-3xl space-y-6">
 
           {/* ── CHANNELS ───────────────────────────────────────────────────── */}
-          {activeSection === "channels" && (
+          {activeSection === "channels" && (() => {
+            const CH_META: { type: string; label: string; Icon: React.ElementType; color: string; bg: string }[] = [
+              { type: "whatsapp",  label: "WhatsApp Business",  Icon: SiWhatsapp,  color: "text-[#25D366]", bg: "bg-[#25D366]/10" },
+              { type: "facebook",  label: "Facebook Messenger", Icon: SiFacebook,  color: "text-[#1877F2]", bg: "bg-[#1877F2]/10" },
+              { type: "instagram", label: "Instagram Direct",   Icon: SiInstagram, color: "text-pink-500",   bg: "bg-pink-500/10"  },
+              { type: "twitter",   label: "Twitter / X DM",     Icon: SiX,         color: "text-sky-500",    bg: "bg-sky-500/10"   },
+              { type: "widget",    label: "Web Chat Widget",     Icon: MessageCircle, color: "text-violet-500", bg: "bg-violet-500/10" },
+            ];
+            return (
+              <>
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h2 className="text-xl font-bold">Channel Accounts</h2>
+                    <p className="text-sm text-muted-foreground mt-1">Connect multiple accounts per platform. Each account can be assigned to a site.</p>
+                  </div>
+                  <Button size="sm" className="gap-1.5" onClick={() => setIsAddChOpen(true)}>
+                    <PlusIcon className="h-4 w-4" /> Add Account
+                  </Button>
+                </div>
+
+                <div className="space-y-4">
+                  {CH_META.map(({ type, label, Icon, color, bg }) => {
+                    const accounts = settingsChannels.filter((c) => c.type === type);
+                    return (
+                      <Card key={type}>
+                        <CardHeader className="pb-3 pt-4 px-5">
+                          <div className="flex items-center gap-3">
+                            <div className={`h-8 w-8 rounded-full ${bg} flex items-center justify-center`}>
+                              <Icon className={`h-4 w-4 ${color}`} />
+                            </div>
+                            <div>
+                              <CardTitle className="text-sm font-semibold">{label}</CardTitle>
+                              <p className="text-xs text-muted-foreground">{accounts.length} account{accounts.length !== 1 ? "s" : ""}</p>
+                            </div>
+                          </div>
+                        </CardHeader>
+                        {accounts.length > 0 && (
+                          <CardContent className="pt-0 px-5 pb-4 space-y-2">
+                            {accounts.map((ch) => {
+                              const site = sites.find((s) => s.id === ch.siteId);
+                              return (
+                                <div key={ch.id} className="flex items-center justify-between p-3 bg-muted/30 rounded-lg border">
+                                  <div className="min-w-0">
+                                    <p className="text-sm font-medium truncate">{ch.name}</p>
+                                    <div className="flex items-center gap-2 mt-0.5">
+                                      {site && (
+                                        <span className="text-xs text-muted-foreground flex items-center gap-1">
+                                          <MapPin className="h-3 w-3" />{site.name}
+                                        </span>
+                                      )}
+                                      <span className={`text-xs font-medium flex items-center gap-1 ${ch.isConnected ? "text-green-600" : "text-muted-foreground"}`}>
+                                        <CheckCircle2 className="h-3 w-3" />{ch.isConnected ? "Connected" : "Not configured"}
+                                      </span>
+                                    </div>
+                                  </div>
+                                  <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    className="h-8 w-8 text-muted-foreground hover:text-destructive"
+                                    onClick={() => deleteChMutation.mutate(ch.id)}
+                                  >
+                                    <TrashIcon className="h-4 w-4" />
+                                  </Button>
+                                </div>
+                              );
+                            })}
+                          </CardContent>
+                        )}
+                      </Card>
+                    );
+                  })}
+                </div>
+
+                {/* Add account dialog */}
+                <Dialog open={isAddChOpen} onOpenChange={setIsAddChOpen}>
+                  <DialogContent className="max-w-sm">
+                    <DialogHeader><DialogTitle>Add Channel Account</DialogTitle></DialogHeader>
+                    <div className="space-y-4 py-2">
+                      <div className="space-y-2">
+                        <Label>Channel Type</Label>
+                        <Select value={addChType} onValueChange={setAddChType}>
+                          <SelectTrigger><SelectValue /></SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="whatsapp">WhatsApp Business</SelectItem>
+                            <SelectItem value="facebook">Facebook Messenger</SelectItem>
+                            <SelectItem value="instagram">Instagram Direct</SelectItem>
+                            <SelectItem value="twitter">Twitter / X DM</SelectItem>
+                            <SelectItem value="widget">Web Chat Widget</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div className="space-y-2">
+                        <Label>Account Name</Label>
+                        <Input value={addChName} onChange={(e) => setAddChName(e.target.value)} placeholder="e.g. Main WhatsApp, Branch B" />
+                      </div>
+                      <div className="space-y-2">
+                        <Label>Assign to Site <span className="text-muted-foreground text-xs">(optional)</span></Label>
+                        <Select value={addChSiteId || "__none__"} onValueChange={(v) => setAddChSiteId(v === "__none__" ? "" : v)}>
+                          <SelectTrigger><SelectValue placeholder="No site assigned" /></SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="__none__">No site</SelectItem>
+                            {sites.map((s) => (
+                              <SelectItem key={s.id} value={String(s.id)}>{s.name}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    </div>
+                    <DialogFooter>
+                      <Button variant="outline" onClick={() => setIsAddChOpen(false)}>Cancel</Button>
+                      <Button
+                        disabled={!addChName || addChMutation.isPending}
+                        onClick={() => addChMutation.mutate({ type: addChType, name: addChName, siteId: addChSiteId ? Number(addChSiteId) : null })}
+                      >
+                        {addChMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : "Add Account"}
+                      </Button>
+                    </DialogFooter>
+                  </DialogContent>
+                </Dialog>
+              </>
+            );
+          })()}
+
+          {/* ── SITES ──────────────────────────────────────────────────────── */}
+          {activeSection === "sites" && (
             <>
-              <div>
-                <h2 className="text-xl font-bold">Connected Channels</h2>
-                <p className="text-sm text-muted-foreground mt-1">Manage the platforms CommsCRM is listening to.</p>
+              <div className="flex items-center justify-between">
+                <div>
+                  <h2 className="text-xl font-bold">Sites & Branches</h2>
+                  <p className="text-sm text-muted-foreground mt-1">Define the physical locations or business branches for your organisation.</p>
+                </div>
+                <Dialog open={isSiteAddOpen} onOpenChange={setIsSiteAddOpen}>
+                  <DialogTrigger asChild>
+                    <Button size="sm" className="gap-1.5"><PlusIcon className="h-4 w-4" /> Add Site</Button>
+                  </DialogTrigger>
+                  <DialogContent className="max-w-sm">
+                    <DialogHeader><DialogTitle>Add New Site</DialogTitle></DialogHeader>
+                    <div className="space-y-4 py-2">
+                      <div className="space-y-2"><Label>Site Name</Label><Input value={newSiteName} onChange={(e) => setNewSiteName(e.target.value)} placeholder="e.g. HQ Kuala Lumpur" /></div>
+                      <div className="space-y-2"><Label>Description</Label><Input value={newSiteDesc} onChange={(e) => setNewSiteDesc(e.target.value)} placeholder="Optional description" /></div>
+                      <div className="space-y-2"><Label>Region / City</Label><Input value={newSiteRegion} onChange={(e) => setNewSiteRegion(e.target.value)} placeholder="e.g. Selangor, Johor" /></div>
+                    </div>
+                    <DialogFooter>
+                      <Button variant="outline" onClick={() => setIsSiteAddOpen(false)}>Cancel</Button>
+                      <Button
+                        disabled={!newSiteName || addSiteMutation.isPending}
+                        onClick={() => addSiteMutation.mutate({ name: newSiteName, description: newSiteDesc, region: newSiteRegion })}
+                      >
+                        {addSiteMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : "Add Site"}
+                      </Button>
+                    </DialogFooter>
+                  </DialogContent>
+                </Dialog>
               </div>
-              <Card>
-                <CardContent className="pt-6 space-y-4">
-                  <div className="flex items-center justify-between p-4 border rounded-lg bg-card">
-                    <div className="flex items-center gap-4">
-                      <div className="h-10 w-10 rounded-full bg-[#25D366]/10 flex items-center justify-center">
-                        <SiWhatsapp className="h-5 w-5 text-[#25D366]" />
-                      </div>
-                      <div>
-                        <h4 className="font-semibold">WhatsApp Business</h4>
-                        <p className="text-sm text-muted-foreground">+1 (555) 019-2834</p>
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-4">
-                      <div className="flex items-center gap-2 text-sm text-green-600 font-medium">
-                        <CheckCircle2 className="h-4 w-4" /> Connected
-                      </div>
-                      <Button variant="outline" size="sm">Configure</Button>
-                    </div>
+
+              {sites.length === 0 ? (
+                <Card>
+                  <CardContent className="pt-12 pb-12 flex flex-col items-center gap-3 text-center">
+                    <Building2 className="h-10 w-10 text-muted-foreground/40" />
+                    <p className="text-sm text-muted-foreground">No sites configured yet. Add your first site above.</p>
+                  </CardContent>
+                </Card>
+              ) : (
+                <div className="space-y-3">
+                  {sites.map((site) => (
+                    <Card key={site.id}>
+                      <CardContent className="pt-4 pb-4 px-5">
+                        <div className="flex items-center justify-between gap-4">
+                          <div className="flex items-center gap-3 min-w-0">
+                            <div className="h-9 w-9 rounded-full bg-blue-600/10 flex items-center justify-center shrink-0">
+                              <MapPin className="h-4 w-4 text-blue-600" />
+                            </div>
+                            <div className="min-w-0">
+                              <p className="font-semibold text-sm truncate">{site.name}</p>
+                              <p className="text-xs text-muted-foreground">
+                                {[site.region, site.description].filter(Boolean).join(" · ") || "No description"}
+                              </p>
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-2 shrink-0">
+                            <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => openEditSite(site)}>
+                              <PencilIcon className="h-4 w-4" />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-8 w-8 text-muted-foreground hover:text-destructive"
+                              onClick={() => deleteSiteMutation.mutate(site.id)}
+                            >
+                              <TrashIcon className="h-4 w-4" />
+                            </Button>
+                          </div>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  ))}
+                </div>
+              )}
+
+              {/* Edit site dialog */}
+              <Dialog open={!!editSite} onOpenChange={(open) => { if (!open) setEditSite(null); }}>
+                <DialogContent className="max-w-sm">
+                  <DialogHeader><DialogTitle>Edit Site</DialogTitle></DialogHeader>
+                  <div className="space-y-4 py-2">
+                    <div className="space-y-2"><Label>Site Name</Label><Input value={editSiteName} onChange={(e) => setEditSiteName(e.target.value)} /></div>
+                    <div className="space-y-2"><Label>Description</Label><Input value={editSiteDesc} onChange={(e) => setEditSiteDesc(e.target.value)} /></div>
+                    <div className="space-y-2"><Label>Region / City</Label><Input value={editSiteRegion} onChange={(e) => setEditSiteRegion(e.target.value)} /></div>
                   </div>
-                  <div className="flex items-center justify-between p-4 border rounded-lg bg-card">
-                    <div className="flex items-center gap-4">
-                      <div className="h-10 w-10 rounded-full bg-[#1877F2]/10 flex items-center justify-center">
-                        <SiFacebook className="h-5 w-5 text-[#1877F2]" />
-                      </div>
-                      <div>
-                        <h4 className="font-semibold">Facebook Messenger</h4>
-                        <p className="text-sm text-muted-foreground">@HiraOfficial</p>
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-4">
-                      <div className="flex items-center gap-2 text-sm text-green-600 font-medium">
-                        <CheckCircle2 className="h-4 w-4" /> Connected
-                      </div>
-                      <Button variant="outline" size="sm">Configure</Button>
-                    </div>
-                  </div>
-                  <div className="flex items-center justify-between p-4 border border-dashed rounded-lg bg-muted/20 opacity-70">
-                    <div className="flex items-center gap-4">
-                      <div className="h-10 w-10 rounded-full bg-muted flex items-center justify-center">
-                        <SiInstagram className="h-5 w-5 text-muted-foreground" />
-                      </div>
-                      <div>
-                        <h4 className="font-semibold">Instagram Direct</h4>
-                        <p className="text-sm text-muted-foreground">Not connected</p>
-                      </div>
-                    </div>
-                    <Button variant="secondary" size="sm">Connect Account</Button>
-                  </div>
-                </CardContent>
-              </Card>
+                  <DialogFooter>
+                    <Button variant="outline" onClick={() => setEditSite(null)}>Cancel</Button>
+                    <Button
+                      disabled={!editSiteName || updateSiteMutation.isPending}
+                      onClick={() => editSite && updateSiteMutation.mutate({ id: editSite.id, name: editSiteName, description: editSiteDesc, region: editSiteRegion })}
+                    >
+                      {updateSiteMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : "Save Changes"}
+                    </Button>
+                  </DialogFooter>
+                </DialogContent>
+              </Dialog>
             </>
           )}
 
@@ -681,6 +951,28 @@ export default function Settings() {
                         </Select>
                       </div>
 
+                      {/* ── Site Assignment ── */}
+                      {sites.length > 0 && (
+                        <div className="space-y-2">
+                          <Label>Assigned Sites <span className="text-muted-foreground text-xs">(optional)</span></Label>
+                          <div className="border rounded-lg p-3 space-y-2">
+                            {sites.map((s) => (
+                              <div key={s.id} className="flex items-center gap-2">
+                                <Checkbox
+                                  id={`new-site-${s.id}`}
+                                  checked={newAgentSiteIds.includes(s.id)}
+                                  onCheckedChange={(v) => setNewAgentSiteIds(v ? [...newAgentSiteIds, s.id] : newAgentSiteIds.filter((id) => id !== s.id))}
+                                />
+                                <label htmlFor={`new-site-${s.id}`} className="text-sm cursor-pointer flex items-center gap-1.5">
+                                  <MapPin className="h-3 w-3 text-muted-foreground" />{s.name}
+                                  {s.region && <span className="text-xs text-muted-foreground">({s.region})</span>}
+                                </label>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
                       {/* ── Menu Permissions ── */}
                       <div className="border rounded-lg p-3 space-y-3">
                         <div className="flex items-center justify-between">
@@ -746,6 +1038,7 @@ export default function Settings() {
                           password: newPassword,
                           role: newRole,
                           allowedMenus: newCustomPerms ? newAllowedMenus : null,
+                          siteIds: newAgentSiteIds.length > 0 ? newAgentSiteIds : null,
                         })}
                       >
                         {addAgentMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : "Add User"}
@@ -769,6 +1062,18 @@ export default function Settings() {
                             <div>
                               <div className="font-medium">{agent.name} {agent.id === currentAgent?.id && <span className="text-xs text-muted-foreground">(you)</span>}</div>
                               <div className="text-sm text-muted-foreground">{agent.email}</div>
+                              {agent.siteIds && agent.siteIds.length > 0 && (
+                                <div className="flex items-center gap-1 mt-1 flex-wrap">
+                                  {agent.siteIds.map((sid) => {
+                                    const site = sites.find((s) => s.id === sid);
+                                    return site ? (
+                                      <span key={sid} className="inline-flex items-center gap-0.5 text-xs bg-blue-50 text-blue-700 rounded px-1.5 py-0.5 border border-blue-200">
+                                        <MapPin className="h-2.5 w-2.5" />{site.name}
+                                      </span>
+                                    ) : null;
+                                  })}
+                                </div>
+                              )}
                             </div>
                           </div>
                           <div className="flex items-center gap-2">

@@ -44,7 +44,8 @@ The monorepo contains:
 - **Transcripts & Agent KPIs**: Provides searchable conversation transcripts and agent performance metrics with role-based access for setting KPI targets.
 - **Mailgun Email Broadcasting**: Integration for sending email campaigns to customers, with configurable Mailgun settings and domain validation.
 - **Customer Intelligence**: Keyword-based analysis of customer messages for top questions, issues, products mentioned, and compliance flags.
-- **Channel Integrations**: Supports WhatsApp, Facebook, and Instagram with webhook endpoints and credential storage in `crm_channels`.
+- **Channel Integrations**: Supports WhatsApp, Facebook, Instagram, Twitter/X, and Web Chat Widget. Multiple accounts per channel type are now supported (multi-account). Channels stored in `crm_channels` with optional `site_id` FK.
+- **Multi-Site Support**: `crm_sites` table stores branches/regions. Channels can be assigned to a site (`siteId`). Agents can be assigned to multiple sites (`siteIds` JSON array). Settings → Sites section provides full CRUD for sites; Settings → Channels section shows multi-account management grouped by platform type with site assignment.
 
 ## Authentication:
 - JWTs stored in `localStorage` as "token".

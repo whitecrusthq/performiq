@@ -18,6 +18,7 @@ export { AgentShift } from "./AgentShift.js";
 export { BrandingSettings } from "./BrandingSettings.js";
 export { RetentionSettings } from "./RetentionSettings.js";
 export { FollowUpRule } from "./FollowUpRule.js";
+export { Site } from "./Site.js";
 
 import { Agent } from "./Agent.js";
 import { Customer } from "./Customer.js";
