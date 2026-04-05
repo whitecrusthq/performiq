@@ -76,7 +76,7 @@ const ALL_MENUS = [
 const MENU_GROUPS = ["Core", "Analytics", "Tools", "Admin"] as const;
 type MenuSlug = typeof ALL_MENUS[number]["slug"];
 
-type SettingsSection = "channels" | "automation" | "email" | "team" | "appearance" | "retention" | "followups" | "sites";
+type SettingsSection = "channels" | "automation" | "email" | "team" | "appearance" | "retention" | "followups" | "sites" | "security";
 
 interface ApiSite {
   id: number;
@@ -108,6 +108,7 @@ interface NavItem {
 const NAV_ITEMS: NavItem[] = [
   { id: "channels",    label: "Channels",        description: "Connected platforms",   icon: Wifi },
   { id: "sites",       label: "Sites",           description: "Branches & regions",    icon: Building2, adminOnly: true },
+  { id: "security",    label: "Security",        description: "2FA & account safety",  icon: ShieldCheck },
   { id: "automation",  label: "AI & Automation", description: "Bot & escalation",      icon: Bot },
   { id: "email",       label: "Email",           description: "Mailgun broadcasting",  icon: Mail },
   { id: "followups",   label: "Follow-ups",      description: "Automation rules",      icon: CalendarClock },
@@ -285,6 +286,65 @@ export default function Settings() {
     },
     onError: (err: Error) => toast({ title: "Error", description: err.message, variant: "destructive" }),
   });
+
+  // ── Security / 2FA state ──────────────────────────────────────────────────
+  const [twoFaStep, setTwoFaStep] = useState<"idle" | "setup" | "disable">("idle");
+  const [twoFaQr, setTwoFaQr] = useState<string | null>(null);
+  const [twoFaSecret, setTwoFaSecret] = useState<string | null>(null);
+  const [twoFaCode, setTwoFaCode] = useState("");
+  const [twoFaLoading, setTwoFaLoading] = useState(false);
+  const [twoFaError, setTwoFaError] = useState("");
+
+  const { data: twoFaStatus, refetch: refetchTwoFa } = useQuery<{ totpEnabled: boolean }>({
+    queryKey: ["2fa-status"],
+    queryFn: () => apiGet("/auth/2fa/status"),
+    enabled: activeSection === "security",
+  });
+
+  async function startTwoFaSetup() {
+    setTwoFaLoading(true); setTwoFaError("");
+    try {
+      const data: { qrCode: string; secret: string } = await apiGet("/auth/2fa/setup");
+      setTwoFaQr(data.qrCode);
+      setTwoFaSecret(data.secret);
+      setTwoFaStep("setup");
+      setTwoFaCode("");
+    } catch (err: unknown) {
+      setTwoFaError(err instanceof Error ? err.message : "Failed to start 2FA setup");
+    } finally {
+      setTwoFaLoading(false);
+    }
+  }
+
+  async function enableTwoFa() {
+    if (!twoFaCode.trim()) return;
+    setTwoFaLoading(true); setTwoFaError("");
+    try {
+      await apiPost("/auth/2fa/enable", { code: twoFaCode.trim() });
+      setTwoFaStep("idle"); setTwoFaQr(null); setTwoFaSecret(null); setTwoFaCode("");
+      await refetchTwoFa();
+      toast({ title: "2FA enabled", description: "Your account is now protected by two-factor authentication." });
+    } catch (err: unknown) {
+      setTwoFaError(err instanceof Error ? err.message : "Failed to enable 2FA");
+    } finally {
+      setTwoFaLoading(false);
+    }
+  }
+
+  async function disableTwoFa() {
+    if (!twoFaCode.trim()) return;
+    setTwoFaLoading(true); setTwoFaError("");
+    try {
+      await apiPost("/auth/2fa/disable", { code: twoFaCode.trim() });
+      setTwoFaStep("idle"); setTwoFaCode("");
+      await refetchTwoFa();
+      toast({ title: "2FA disabled", description: "Two-factor authentication has been removed from your account." });
+    } catch (err: unknown) {
+      setTwoFaError(err instanceof Error ? err.message : "Failed to disable 2FA");
+    } finally {
+      setTwoFaLoading(false);
+    }
+  }
 
   // ── Branding state ─────────────────────────────────────────────────────────
   const [brandingName, setBrandingName] = useState("CommsCRM");
@@ -739,6 +799,139 @@ export default function Settings() {
                   </DialogFooter>
                 </DialogContent>
               </Dialog>
+            </>
+          )}
+
+          {/* ── SECURITY / 2FA ─────────────────────────────────────────────── */}
+          {activeSection === "security" && (
+            <>
+              <div>
+                <h2 className="text-xl font-bold">Security</h2>
+                <p className="text-sm text-muted-foreground mt-1">Manage two-factor authentication and account security settings.</p>
+              </div>
+
+              <Card>
+                <CardHeader>
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <div className={`h-10 w-10 rounded-full flex items-center justify-center ${twoFaStatus?.totpEnabled ? "bg-green-100" : "bg-muted"}`}>
+                        <ShieldCheck className={`h-5 w-5 ${twoFaStatus?.totpEnabled ? "text-green-600" : "text-muted-foreground"}`} />
+                      </div>
+                      <div>
+                        <CardTitle className="text-base">Two-Factor Authentication (2FA)</CardTitle>
+                        <p className="text-sm text-muted-foreground mt-0.5">
+                          {twoFaStatus?.totpEnabled
+                            ? "2FA is active — your account is protected."
+                            : "Add an extra layer of security with an authenticator app."}
+                        </p>
+                      </div>
+                    </div>
+                    <span className={`text-xs font-semibold px-2.5 py-1 rounded-full ${twoFaStatus?.totpEnabled ? "bg-green-100 text-green-700" : "bg-muted text-muted-foreground"}`}>
+                      {twoFaStatus?.totpEnabled ? "Enabled" : "Disabled"}
+                    </span>
+                  </div>
+                </CardHeader>
+                <CardContent className="space-y-5">
+                  {/* ── IDLE: show enable or disable button ── */}
+                  {twoFaStep === "idle" && (
+                    <>
+                      {!twoFaStatus?.totpEnabled ? (
+                        <div className="space-y-4">
+                          <div className="bg-muted/40 rounded-lg p-4 text-sm text-muted-foreground space-y-2">
+                            <p className="font-medium text-foreground">How it works:</p>
+                            <ol className="list-decimal list-inside space-y-1">
+                              <li>Click "Set up 2FA" to get a QR code</li>
+                              <li>Scan it with Google Authenticator, Authy, or any TOTP app</li>
+                              <li>Enter the 6-digit code from the app to confirm</li>
+                              <li>On future logins, you'll need your code after your password</li>
+                            </ol>
+                          </div>
+                          <Button onClick={startTwoFaSetup} disabled={twoFaLoading} className="gap-2">
+                            {twoFaLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <ShieldCheck className="h-4 w-4" />}
+                            Set up 2FA
+                          </Button>
+                        </div>
+                      ) : (
+                        <div className="space-y-4">
+                          <p className="text-sm text-muted-foreground">To disable 2FA, enter a code from your authenticator app below.</p>
+                          <Button variant="destructive" onClick={() => { setTwoFaStep("disable"); setTwoFaCode(""); setTwoFaError(""); }}>
+                            Disable 2FA
+                          </Button>
+                        </div>
+                      )}
+                    </>
+                  )}
+
+                  {/* ── SETUP: show QR + verification ── */}
+                  {twoFaStep === "setup" && (
+                    <div className="space-y-5">
+                      <div className="flex flex-col sm:flex-row gap-6 items-start">
+                        <div className="shrink-0">
+                          {twoFaQr && (
+                            <img src={twoFaQr} alt="2FA QR Code" className="w-44 h-44 border rounded-lg" />
+                          )}
+                        </div>
+                        <div className="space-y-3 text-sm">
+                          <p className="font-medium">Scan with your authenticator app</p>
+                          <p className="text-muted-foreground">Open Google Authenticator, Authy, or any TOTP app and scan the QR code on the left.</p>
+                          {twoFaSecret && (
+                            <div className="bg-muted rounded p-3">
+                              <p className="text-xs text-muted-foreground mb-1">Or enter this key manually:</p>
+                              <code className="text-xs font-mono tracking-widest break-all">{twoFaSecret}</code>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                      <div className="space-y-2">
+                        <Label>Enter the 6-digit code from your app to confirm</Label>
+                        <div className="flex gap-3">
+                          <Input
+                            value={twoFaCode}
+                            onChange={(e) => setTwoFaCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
+                            placeholder="000000"
+                            className="w-40 font-mono text-center text-lg tracking-[0.3em]"
+                            maxLength={6}
+                            onKeyDown={(e) => e.key === "Enter" && enableTwoFa()}
+                          />
+                          <Button onClick={enableTwoFa} disabled={twoFaCode.length !== 6 || twoFaLoading} className="gap-2">
+                            {twoFaLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+                            Verify & Enable
+                          </Button>
+                          <Button variant="ghost" onClick={() => { setTwoFaStep("idle"); setTwoFaQr(null); setTwoFaSecret(null); setTwoFaCode(""); setTwoFaError(""); }}>
+                            Cancel
+                          </Button>
+                        </div>
+                      </div>
+                      {twoFaError && <p className="text-sm text-destructive">{twoFaError}</p>}
+                    </div>
+                  )}
+
+                  {/* ── DISABLE: show code input ── */}
+                  {twoFaStep === "disable" && (
+                    <div className="space-y-4">
+                      <p className="text-sm text-muted-foreground">Enter the current 6-digit code from your authenticator app to confirm disabling 2FA.</p>
+                      <div className="flex gap-3">
+                        <Input
+                          value={twoFaCode}
+                          onChange={(e) => setTwoFaCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
+                          placeholder="000000"
+                          className="w-40 font-mono text-center text-lg tracking-[0.3em]"
+                          maxLength={6}
+                          onKeyDown={(e) => e.key === "Enter" && disableTwoFa()}
+                        />
+                        <Button variant="destructive" onClick={disableTwoFa} disabled={twoFaCode.length !== 6 || twoFaLoading} className="gap-2">
+                          {twoFaLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+                          Confirm Disable
+                        </Button>
+                        <Button variant="ghost" onClick={() => { setTwoFaStep("idle"); setTwoFaCode(""); setTwoFaError(""); }}>
+                          Cancel
+                        </Button>
+                      </div>
+                      {twoFaError && <p className="text-sm text-destructive">{twoFaError}</p>}
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
             </>
           )}
 

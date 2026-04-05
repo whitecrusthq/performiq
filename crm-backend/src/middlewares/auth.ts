@@ -11,7 +11,7 @@ if (!process.env.JWT_SECRET) {
     console.warn("WARNING: JWT_SECRET is not set. Using a random ephemeral secret — all sessions will be invalidated on restart.");
   }
 }
-const JWT_SECRET: string = process.env.JWT_SECRET ?? randomBytes(32).toString("hex");
+export const JWT_SECRET: string = process.env.JWT_SECRET ?? randomBytes(32).toString("hex");
 
 // Throttle: only write lastActiveAt at most once per 60 seconds per agent
 const lastActiveWritten = new Map<number, number>();

@@ -13,6 +13,8 @@ export interface AgentAttributes {
   isActive: boolean;
   allowedMenus: string[] | null;
   siteIds: number[] | null;
+  totpSecret: string | null;
+  totpEnabled: boolean;
   activeConversations: number;
   resolvedToday: number;
   rating: number;
@@ -22,7 +24,7 @@ export interface AgentAttributes {
 }
 
 export interface AgentCreationAttributes
-  extends Optional<AgentAttributes, "id" | "avatar" | "isActive" | "allowedMenus" | "siteIds" | "activeConversations" | "resolvedToday" | "rating" | "lastActiveAt"> {}
+  extends Optional<AgentAttributes, "id" | "avatar" | "isActive" | "allowedMenus" | "siteIds" | "totpSecret" | "totpEnabled" | "activeConversations" | "resolvedToday" | "rating" | "lastActiveAt"> {}
 
 export class Agent extends Model<AgentAttributes, AgentCreationAttributes> implements AgentAttributes {
   declare id: number;
@@ -34,6 +36,8 @@ export class Agent extends Model<AgentAttributes, AgentCreationAttributes> imple
   declare isActive: boolean;
   declare allowedMenus: string[] | null;
   declare siteIds: number[] | null;
+  declare totpSecret: string | null;
+  declare totpEnabled: boolean;
   declare activeConversations: number;
   declare resolvedToday: number;
   declare rating: number;
@@ -53,6 +57,8 @@ Agent.init(
     isActive: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: true, field: "is_active" },
     allowedMenus: { type: DataTypes.JSON, allowNull: true, defaultValue: null, field: "allowed_menus" },
     siteIds: { type: DataTypes.JSON, allowNull: true, defaultValue: null, field: "site_ids" },
+    totpSecret: { type: DataTypes.STRING(100), allowNull: true, defaultValue: null, field: "totp_secret" },
+    totpEnabled: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: false, field: "totp_enabled" },
     activeConversations: { type: DataTypes.INTEGER, allowNull: false, defaultValue: 0, field: "active_conversations" },
     resolvedToday: { type: DataTypes.INTEGER, allowNull: false, defaultValue: 0, field: "resolved_today" },
     rating: { type: DataTypes.FLOAT, allowNull: false, defaultValue: 5.0 },
