@@ -248,8 +248,8 @@ router.put("/conversations/:id", requireAuth, async (req: AuthRequest, res) => {
 
     if (status) {
       const wasResolved = conversation.status === "resolved";
-      const reopening = wasResolved && (status === "open" || status === "engaged" || status === "pending");
-      conversation.status = status as "open" | "engaged" | "pending" | "resolved";
+      const reopening = wasResolved && (status === "open" || status === "ongoing" || status === "pending");
+      conversation.status = status as "open" | "ongoing" | "pending" | "resolved";
       if (reopening) conversation.reopenCount = (conversation.reopenCount ?? 0) + 1;
     }
     if (assignedAgentId !== undefined) conversation.assignedAgentId = assignedAgentId;
@@ -366,7 +366,7 @@ router.post("/conversations/:id/messages", requireAuth, async (req: AuthRequest,
     });
 
     await Conversation.update(
-      { lastMessageAt: new Date(), status: sender === "agent" ? "engaged" : "open", lockedAt: new Date() },
+      { lastMessageAt: new Date(), status: sender === "agent" ? "ongoing" : "open", lockedAt: new Date() },
       { where: { id: req.params.id } }
     );
 

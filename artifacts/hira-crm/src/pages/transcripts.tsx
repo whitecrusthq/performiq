@@ -106,7 +106,7 @@ const CHANNEL_ICON = {
 
 const STATUS_BADGE: Record<string, { label: string; className: string }> = {
   open: { label: "Open", className: "bg-blue-100 text-blue-700 border-blue-200 dark:bg-blue-950/30 dark:text-blue-400" },
-  engaged: { label: "Engaged", className: "bg-emerald-100 text-emerald-700 border-emerald-200 dark:bg-emerald-950/30 dark:text-emerald-400" },
+  ongoing: { label: "Ongoing", className: "bg-emerald-100 text-emerald-700 border-emerald-200 dark:bg-emerald-950/30 dark:text-emerald-400" },
   pending: { label: "Pending", className: "bg-yellow-100 text-yellow-700 border-yellow-200 dark:bg-yellow-950/30 dark:text-yellow-400" },
   resolved: { label: "Resolved", className: "bg-green-100 text-green-700 border-green-200 dark:bg-green-950/30 dark:text-green-400" },
 };

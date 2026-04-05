@@ -202,7 +202,7 @@ export default function Dashboard() {
                       </div>
                     </div>
                     <div className="flex items-center gap-4">
-                      <Badge variant="secondary" className={getStatusColor(conv.status as "open" | "engaged" | "pending" | "resolved" | "closed")}>
+                      <Badge variant="secondary" className={getStatusColor(conv.status as "open" | "ongoing" | "pending" | "resolved" | "closed")}>
                         {conv.status.charAt(0).toUpperCase() + conv.status.slice(1)}
                       </Badge>
                       <div className="text-sm text-muted-foreground w-20 text-right">

@@ -28,7 +28,7 @@ async function resolveSmartMembers(filters: SmartFilters): Promise<number[]> {
   if (filters.hasOpenConversation) {
     const openIds = await Conversation.findAll({
       attributes: ["customerId"],
-      where: { status: { [Op.in]: ["open", "engaged", "pending"] } },
+      where: { status: { [Op.in]: ["open", "ongoing", "pending"] } },
       group: ["customer_id"],
       raw: true,
     });
