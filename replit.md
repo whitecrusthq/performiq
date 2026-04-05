@@ -45,6 +45,7 @@ The monorepo contains:
 - **Mailgun Email Broadcasting**: Integration for sending email campaigns to customers, with configurable Mailgun settings and domain validation.
 - **Customer Intelligence**: Keyword-based analysis of customer messages for top questions, issues, products mentioned, and compliance flags.
 - **Channel Integrations**: Supports WhatsApp, Facebook, Instagram, Twitter/X, and Web Chat Widget. Multiple accounts per channel type are now supported (multi-account). Channels stored in `crm_channels` with optional `site_id` FK.
+- **Payment Gateway Integration**: Settings → Payments supports Stripe, Paystack, Flutterwave, PayPal, and Square. Each provider stores public key, secret key (masked), webhook token, test/live mode toggle, and enabled state in `crm_payment_configs`. Backend provides test connection validation for each provider.
 - **Multi-Site Support**: `crm_sites` table stores branches/regions. Channels can be assigned to a site (`siteId`). Agents can be assigned to multiple sites (`siteIds` JSON array). Settings → Sites section provides full CRUD for sites; Settings → Channels section shows multi-account management grouped by platform type with site assignment.
 
 ## Authentication:

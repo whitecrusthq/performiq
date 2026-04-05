@@ -19,7 +19,7 @@ import {
   ShoppingCart, Bell, Package, Tag, UserCheck, Sparkles, Clock, ChevronDown, ChevronUp,
   Filter, FileText, MessageCircle, ThumbsUp, ShieldCheck,
   MapPin, Building2, Plus as PlusIcon, Trash2 as TrashIcon, Pencil as PencilIcon,
-  Copy, Check, Link2, Code2, QrCode,
+  Copy, Check, Link2, Code2, QrCode, CreditCard, Banknote, TestTube2, ToggleRight as Toggle,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { apiGet, apiPost, apiPut, apiDelete, getBaseUrl } from "@/lib/api";
@@ -77,7 +77,7 @@ const ALL_MENUS = [
 const MENU_GROUPS = ["Core", "Analytics", "Tools", "Admin"] as const;
 type MenuSlug = typeof ALL_MENUS[number]["slug"];
 
-type SettingsSection = "channels" | "automation" | "email" | "team" | "appearance" | "retention" | "followups" | "sites" | "security";
+type SettingsSection = "channels" | "automation" | "email" | "team" | "appearance" | "retention" | "followups" | "sites" | "security" | "payments";
 
 interface ApiSite {
   id: number;
@@ -115,6 +115,7 @@ interface NavItem {
 
 const NAV_ITEMS: NavItem[] = [
   { id: "channels",    label: "Channels",        description: "Connected platforms",   icon: Wifi },
+  { id: "payments",    label: "Payments",        description: "Payment gateways",      icon: ShoppingCart, adminOnly: true },
   { id: "sites",       label: "Sites",           description: "Branches & regions",    icon: Building2, adminOnly: true },
   { id: "security",    label: "Security",        description: "2FA & account safety",  icon: ShieldCheck },
   { id: "automation",  label: "AI & Automation", description: "Bot & escalation",      icon: Bot },
@@ -309,6 +310,70 @@ export default function Settings() {
     },
     onError: (err: Error) => toast({ title: "Error", description: err.message, variant: "destructive" }),
   });
+
+  // ── Payments state ────────────────────────────────────────────────────────
+  type PaymentProvider = "stripe" | "paystack" | "flutterwave" | "paypal" | "square";
+  interface PaymentCfg {
+    id?: number; provider: PaymentProvider; isEnabled: boolean; isLiveMode: boolean;
+    publicKey: string | null; secretKey: string | null; webhookSecret: string | null;
+    webhookToken?: string; hasSecretKey?: boolean; hasWebhookSecret?: boolean;
+  }
+  const { data: paymentConfigs = [], refetch: refetchPayments } = useQuery<PaymentCfg[]>({
+    queryKey: ["payment-configs"],
+    queryFn: () => apiGet("/payment-configs"),
+    enabled: activeSection === "payments",
+  });
+  const [payReveal, setPayReveal] = useState<Record<string, boolean>>({});
+  const [payCopied, setPayCopied] = useState<string | null>(null);
+  const [payTestResult, setPayTestResult] = useState<Record<string, { success: boolean; message: string } | null>>({});
+  const [payTestLoading, setPayTestLoading] = useState<Record<string, boolean>>({});
+  const [payEdit, setPayEdit] = useState<Record<PaymentProvider, Partial<PaymentCfg>>>({} as any);
+
+  function getPayCfg(provider: PaymentProvider): PaymentCfg {
+    return paymentConfigs.find((c) => c.provider === provider) ?? {
+      provider, isEnabled: false, isLiveMode: false, publicKey: null, secretKey: null, webhookSecret: null,
+    };
+  }
+  function getPayEdit(provider: PaymentProvider) {
+    return payEdit[provider] ?? {};
+  }
+  function setPayField(provider: PaymentProvider, field: string, value: unknown) {
+    setPayEdit((p) => ({ ...p, [provider]: { ...(p[provider] ?? {}), [field]: value } }));
+  }
+
+  const savePayMutation = useMutation({
+    mutationFn: ({ provider, data }: { provider: string; data: object }) =>
+      apiPut(`/payment-configs/${provider}`, data),
+    onSuccess: (_data, vars) => {
+      refetchPayments();
+      setPayEdit((p) => { const n = { ...p }; delete (n as any)[vars.provider]; return n; });
+      toast({ title: "Payment settings saved" });
+    },
+    onError: (err: Error) => toast({ title: "Error", description: err.message, variant: "destructive" }),
+  });
+
+  const regenPayWebhookMutation = useMutation({
+    mutationFn: (provider: string) => apiPost(`/payment-configs/${provider}/regenerate-webhook`, {}),
+    onSuccess: () => { refetchPayments(); toast({ title: "Webhook URL regenerated" }); },
+    onError: (err: Error) => toast({ title: "Error", description: err.message, variant: "destructive" }),
+  });
+
+  async function testPayConnection(provider: PaymentProvider) {
+    setPayTestLoading((p) => ({ ...p, [provider]: true }));
+    setPayTestResult((p) => ({ ...p, [provider]: null }));
+    try {
+      const result = await apiPost<{ success: boolean; message: string }>(`/payment-configs/${provider}/test`, {});
+      setPayTestResult((p) => ({ ...p, [provider]: result }));
+    } catch (err) {
+      setPayTestResult((p) => ({ ...p, [provider]: { success: false, message: String(err) } }));
+    } finally {
+      setPayTestLoading((p) => ({ ...p, [provider]: false }));
+    }
+  }
+
+  function copyPay(text: string, key: string) {
+    navigator.clipboard.writeText(text).then(() => { setPayCopied(key); setTimeout(() => setPayCopied(null), 2000); });
+  }
 
   // ── WhatsApp Connection Tools state ──────────────────────────────────────
   const [waToolsOpen, setWaToolsOpen] = useState(false);
@@ -1964,7 +2029,277 @@ export default function Settings() {
             </>
           )}
 
-          {/* ── FOLLOW-UP SETTINGS ───────────────────────────────── */}
+          {/* ── PAYMENTS ─────────────────────────────────────────────────── */}
+          {activeSection === "payments" && (() => {
+            const PROVIDERS: {
+              id: PaymentProvider; label: string; subtitle: string;
+              color: string; bg: string; borderColor: string;
+              publicKeyLabel: string; secretKeyLabel: string;
+              logo: React.ReactNode;
+              docs: string;
+            }[] = [
+              {
+                id: "stripe", label: "Stripe", subtitle: "Global card payments",
+                color: "text-[#635BFF]", bg: "bg-[#635BFF]/10", borderColor: "border-[#635BFF]/20",
+                publicKeyLabel: "Publishable Key (pk_...)", secretKeyLabel: "Secret Key (sk_...)",
+                logo: (
+                  <svg viewBox="0 0 60 25" className="h-5 w-14 fill-[#635BFF]">
+                    <path d="M59.64 14.28h-8.06c.19 1.93 1.6 2.55 3.2 2.55 1.64 0 2.96-.37 4.05-.95v3.32a8.33 8.33 0 0 1-4.56 1.1c-4.01 0-6.83-2.5-6.83-7.48 0-4.19 2.39-7.52 6.3-7.52 3.92 0 5.96 3.28 5.96 7.5 0 .4-.04 1.26-.06 1.48zm-5.92-5.62c-1.03 0-2.17.73-2.17 2.58h4.25c0-1.85-1.07-2.58-2.08-2.58zM40.95 20.3c-1.44 0-2.32-.6-2.9-1.04l-.02 4.63-4.45.94V5.82h3.94l.04 1.3c.57-.7 1.62-1.5 3.23-1.5 2.88 0 5.49 2.3 5.49 7.26 0 5.55-2.55 7.42-5.33 7.42zM40 9.4c-.95 0-1.54.34-1.97.81l.02 6.12c.4.44.98.78 1.95.78 1.52 0 2.54-1.65 2.54-3.87 0-2.15-1.04-3.84-2.54-3.84zM28.24 5.82h4.47v14.1h-4.47V5.82zm-.11-4.7a2.6 2.6 0 1 1 5.2.04 2.6 2.6 0 0 1-5.2-.04zM18.09 7.08l-.28-1.26h-3.8v14.1h4.43V11.4c1.05-1.4 2.83-1.14 3.38-.95V5.81c-.56-.2-2.61-.5-3.73 1.27zM9.56 5.56a9.5 9.5 0 0 0-5.02 1.22L2.68 2.44A15.24 15.24 0 0 1 9.56 1c2.9 0 4.9 1.34 4.9 4.77v14.15h-3.9l-.05-1.22c-.6.8-1.58 1.5-3.35 1.5C4.97 20.2 2.5 18.45 2.5 15c0-3.7 2.56-5.43 6.49-5.64l.5-.03V7.62c0-.62-.2-2.06-1.93-2.06zm-.55 6.72c-1.32.07-2.28.54-2.28 1.99 0 1.04.6 1.7 1.63 1.7.53 0 1.15-.16 1.63-.46l.02-3.2-.56.03c-.16.01-.32.02-.44.03v-.09z"/>
+                  </svg>
+                ),
+                docs: "https://dashboard.stripe.com/apikeys",
+              },
+              {
+                id: "paystack", label: "Paystack", subtitle: "Africa's leading gateway",
+                color: "text-[#00C3F7]", bg: "bg-[#00C3F7]/10", borderColor: "border-[#00C3F7]/20",
+                publicKeyLabel: "Public Key (pk_...)", secretKeyLabel: "Secret Key (sk_...)",
+                logo: (
+                  <div className="flex items-center gap-1.5">
+                    <div className="h-6 w-6 rounded-full bg-[#00C3F7] flex items-center justify-center shrink-0">
+                      <span className="text-white text-xs font-black">P</span>
+                    </div>
+                    <span className="font-bold text-sm text-[#00C3F7]">Paystack</span>
+                  </div>
+                ),
+                docs: "https://dashboard.paystack.com/#/settings/developer",
+              },
+              {
+                id: "flutterwave", label: "Flutterwave", subtitle: "Pan-African payments",
+                color: "text-[#F5A623]", bg: "bg-[#F5A623]/10", borderColor: "border-[#F5A623]/20",
+                publicKeyLabel: "Public Key (FLWPUBK-...)", secretKeyLabel: "Secret Key (FLWSECK-...)",
+                logo: (
+                  <div className="flex items-center gap-1.5">
+                    <div className="h-6 w-6 rounded-full bg-[#F5A623] flex items-center justify-center shrink-0">
+                      <span className="text-white text-xs font-black">F</span>
+                    </div>
+                    <span className="font-bold text-sm text-[#F5A623]">Flutterwave</span>
+                  </div>
+                ),
+                docs: "https://developer.flutterwave.com/docs",
+              },
+              {
+                id: "paypal", label: "PayPal", subtitle: "Global digital wallet",
+                color: "text-[#003087]", bg: "bg-[#003087]/10", borderColor: "border-[#003087]/20",
+                publicKeyLabel: "Client ID", secretKeyLabel: "Client Secret",
+                logo: (
+                  <div className="flex items-center gap-1.5">
+                    <svg viewBox="0 0 24 24" className="h-6 w-6" fill="none">
+                      <path d="M7.076 21.337H2.47a.641.641 0 0 1-.633-.74L4.944.901C5.026.382 5.474 0 5.998 0h7.46c2.57 0 4.578.543 5.69 1.81 1.01 1.15 1.304 2.42 1.012 4.287-.023.143-.047.288-.077.437-.983 5.05-4.349 6.797-8.647 6.797h-2.19c-.524 0-.968.382-1.05.9l-1.12 7.106zm14.146-14.42a3.35 3.35 0 0 0-.607-.541c-.013.076-.026.175-.041.26-.58 2.975-2.553 4.966-5.634 5.456l-.028.004a7.25 7.25 0 0 1-1.074.07h-2.19l-.942 5.97H14.8c.46 0 .85-.332.922-.786l.037-.216 1.088-6.882.028-.153c.072-.454.462-.787.923-.787h.577c3.8 0 6.772-1.548 7.641-6.027.361-1.848.175-3.41-.794-4.368z" fill="#009CDE"/>
+                    </svg>
+                    <span className="font-bold text-sm text-[#003087]">PayPal</span>
+                  </div>
+                ),
+                docs: "https://developer.paypal.com/api/rest/",
+              },
+              {
+                id: "square", label: "Square", subtitle: "POS & online payments",
+                color: "text-[#3E4348]", bg: "bg-[#3E4348]/10", borderColor: "border-[#3E4348]/20",
+                publicKeyLabel: "Application ID", secretKeyLabel: "Access Token",
+                logo: (
+                  <div className="flex items-center gap-1.5">
+                    <div className="h-6 w-6 rounded bg-[#3E4348] flex items-center justify-center shrink-0">
+                      <span className="text-white text-xs font-black">Sq</span>
+                    </div>
+                    <span className="font-bold text-sm text-[#3E4348]">Square</span>
+                  </div>
+                ),
+                docs: "https://developer.squareup.com/docs",
+              },
+            ];
+
+            return (
+              <>
+                <div>
+                  <h2 className="text-xl font-bold">Payment Gateways</h2>
+                  <p className="text-sm text-muted-foreground mt-1">Connect payment platforms to send payment links to customers and receive payments through your CRM.</p>
+                </div>
+
+                {/* Summary bar */}
+                <div className="flex flex-wrap gap-3">
+                  {PROVIDERS.map(({ id, label, color }) => {
+                    const cfg = getPayCfg(id);
+                    return (
+                      <div key={id} className={`flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-medium border ${cfg.isEnabled ? "bg-green-50 border-green-200 text-green-700" : "bg-muted/40 border-border text-muted-foreground"}`}>
+                        <div className={`h-2 w-2 rounded-full ${cfg.isEnabled ? "bg-green-500" : "bg-muted-foreground/40"}`} />
+                        {label}
+                      </div>
+                    );
+                  })}
+                </div>
+
+                <div className="space-y-4">
+                  {PROVIDERS.map(({ id, label, subtitle, color, bg, borderColor, publicKeyLabel, secretKeyLabel, logo, docs }) => {
+                    const cfg = getPayCfg(id);
+                    const edits = getPayEdit(id);
+                    const pubKey = edits.publicKey !== undefined ? edits.publicKey : (cfg.publicKey ?? "");
+                    const secKey = edits.secretKey !== undefined ? edits.secretKey : "";
+                    const isEnabled = edits.isEnabled !== undefined ? edits.isEnabled : cfg.isEnabled;
+                    const isLiveMode = edits.isLiveMode !== undefined ? edits.isLiveMode : cfg.isLiveMode;
+                    const webhookUrl = cfg.webhookToken
+                      ? `${window.location.origin.replace(/:\d+/, ":3002")}/api/webhooks/payment/${id}/${cfg.webhookToken}`
+                      : "Save configuration to generate webhook URL";
+                    const testRes = payTestResult[id];
+                    const isTesting = !!payTestLoading[id];
+                    const isSaving = savePayMutation.isPending && (savePayMutation.variables as any)?.provider === id;
+                    const revealSec = !!payReveal[`${id}-secret`];
+
+                    return (
+                      <Card key={id} className={`overflow-hidden border-l-4 ${borderColor}`}>
+                        <CardHeader className="pb-4 pt-5 px-6">
+                          <div className="flex items-start justify-between gap-4">
+                            <div className="flex items-center gap-4">
+                              <div className={`h-12 w-12 rounded-xl ${bg} flex items-center justify-center shrink-0 border ${borderColor}`}>
+                                <CreditCard className={`h-6 w-6 ${color}`} />
+                              </div>
+                              <div>
+                                <div className="flex items-center gap-2">
+                                  {logo}
+                                </div>
+                                <p className="text-xs text-muted-foreground mt-0.5">{subtitle}</p>
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-3 shrink-0">
+                              {/* Live / Test toggle */}
+                              <div className="flex items-center gap-2 text-xs">
+                                <span className={!isLiveMode ? "font-semibold text-amber-600" : "text-muted-foreground"}>Test</span>
+                                <button
+                                  type="button"
+                                  className={`relative w-10 h-5 rounded-full transition-colors ${isLiveMode ? "bg-green-500" : "bg-amber-400"}`}
+                                  onClick={() => setPayField(id, "isLiveMode", !isLiveMode)}
+                                >
+                                  <span className={`absolute top-0.5 h-4 w-4 bg-white rounded-full shadow transition-transform ${isLiveMode ? "translate-x-5" : "translate-x-0.5"}`} />
+                                </button>
+                                <span className={isLiveMode ? "font-semibold text-green-600" : "text-muted-foreground"}>Live</span>
+                              </div>
+                              {/* Enable / Disable */}
+                              <div className="flex items-center gap-2">
+                                <span className="text-xs text-muted-foreground">Enabled</span>
+                                <button
+                                  type="button"
+                                  className={`relative w-10 h-5 rounded-full transition-colors ${isEnabled ? "bg-primary" : "bg-muted-foreground/30"}`}
+                                  onClick={() => setPayField(id, "isEnabled", !isEnabled)}
+                                >
+                                  <span className={`absolute top-0.5 h-4 w-4 bg-white rounded-full shadow transition-transform ${isEnabled ? "translate-x-5" : "translate-x-0.5"}`} />
+                                </button>
+                              </div>
+                            </div>
+                          </div>
+                        </CardHeader>
+
+                        <CardContent className="pt-0 px-6 pb-5 space-y-4">
+                          <Separator />
+
+                          {/* Keys */}
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                            <div className="space-y-1.5">
+                              <Label className="text-xs">{publicKeyLabel}</Label>
+                              <Input
+                                value={pubKey}
+                                onChange={(e) => setPayField(id, "publicKey", e.target.value)}
+                                placeholder={id === "paypal" ? "AXxx..." : id === "square" ? "sq0idp-..." : `${id === "stripe" ? "pk_" : id === "paystack" || id === "flutterwave" ? "pk_" : "key_"}...`}
+                                className="text-xs font-mono h-9"
+                              />
+                            </div>
+                            <div className="space-y-1.5">
+                              <Label className="text-xs">{secretKeyLabel}</Label>
+                              <div className="flex gap-1.5">
+                                <Input
+                                  type={revealSec ? "text" : "password"}
+                                  value={secKey}
+                                  onChange={(e) => setPayField(id, "secretKey", e.target.value)}
+                                  placeholder={cfg.hasSecretKey ? "••••••••••••••••••••" : "Enter secret key..."}
+                                  className="text-xs font-mono h-9 flex-1"
+                                />
+                                <Button size="icon" variant="outline" className="h-9 w-9 shrink-0"
+                                  onClick={() => setPayReveal((p) => ({ ...p, [`${id}-secret`]: !revealSec }))}>
+                                  {revealSec ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
+                                </Button>
+                              </div>
+                              {cfg.hasSecretKey && !secKey && (
+                                <p className="text-[11px] text-green-600 flex items-center gap-1">
+                                  <CheckCircle2 className="h-3 w-3" /> Key saved — enter a new one to update
+                                </p>
+                              )}
+                            </div>
+                          </div>
+
+                          {/* Webhook URL */}
+                          {cfg.webhookToken && (
+                            <div className="space-y-1.5">
+                              <div className="flex items-center justify-between">
+                                <Label className="text-xs">Webhook URL <span className="text-muted-foreground">(paste this in your {label} dashboard)</span></Label>
+                                <Button size="sm" variant="ghost" className="h-6 px-2 text-xs gap-1"
+                                  onClick={() => regenPayWebhookMutation.mutate(id)}
+                                  disabled={regenPayWebhookMutation.isPending}>
+                                  <RefreshCw className="h-3 w-3" /> Regenerate
+                                </Button>
+                              </div>
+                              <div className="flex items-center gap-1.5">
+                                <div className="flex-1 bg-muted/50 border rounded-lg px-3 py-2 font-mono text-[11px] text-muted-foreground truncate">
+                                  {webhookUrl}
+                                </div>
+                                <Button size="icon" variant="ghost" className="h-9 w-9 shrink-0"
+                                  onClick={() => copyPay(webhookUrl, `${id}-webhook`)}>
+                                  {payCopied === `${id}-webhook` ? <Check className="h-3.5 w-3.5 text-green-600" /> : <Copy className="h-3.5 w-3.5" />}
+                                </Button>
+                              </div>
+                            </div>
+                          )}
+
+                          {/* Test result */}
+                          {testRes && (
+                            <div className={`flex items-start gap-2 p-3 rounded-lg text-sm ${testRes.success ? "bg-green-50 border border-green-200 text-green-800" : "bg-destructive/5 border border-destructive/20 text-destructive"}`}>
+                              {testRes.success ? <CheckCircle2 className="h-4 w-4 shrink-0 mt-0.5" /> : <XCircle className="h-4 w-4 shrink-0 mt-0.5" />}
+                              {testRes.message}
+                            </div>
+                          )}
+
+                          {/* Actions */}
+                          <div className="flex flex-wrap items-center gap-2 pt-1">
+                            <Button
+                              onClick={() => savePayMutation.mutate({ provider: id, data: { isEnabled, isLiveMode, publicKey: pubKey || null, ...(secKey ? { secretKey: secKey } : {}) } })}
+                              disabled={isSaving}
+                              size="sm" className="gap-1.5"
+                            >
+                              {isSaving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />}
+                              Save
+                            </Button>
+                            <Button
+                              variant="outline" size="sm" className="gap-1.5"
+                              onClick={() => testPayConnection(id)}
+                              disabled={isTesting || (!cfg.hasSecretKey && !secKey)}
+                            >
+                              {isTesting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <TestTube2 className="h-3.5 w-3.5" />}
+                              Test Connection
+                            </Button>
+                            <a href={docs} target="_blank" rel="noopener noreferrer"
+                              className="inline-flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors">
+                              <Globe className="h-3.5 w-3.5" /> {label} Docs →
+                            </a>
+                          </div>
+                        </CardContent>
+                      </Card>
+                    );
+                  })}
+                </div>
+
+                {/* Info panel */}
+                <Card className="bg-muted/30">
+                  <CardContent className="pt-5 pb-5">
+                    <div className="flex gap-3">
+                      <Banknote className="h-5 w-5 text-muted-foreground shrink-0 mt-0.5" />
+                      <div className="text-sm space-y-1">
+                        <p className="font-medium">How payment integration works</p>
+                        <p className="text-muted-foreground">Once configured, agents can generate payment links directly from any customer conversation, track payment status in real time, and receive webhook notifications when payments are completed.</p>
+                        <p className="text-muted-foreground mt-1">Use <strong>Test mode</strong> while setting up. Switch to <strong>Live mode</strong> once your integration is verified end-to-end.</p>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              </>
+            );
+          })()}
+
           {activeSection === "followups" && <FollowUpSettingsSection />}
 
           {/* ── DATA RETENTION ───────────────────────────────────── */}

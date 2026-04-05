@@ -21,6 +21,7 @@ import retentionRouter from "./retention.js";
 import followUpSettingsRouter from "./follow-up-settings.js";
 import customerGroupsRouter from "./customer-groups.js";
 import sitesRouter from "./sites.js";
+import paymentConfigsRouter from "./payment-configs.js";
 
 const router = Router();
 
@@ -49,5 +50,6 @@ router.use(retentionRouter);
 router.use(followUpSettingsRouter);
 router.use(customerGroupsRouter);
 router.use(sitesRouter);
+router.use(paymentConfigsRouter);
 
 export default router;
