@@ -1,0 +1,18 @@
+packages:
+  "framer-motion": "Smooth page transitions and component animations"
+  "recharts": "Dashboard charts and analytics"
+  "date-fns": "Date formatting and manipulation"
+  "lucide-react": "Beautiful consistent icons"
+  "jwt-decode": "For parsing JWT tokens from local storage"
+
+images:
+  - path: "artifacts/performiq/public/images/auth-bg.png"
+    description: "Abstract minimal clean professional enterprise background with subtle blue gradients and soft geometric shapes"
+    aspect_ratio: "16:9"
+  - path: "artifacts/performiq/public/images/logo-icon.png"
+    description: "Minimalist modern letter P and Q intertwined, corporate blue color, transparent background"
+    aspect_ratio: "1:1"
+
+notes:
+  - Assuming customFetch handles Authorization header automatically if 'token' is in localStorage, or we will manage it globally.
+  - Orval generated hooks are used directly from @workspace/api-client-react.

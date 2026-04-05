@@ -12,14 +12,14 @@ kind = "web"
   [[services]]
   name = "web"
   paths = [ "/piq/" ]
-  localPort = 5173
+  localPort = 3003
 
   [services.development]
   run = "pnpm --filter @workspace/performiq run dev"
 
   [services.production]
   build = [ "pnpm", "--filter", "@workspace/performiq", "run", "build" ]
-  publicDir = "frontend/dist/public"
+  publicDir = "artifacts/performiq/dist/public"
   serve = "static"
 
   [[services.production.rewrites]]
@@ -27,5 +27,5 @@ kind = "web"
   to = "/index.html"
 
   [services.env]
-  PORT = "5173"
+  PORT = "3003"
   BASE_PATH = "/piq/"
