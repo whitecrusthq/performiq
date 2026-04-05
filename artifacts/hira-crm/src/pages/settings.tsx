@@ -93,9 +93,16 @@ interface ApiChannel {
   name: string;
   siteId: number | null;
   isConnected: boolean;
+  webhookVerifyToken?: string;
   phoneNumberId?: string;
+  wabaId?: string;
   pageId?: string;
   instagramAccountId?: string;
+  hasAccessToken?: boolean;
+  hasPageAccessToken?: boolean;
+  hasTwitterCreds?: boolean;
+  twitterApiKey?: string;
+  createdAt?: string;
 }
 
 interface NavItem {
@@ -276,6 +283,21 @@ export default function Settings() {
       setAddChName(""); setAddChSiteId("");
       toast({ title: "Channel account added" });
     },
+    onError: (err: Error) => toast({ title: "Error", description: err.message, variant: "destructive" }),
+  });
+
+  // revealed secrets: key = `${channelId}-${field}`
+  const [revealedFields, setRevealedFields] = useState<Record<string, boolean>>({});
+  const [chCopied, setChCopied] = useState<string | null>(null);
+  function toggleReveal(key: string) { setRevealedFields((p) => ({ ...p, [key]: !p[key] })); }
+  function copyChField(text: string, key: string) {
+    navigator.clipboard.writeText(text).then(() => { setChCopied(key); setTimeout(() => setChCopied(null), 2000); });
+  }
+
+  const regenChMutation = useMutation({
+    mutationFn: ({ id, field }: { id: number; field: string }) =>
+      apiPost(`/channels/${id}/regenerate`, { field }),
+    onSuccess: () => { refetchChannels(); toast({ title: "Token regenerated successfully" }); },
     onError: (err: Error) => toast({ title: "Error", description: err.message, variant: "destructive" }),
   });
 
@@ -636,52 +658,170 @@ export default function Settings() {
                   </Button>
                 </div>
 
-                <div className="space-y-4">
+                <div className="space-y-5">
                   {CH_META.map(({ type, label, Icon, color, bg }) => {
                     const accounts = settingsChannels.filter((c) => c.type === type);
-                    return (
-                      <Card key={type}>
-                        <CardHeader className="pb-3 pt-4 px-5">
-                          <div className="flex items-center gap-3">
-                            <div className={`h-8 w-8 rounded-full ${bg} flex items-center justify-center`}>
-                              <Icon className={`h-4 w-4 ${color}`} />
+
+                    // Helper: masked secret row with view/copy/regen
+                    function SecretRow({ ch, field, label: fieldLabel, value, canRegen = false }: {
+                      ch: ApiChannel; field: string; label: string; value?: string; canRegen?: boolean;
+                    }) {
+                      const revealKey = `${ch.id}-${field}`;
+                      const copyKey = `${ch.id}-${field}-copy`;
+                      const isRevealed = !!revealedFields[revealKey];
+                      const isRegen = regenChMutation.isPending && regenChMutation.variables?.id === ch.id && regenChMutation.variables?.field === field;
+                      if (!value) return null;
+                      return (
+                        <div className="space-y-1">
+                          <Label className="text-[11px] text-muted-foreground uppercase tracking-wide">{fieldLabel}</Label>
+                          <div className="flex items-center gap-1.5">
+                            <div className="flex-1 bg-muted/50 border rounded-lg px-3 py-2 font-mono text-xs min-w-0 truncate">
+                              {isRevealed ? value : "•".repeat(Math.min(value.length, 32))}
                             </div>
-                            <div>
-                              <CardTitle className="text-sm font-semibold">{label}</CardTitle>
-                              <p className="text-xs text-muted-foreground">{accounts.length} account{accounts.length !== 1 ? "s" : ""}</p>
+                            <Button size="icon" variant="ghost" className="h-8 w-8 shrink-0" title={isRevealed ? "Hide" : "Show"}
+                              onClick={() => toggleReveal(revealKey)}>
+                              {isRevealed ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
+                            </Button>
+                            <Button size="icon" variant="ghost" className="h-8 w-8 shrink-0" title="Copy"
+                              onClick={() => copyChField(value, copyKey)}>
+                              {chCopied === copyKey ? <Check className="h-3.5 w-3.5 text-green-600" /> : <Copy className="h-3.5 w-3.5" />}
+                            </Button>
+                            {canRegen && (
+                              <Button size="icon" variant="ghost" className="h-8 w-8 shrink-0" title="Regenerate" disabled={isRegen}
+                                onClick={() => regenChMutation.mutate({ id: ch.id, field })}>
+                                <RefreshCw className={`h-3.5 w-3.5 ${isRegen ? "animate-spin" : ""}`} />
+                              </Button>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    }
+
+                    return (
+                      <Card key={type} className="overflow-hidden">
+                        {/* ── Card header ── */}
+                        <CardHeader className="pb-4 pt-5 px-6">
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-4">
+                              <div className={`h-12 w-12 rounded-2xl ${bg} flex items-center justify-center shrink-0`}>
+                                <Icon className={`h-6 w-6 ${color}`} />
+                              </div>
+                              <div>
+                                <CardTitle className="text-base font-semibold">{label}</CardTitle>
+                                <p className="text-sm text-muted-foreground mt-0.5">
+                                  {accounts.length === 0
+                                    ? "No accounts connected"
+                                    : `${accounts.length} account${accounts.length !== 1 ? "s" : ""} connected`}
+                                </p>
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              {accounts.some((a) => a.isConnected) && (
+                                <span className="text-xs font-medium px-2.5 py-1 rounded-full bg-green-100 text-green-700 flex items-center gap-1">
+                                  <CheckCircle2 className="h-3 w-3" /> Active
+                                </span>
+                              )}
                             </div>
                           </div>
                         </CardHeader>
+
+                        {/* ── Accounts list ── */}
                         {accounts.length > 0 && (
-                          <CardContent className="pt-0 px-5 pb-4 space-y-2">
+                          <CardContent className="pt-0 px-6 pb-4 space-y-3">
+                            <Separator />
+                            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Connected Accounts</p>
                             {accounts.map((ch) => {
                               const site = sites.find((s) => s.id === ch.siteId);
+                              const webhookUrl = `${window.location.origin.replace(/:\d+/, ":3002")}/api/webhook/${ch.type}/${ch.id}`;
                               return (
-                                <div key={ch.id} className="flex items-center justify-between p-3 bg-muted/30 rounded-lg border">
-                                  <div className="min-w-0">
-                                    <p className="text-sm font-medium truncate">{ch.name}</p>
-                                    <div className="flex items-center gap-2 mt-0.5">
-                                      {site && (
-                                        <span className="text-xs text-muted-foreground flex items-center gap-1">
-                                          <MapPin className="h-3 w-3" />{site.name}
+                                <div key={ch.id} className="rounded-xl border bg-muted/20 overflow-hidden">
+                                  {/* Account row */}
+                                  <div className="flex items-center justify-between px-4 py-3">
+                                    <div className="min-w-0">
+                                      <p className="text-sm font-semibold truncate">{ch.name}</p>
+                                      <div className="flex items-center flex-wrap gap-2 mt-1">
+                                        {site && (
+                                          <span className="text-xs text-muted-foreground flex items-center gap-1">
+                                            <MapPin className="h-3 w-3" />{site.name}
+                                          </span>
+                                        )}
+                                        <span className={`text-xs font-medium flex items-center gap-1 ${ch.isConnected ? "text-green-600" : "text-amber-600"}`}>
+                                          <CheckCircle2 className="h-3 w-3" />
+                                          {ch.isConnected ? "Connected" : "Not configured"}
                                         </span>
-                                      )}
-                                      <span className={`text-xs font-medium flex items-center gap-1 ${ch.isConnected ? "text-green-600" : "text-muted-foreground"}`}>
-                                        <CheckCircle2 className="h-3 w-3" />{ch.isConnected ? "Connected" : "Not configured"}
-                                      </span>
+                                        {ch.phoneNumberId && (
+                                          <span className="text-xs text-muted-foreground">ID: {ch.phoneNumberId}</span>
+                                        )}
+                                        {ch.pageId && (
+                                          <span className="text-xs text-muted-foreground">Page: {ch.pageId}</span>
+                                        )}
+                                      </div>
                                     </div>
+                                    <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-destructive shrink-0"
+                                      onClick={() => deleteChMutation.mutate(ch.id)}>
+                                      <TrashIcon className="h-4 w-4" />
+                                    </Button>
                                   </div>
-                                  <Button
-                                    variant="ghost"
-                                    size="icon"
-                                    className="h-8 w-8 text-muted-foreground hover:text-destructive"
-                                    onClick={() => deleteChMutation.mutate(ch.id)}
-                                  >
-                                    <TrashIcon className="h-4 w-4" />
-                                  </Button>
+
+                                  {/* Secrets section */}
+                                  <div className="border-t bg-muted/10 px-4 py-3 space-y-3">
+                                    <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide flex items-center gap-1.5">
+                                      <ShieldCheck className="h-3 w-3" /> Integration Credentials
+                                    </p>
+
+                                    {/* Webhook URL */}
+                                    <div className="space-y-1">
+                                      <Label className="text-[11px] text-muted-foreground uppercase tracking-wide">Webhook URL</Label>
+                                      <div className="flex items-center gap-1.5">
+                                        <div className="flex-1 bg-muted/50 border rounded-lg px-3 py-2 font-mono text-xs min-w-0 truncate text-muted-foreground">
+                                          {webhookUrl}
+                                        </div>
+                                        <Button size="icon" variant="ghost" className="h-8 w-8 shrink-0" title="Copy"
+                                          onClick={() => copyChField(webhookUrl, `${ch.id}-webhookUrl`)}>
+                                          {chCopied === `${ch.id}-webhookUrl` ? <Check className="h-3.5 w-3.5 text-green-600" /> : <Copy className="h-3.5 w-3.5" />}
+                                        </Button>
+                                      </div>
+                                    </div>
+
+                                    {/* Webhook Verify Token */}
+                                    <SecretRow ch={ch} field="webhookVerifyToken" label="Webhook Verify Token"
+                                      value={ch.webhookVerifyToken} canRegen={true} />
+
+                                    {/* Access token status */}
+                                    {(ch.hasAccessToken || ch.hasPageAccessToken) && (
+                                      <div className="flex items-center gap-2 text-xs text-muted-foreground pt-0.5">
+                                        <CheckCircle2 className="h-3.5 w-3.5 text-green-600 shrink-0" />
+                                        Access token configured
+                                        <Button size="sm" variant="ghost" className="h-6 px-2 ml-auto text-xs gap-1"
+                                          onClick={() => regenChMutation.mutate({ id: ch.id, field: "accessToken" })}
+                                          disabled={regenChMutation.isPending && regenChMutation.variables?.id === ch.id}>
+                                          <RefreshCw className="h-3 w-3" /> Regenerate token
+                                        </Button>
+                                      </div>
+                                    )}
+
+                                    {/* Twitter API key */}
+                                    {ch.twitterApiKey && (
+                                      <SecretRow ch={ch} field="twitterApiKey" label="Twitter API Key"
+                                        value={ch.twitterApiKey} canRegen={false} />
+                                    )}
+                                  </div>
                                 </div>
                               );
                             })}
+                          </CardContent>
+                        )}
+
+                        {/* Empty state */}
+                        {accounts.length === 0 && (
+                          <CardContent className="pt-0 px-6 pb-5">
+                            <div className="flex items-center gap-3 p-4 rounded-xl border border-dashed bg-muted/10 text-muted-foreground">
+                              <Icon className={`h-5 w-5 ${color} opacity-50`} />
+                              <div className="text-sm">
+                                <p className="font-medium">No {label} accounts</p>
+                                <p className="text-xs mt-0.5">Click "Add Account" to connect your first {label} account.</p>
+                              </div>
+                            </div>
                           </CardContent>
                         )}
                       </Card>

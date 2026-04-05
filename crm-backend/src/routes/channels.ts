@@ -4,6 +4,10 @@ import { requireAuth, AuthRequest } from "../middlewares/auth.js";
 
 const router = Router();
 
+function randomToken(len = 32): string {
+  return [...Array(len)].map(() => Math.random().toString(36)[2]).join("");
+}
+
 function serializeChannel(c: Channel) {
   return {
     id: c.id,
@@ -116,6 +120,27 @@ router.put("/channels/:id", requireAuth, async (req: AuthRequest, res) => {
     channel.isConnected = checkIsConfigured(channel);
     await channel.save();
 
+    res.json(serializeChannel(channel));
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+router.post("/channels/:id/regenerate", requireAuth, async (req: AuthRequest, res) => {
+  try {
+    const channel = await Channel.findByPk(req.params.id);
+    if (!channel) {
+      res.status(404).json({ error: "Channel not found" });
+      return;
+    }
+    const { field } = req.body as { field?: string };
+    if (field === "accessToken") {
+      channel.accessToken = randomToken(40);
+    } else {
+      channel.webhookVerifyToken = randomToken(32);
+    }
+    await channel.save();
     res.json(serializeChannel(channel));
   } catch (err) {
     console.error(err);
