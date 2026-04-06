@@ -79,10 +79,17 @@ const NAV_ENTRIES: NavEntry[] = [
       { name: "Timesheets", path: "/timesheets", icon: ClipboardCheck, roles: ["super_admin", "admin", "manager", "employee"] },
     ],
   },
-  { name: "Onboarding",  path: "/onboarding",   icon: UserPlus,            roles: ["super_admin", "admin"], customRoles: ["hr manager"] },
-  { name: "Staff",       path: "/staff",         icon: IdCard,              roles: ["super_admin", "admin", "manager"], customRoles: ["hr manager"] },
-  { name: "HR Queries",  path: "/hr-queries",   icon: MessageSquareWarning, roles: ["super_admin", "admin", "manager", "employee"], customRoles: ["hr manager"] },
-  { name: "Reports",     path: "/reports",      icon: BarChart3,           roles: ["super_admin", "admin"] },
+  {
+    name: "People",
+    icon: Users,
+    roles: ["super_admin", "admin", "manager", "employee"],
+    children: [
+      { name: "Onboarding", path: "/onboarding", icon: UserPlus,             roles: ["super_admin", "admin"], customRoles: ["hr manager"] },
+      { name: "Staff",      path: "/staff",      icon: IdCard,               roles: ["super_admin", "admin", "manager"], customRoles: ["hr manager"] },
+      { name: "HR Queries", path: "/hr-queries", icon: MessageSquareWarning, roles: ["super_admin", "admin", "manager", "employee"], customRoles: ["hr manager"] },
+    ],
+  },
+  { name: "Reports", path: "/reports", icon: BarChart3, roles: ["super_admin", "admin"] },
   {
     name: "Administration",
     icon: Building2,
@@ -94,8 +101,15 @@ const NAV_ENTRIES: NavEntry[] = [
       { name: "Roles",       path: "/roles",       icon: Shield,   roles: ["super_admin", "admin"] },
     ],
   },
-  { name: "Security",    path: "/security",     icon: ShieldAlert,         roles: ["super_admin", "admin"] },
-  { name: "Appearance",  path: "/appearance",   icon: Paintbrush,          roles: ["super_admin", "admin"] },
+  {
+    name: "Settings",
+    icon: Paintbrush,
+    roles: ["super_admin", "admin"],
+    children: [
+      { name: "Security",   path: "/security",   icon: ShieldAlert, roles: ["super_admin", "admin"] },
+      { name: "Appearance", path: "/appearance", icon: Paintbrush,  roles: ["super_admin", "admin"] },
+    ],
+  },
 ];
 
 // ── NavLinks component ────────────────────────────────────────────────────────
@@ -137,17 +151,20 @@ function NavLinks({ user, onNavigate }: NavLinksProps) {
   };
 
   // Figure out if any KPI child is currently active (for auto-expand)
-  const kpiPaths = ["/appraisals", "/goals", "/criteria", "/cycles"];
-  const workforcePaths = ["/leave", "/attendance", "/timesheets"];
-  const adminPaths = ["/users", "/departments", "/sites", "/roles"];
-  const isInsideKpi = kpiPaths.some(p => location === p || location.startsWith(`${p}/`));
-  const isInsideWorkforce = workforcePaths.some(p => location === p || location.startsWith(`${p}/`));
-  const isInsideAdmin = adminPaths.some(p => location === p || location.startsWith(`${p}/`));
+  const kpiPaths        = ["/appraisals", "/goals", "/criteria", "/cycles"];
+  const workforcePaths  = ["/leave", "/attendance", "/timesheets"];
+  const peoplePaths     = ["/onboarding", "/staff", "/hr-queries"];
+  const adminPaths      = ["/users", "/departments", "/sites", "/roles"];
+  const settingsPaths   = ["/security", "/appearance"];
+
+  const inside = (paths: string[]) => paths.some(p => location === p || location.startsWith(`${p}/`));
 
   const [openGroups, setOpenGroups] = useState<Record<string, boolean>>(() => ({
-    KPI: isInsideKpi,
-    Workforce: isInsideWorkforce,
-    Administration: isInsideAdmin,
+    KPI:            inside(kpiPaths),
+    Workforce:      inside(workforcePaths),
+    People:         inside(peoplePaths),
+    Administration: inside(adminPaths),
+    Settings:       inside(settingsPaths),
   }));
 
   const toggleGroup = (name: string) =>
