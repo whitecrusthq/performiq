@@ -171,10 +171,10 @@ function NavLinks({ user, onNavigate }: NavLinksProps) {
     setOpenGroups(prev => ({ ...prev, [name]: !prev[name] }));
 
   const linkClass = (active: boolean) =>
-    `flex items-center gap-3 px-4 py-2.5 rounded-xl transition-all duration-200 font-medium text-sm ${
+    `flex items-center gap-3 px-4 py-2.5 rounded-xl transition-all duration-200 font-semibold text-sm ${
       active
-        ? "bg-primary text-primary-foreground shadow-sm"
-        : "text-muted-foreground hover:bg-muted hover:text-foreground"
+        ? "bg-white/20 text-white shadow-sm"
+        : "text-blue-100 hover:bg-white/10 hover:text-white"
     }`;
 
   return (
@@ -194,10 +194,10 @@ function NavLinks({ user, onNavigate }: NavLinksProps) {
               {/* Group header button */}
               <button
                 onClick={() => toggleGroup(entry.name)}
-                className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-xl transition-all duration-200 font-medium text-sm ${
+                className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-xl transition-all duration-200 font-bold text-sm ${
                   isGroupActive && !isOpen
-                    ? "bg-primary/10 text-primary"
-                    : "text-muted-foreground hover:bg-muted hover:text-foreground"
+                    ? "bg-white/20 text-white"
+                    : "text-blue-100 hover:bg-white/10 hover:text-white"
                 }`}
               >
                 <entry.icon className="w-5 h-5 shrink-0" />
@@ -218,7 +218,7 @@ function NavLinks({ user, onNavigate }: NavLinksProps) {
                     transition={{ duration: 0.2 }}
                     className="overflow-hidden"
                   >
-                    <div className="ml-4 mt-0.5 mb-0.5 pl-3 border-l-2 border-border space-y-0.5">
+                    <div className="ml-4 mt-0.5 mb-0.5 pl-3 border-l-2 border-blue-400/40 space-y-0.5">
                       {visibleChildren.map(child => {
                         const isActive = location === child.path || location.startsWith(`${child.path}/`);
                         return (
@@ -287,24 +287,24 @@ export function AppLayout({ children }: { children: ReactNode }) {
       </div>
 
       {/* User Footer */}
-      <div className="border-t border-border p-4 space-y-1">
+      <div className="border-t border-blue-500/40 p-4 space-y-1">
         <Link
           href="/profile"
           onClick={onNavigate}
-          className="flex items-center gap-3 px-3 py-2 rounded-xl hover:bg-muted transition-colors"
+          className="flex items-center gap-3 px-3 py-2 rounded-xl hover:bg-white/10 transition-colors"
         >
-          <div className="w-8 h-8 rounded-full bg-muted flex items-center justify-center font-bold text-sm border border-border shrink-0">
+          <div className="w-8 h-8 rounded-full bg-blue-500/40 flex items-center justify-center font-bold text-sm border border-blue-400/40 text-white shrink-0">
             {userInitial(user)}
           </div>
           <div className="overflow-hidden flex-1 min-w-0">
-            <p className="text-sm font-semibold truncate">{userDisplayName(user)}</p>
-            <p className="text-xs text-muted-foreground capitalize truncate">{user.role.replace("_", " ")}</p>
+            <p className="text-sm font-semibold text-white truncate">{userDisplayName(user)}</p>
+            <p className="text-xs text-blue-200 capitalize truncate">{user.role.replace("_", " ")}</p>
           </div>
-          <UserCircle className="w-4 h-4 text-muted-foreground shrink-0" />
+          <UserCircle className="w-4 h-4 text-blue-200 shrink-0" />
         </Link>
         <button
           onClick={logout}
-          className="w-full flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm text-muted-foreground hover:bg-destructive/10 hover:text-destructive transition-colors font-medium"
+          className="w-full flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm text-blue-200 hover:bg-red-500/20 hover:text-red-200 transition-colors font-semibold"
         >
           <LogOut className="w-4 h-4 shrink-0" />
           Sign out
@@ -314,18 +314,18 @@ export function AppLayout({ children }: { children: ReactNode }) {
   );
 
   const LogoBlock = () => (
-    <div className="flex items-center gap-3 px-6 py-5 border-b border-border">
-      <div className="w-9 h-9 bg-primary rounded-xl flex items-center justify-center text-primary-foreground font-bold text-lg shrink-0">
+    <div className="flex items-center gap-3 px-6 py-5 border-b border-blue-500/40">
+      <div className="w-9 h-9 bg-white/20 rounded-xl flex items-center justify-center text-white font-bold text-lg shrink-0">
         {settings.logoLetter}
       </div>
-      <span className="font-bold text-xl tracking-tight">{settings.companyName}</span>
+      <span className="font-bold text-xl tracking-tight text-white">{settings.companyName}</span>
     </div>
   );
 
   return (
     <div className="min-h-screen bg-background flex">
       {/* ── Desktop Sidebar ── */}
-      <aside className="hidden sm:flex flex-col w-64 shrink-0 border-r border-border bg-card sticky top-0 h-screen">
+      <aside className="hidden sm:flex flex-col w-64 shrink-0 border-r border-blue-800 bg-blue-700 sticky top-0 h-screen">
         <LogoBlock />
         <SidebarContent />
       </aside>
@@ -348,16 +348,16 @@ export function AppLayout({ children }: { children: ReactNode }) {
               animate={{ x: 0 }}
               exit={{ x: "-100%" }}
               transition={{ type: "spring", damping: 28, stiffness: 220 }}
-              className="fixed top-0 left-0 h-full w-72 z-50 flex flex-col bg-card border-r border-border shadow-2xl sm:hidden"
+              className="fixed top-0 left-0 h-full w-72 z-50 flex flex-col bg-blue-700 border-r border-blue-800 shadow-2xl sm:hidden"
             >
-              <div className="flex items-center justify-between px-6 py-5 border-b border-border">
+              <div className="flex items-center justify-between px-6 py-5 border-b border-blue-500/40">
                 <div className="flex items-center gap-3">
-                  <div className="w-9 h-9 bg-primary rounded-xl flex items-center justify-center text-primary-foreground font-bold text-lg shrink-0">
+                  <div className="w-9 h-9 bg-white/20 rounded-xl flex items-center justify-center text-white font-bold text-lg shrink-0">
                     {settings.logoLetter}
                   </div>
-                  <span className="font-bold text-xl tracking-tight">{settings.companyName}</span>
+                  <span className="font-bold text-xl tracking-tight text-white">{settings.companyName}</span>
                 </div>
-                <button onClick={() => setSidebarOpen(false)} className="p-1 text-muted-foreground hover:text-foreground">
+                <button onClick={() => setSidebarOpen(false)} className="p-1 text-blue-200 hover:text-white">
                   <X className="w-5 h-5" />
                 </button>
               </div>
