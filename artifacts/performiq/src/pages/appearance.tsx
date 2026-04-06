@@ -8,8 +8,9 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
-import { Paintbrush, Type, Check } from "lucide-react";
+import { Paintbrush, Type, Check, Monitor } from "lucide-react";
 
 function authHeader() {
   const token = localStorage.getItem("token");
@@ -38,11 +39,24 @@ export default function Appearance() {
   const [companyName, setCompanyName] = useState(settings.companyName);
   const [logoLetter, setLogoLetter] = useState(settings.logoLetter);
   const [selectedTheme, setSelectedTheme] = useState(settings.themeName);
+  const [loginHeadline, setLoginHeadline] = useState(settings.loginHeadline);
+  const [loginSubtext, setLoginSubtext] = useState(settings.loginSubtext);
+  const [loginBgFrom, setLoginBgFrom] = useState(settings.loginBgFrom || "#f0f4ff");
+  const [loginBgTo, setLoginBgTo] = useState(settings.loginBgTo || "#ffffff");
+  const [useCustomBg, setUseCustomBg] = useState(!!(settings.loginBgFrom && settings.loginBgTo));
 
   useEffect(() => {
     setCompanyName(settings.companyName);
     setLogoLetter(settings.logoLetter);
     setSelectedTheme(settings.themeName);
+    setLoginHeadline(settings.loginHeadline);
+    setLoginSubtext(settings.loginSubtext);
+    const hasBg = !!(settings.loginBgFrom && settings.loginBgTo);
+    setUseCustomBg(hasBg);
+    if (hasBg) {
+      setLoginBgFrom(settings.loginBgFrom);
+      setLoginBgTo(settings.loginBgTo);
+    }
   }, [settings]);
 
   const previewTheme = THEMES.find(t => t.name === selectedTheme) ?? THEMES[0];
@@ -57,6 +71,10 @@ export default function Appearance() {
           logoLetter: (logoLetter.trim() || "P").slice(0, 3).toUpperCase(),
           primaryHsl: previewTheme.hsl,
           themeName: previewTheme.name,
+          loginHeadline: loginHeadline.trim(),
+          loginSubtext: loginSubtext.trim(),
+          loginBgFrom: useCustomBg ? loginBgFrom : "",
+          loginBgTo: useCustomBg ? loginBgTo : "",
         }),
       }).then(r => r.ok ? r.json() : r.json().then((e: any) => Promise.reject(e.error))),
     onSuccess: () => {
@@ -72,6 +90,10 @@ export default function Appearance() {
 
   const logoLetterDisplay = (logoLetter.trim() || "P").slice(0, 3).toUpperCase();
 
+  const previewBgStyle = useCustomBg
+    ? { background: `linear-gradient(135deg, ${loginBgFrom}, ${loginBgTo})` }
+    : { background: `linear-gradient(135deg, ${previewTheme.preview}22, ${previewTheme.preview}08)` };
+
   return (
     <div className="p-6 space-y-6 max-w-2xl">
       <PageHeader
@@ -79,6 +101,7 @@ export default function Appearance() {
         description="Customise your company branding and colour theme across the app."
       />
 
+      {/* Company Branding */}
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
@@ -123,6 +146,7 @@ export default function Appearance() {
         </CardContent>
       </Card>
 
+      {/* Colour Theme */}
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
@@ -153,6 +177,112 @@ export default function Appearance() {
                 <span className="text-xs font-medium">{theme.label}</span>
               </button>
             ))}
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Login Page Panel */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Monitor className="h-5 w-5" />
+            Login Page Panel
+          </CardTitle>
+          <CardDescription>Customise the left panel on the sign-in page — the headline, description, and background.</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-5">
+          {/* Live mini-preview */}
+          <div
+            className="relative rounded-xl overflow-hidden h-40 flex items-center justify-center p-6 border"
+            style={previewBgStyle}
+          >
+            <div className="text-center max-w-xs">
+              <div
+                className="w-10 h-10 rounded-xl flex items-center justify-center text-white font-bold text-lg mx-auto mb-3 shadow-md -rotate-6"
+                style={{ backgroundColor: previewTheme.preview }}
+              >
+                {logoLetterDisplay}
+              </div>
+              <p className="font-bold text-sm leading-snug mb-1 line-clamp-2">{loginHeadline || "Headline text…"}</p>
+              <p className="text-xs text-muted-foreground line-clamp-2">{loginSubtext || "Subtext…"}</p>
+            </div>
+          </div>
+
+          <div className="space-y-1">
+            <Label htmlFor="login-headline">Headline</Label>
+            <Input
+              id="login-headline"
+              value={loginHeadline}
+              onChange={e => setLoginHeadline(e.target.value)}
+              placeholder="Elevate Your Team's Performance."
+              maxLength={200}
+            />
+          </div>
+
+          <div className="space-y-1">
+            <Label htmlFor="login-subtext">Subtext / description</Label>
+            <Textarea
+              id="login-subtext"
+              value={loginSubtext}
+              onChange={e => setLoginSubtext(e.target.value)}
+              placeholder="PerformIQ streamlines appraisals, goals, and feedback into one elegant platform."
+              maxLength={400}
+              rows={3}
+            />
+          </div>
+
+          {/* Custom background toggle */}
+          <div className="space-y-3">
+            <div className="flex items-center gap-3">
+              <input
+                type="checkbox"
+                id="custom-bg"
+                checked={useCustomBg}
+                onChange={e => setUseCustomBg(e.target.checked)}
+                className="w-4 h-4 accent-primary"
+              />
+              <Label htmlFor="custom-bg" className="cursor-pointer">Use custom background gradient</Label>
+            </div>
+            {useCustomBg && (
+              <div className="grid grid-cols-2 gap-4 pl-7">
+                <div className="space-y-1">
+                  <Label htmlFor="bg-from">Gradient start colour</Label>
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="color"
+                      id="bg-from"
+                      value={loginBgFrom}
+                      onChange={e => setLoginBgFrom(e.target.value)}
+                      className="w-10 h-9 rounded cursor-pointer border border-border p-0.5"
+                    />
+                    <Input
+                      value={loginBgFrom}
+                      onChange={e => setLoginBgFrom(e.target.value)}
+                      placeholder="#f0f4ff"
+                      className="font-mono text-sm"
+                    />
+                  </div>
+                </div>
+                <div className="space-y-1">
+                  <Label htmlFor="bg-to">Gradient end colour</Label>
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="color"
+                      id="bg-to"
+                      value={loginBgTo}
+                      onChange={e => setLoginBgTo(e.target.value)}
+                      className="w-10 h-9 rounded cursor-pointer border border-border p-0.5"
+                    />
+                    <Input
+                      value={loginBgTo}
+                      onChange={e => setLoginBgTo(e.target.value)}
+                      placeholder="#ffffff"
+                      className="font-mono text-sm"
+                    />
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
         </CardContent>
       </Card>

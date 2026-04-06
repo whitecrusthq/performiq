@@ -6,6 +6,10 @@ export const appSettingsTable = pgTable("app_settings", {
   logoLetter: text("logo_letter").notNull().default("P"),
   primaryHsl: text("primary_hsl").notNull().default("221 83% 53%"),
   themeName: text("theme_name").notNull().default("blue"),
+  loginHeadline: text("login_headline").notNull().default("Elevate Your Team's Performance."),
+  loginSubtext: text("login_subtext").notNull().default("PerformIQ streamlines appraisals, goals, and feedback into one elegant platform."),
+  loginBgFrom: text("login_bg_from").notNull().default(""),
+  loginBgTo: text("login_bg_to").notNull().default(""),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });
 

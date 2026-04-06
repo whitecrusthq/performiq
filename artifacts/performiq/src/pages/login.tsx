@@ -6,6 +6,7 @@ import { Button, Input, Label } from "@/components/shared";
 import { AlertCircle, ShieldCheck, ArrowLeft } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { apiFetch } from "@/lib/utils";
+import { useAppSettings } from "@/hooks/use-app-settings";
 
 export default function Login() {
   const [email, setEmail] = useState("");
@@ -17,6 +18,7 @@ export default function Login() {
   const { login } = useAuth();
   const [, setLocation] = useLocation();
   const loginMutation = useLogin();
+  const { settings } = useAppSettings();
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -61,17 +63,24 @@ export default function Login() {
     }
   };
 
+  const bgStyle = settings.loginBgFrom && settings.loginBgTo
+    ? { background: `linear-gradient(135deg, ${settings.loginBgFrom}, ${settings.loginBgTo})` }
+    : undefined;
+
   const leftPanel = (
-    <div className="hidden lg:flex flex-1 relative bg-primary/5 items-center justify-center p-12 overflow-hidden">
-      <div className="absolute top-0 left-0 w-full h-full bg-gradient-to-br from-primary/10 to-transparent pointer-events-none" />
-      <div className="absolute -top-40 -right-40 w-96 h-96 bg-primary/20 rounded-full blur-3xl" />
-      <div className="absolute bottom-10 -left-20 w-80 h-80 bg-accent/50 rounded-full blur-3xl" />
+    <div
+      className="hidden lg:flex flex-1 relative bg-primary/5 items-center justify-center p-12 overflow-hidden"
+      style={bgStyle}
+    >
+      {!bgStyle && <div className="absolute top-0 left-0 w-full h-full bg-gradient-to-br from-primary/10 to-transparent pointer-events-none" />}
+      {!bgStyle && <div className="absolute -top-40 -right-40 w-96 h-96 bg-primary/20 rounded-full blur-3xl" />}
+      {!bgStyle && <div className="absolute bottom-10 -left-20 w-80 h-80 bg-accent/50 rounded-full blur-3xl" />}
       <div className="relative z-10 max-w-lg text-center">
         <div className="w-24 h-24 bg-gradient-to-br from-primary to-primary/80 rounded-3xl flex items-center justify-center text-primary-foreground font-bold text-5xl font-display shadow-2xl shadow-primary/30 mx-auto mb-8 transform -rotate-6">
-          P
+          {settings.logoLetter}
         </div>
-        <h1 className="text-5xl font-display font-bold text-foreground mb-6 leading-tight">Elevate Your Team's Performance.</h1>
-        <p className="text-xl text-muted-foreground">PerformIQ streamlines appraisals, goals, and feedback into one elegant platform.</p>
+        <h1 className="text-5xl font-display font-bold text-foreground mb-6 leading-tight">{settings.loginHeadline}</h1>
+        <p className="text-xl text-muted-foreground">{settings.loginSubtext}</p>
       </div>
     </div>
   );
