@@ -70,6 +70,11 @@ export default defineConfig({
       deny: ["**/.*"],
     },
     proxy: {
+      [`${basePath}api`]: {
+        target: "http://localhost:8080",
+        changeOrigin: true,
+        rewrite: (path: string) => path.replace(basePath.replace(/\/$/, ""), ""),
+      },
       "/api": {
         target: "http://localhost:8080",
         changeOrigin: true,

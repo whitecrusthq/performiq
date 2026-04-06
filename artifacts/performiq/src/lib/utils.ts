@@ -5,9 +5,8 @@ export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs))
 }
 
-// Prepends VITE_API_URL so API calls reach the backend in production.
-// Falls back to "" so relative paths still work via Vite proxy in local dev.
-const API_BASE = (import.meta.env.VITE_API_URL ?? "").replace(/\/+$/, "");
+// Use the app's base path so API calls go through /piq/api/... → Vite proxy → backend.
+const API_BASE = (import.meta.env.VITE_API_URL ?? import.meta.env.BASE_URL ?? "").replace(/\/+$/, "");
 
 const getAuthHeader = (): Record<string, string> => {
   const token = localStorage.getItem("token");
