@@ -66,6 +66,7 @@ const NAV_ENTRIES: NavEntry[] = [
       { name: "Appraisals", path: "/appraisals", icon: ClipboardList, roles: ["super_admin", "admin", "manager", "employee"] },
       { name: "Goals",      path: "/goals",      icon: Target,        roles: ["super_admin", "admin", "manager", "employee"] },
       { name: "Criteria",   path: "/criteria",   icon: ListChecks,    roles: ["super_admin", "admin"] },
+      { name: "Cycles",     path: "/cycles",     icon: RefreshCcw,    roles: ["super_admin", "admin", "manager"] },
     ],
   },
   { name: "Leave",       path: "/leave",        icon: CalendarDays,        roles: ["super_admin", "admin", "manager", "employee"] },
@@ -74,7 +75,6 @@ const NAV_ENTRIES: NavEntry[] = [
   { name: "Onboarding",  path: "/onboarding",   icon: UserPlus,            roles: ["super_admin", "admin"], customRoles: ["hr manager"] },
   { name: "Staff",       path: "/staff",         icon: IdCard,              roles: ["super_admin", "admin", "manager"], customRoles: ["hr manager"] },
   { name: "HR Queries",  path: "/hr-queries",   icon: MessageSquareWarning, roles: ["super_admin", "admin", "manager", "employee"], customRoles: ["hr manager"] },
-  { name: "Cycles",      path: "/cycles",       icon: RefreshCcw,          roles: ["super_admin", "admin", "manager"] },
   { name: "Reports",     path: "/reports",      icon: BarChart3,           roles: ["super_admin", "admin"] },
   { name: "Users",       path: "/users",        icon: Users,               roles: ["super_admin", "admin"] },
   { name: "Departments", path: "/departments",  icon: Building2,           roles: ["super_admin", "admin"] },
@@ -123,7 +123,7 @@ function NavLinks({ user, onNavigate }: NavLinksProps) {
   };
 
   // Figure out if any KPI child is currently active (for auto-expand)
-  const kpiPaths = ["/appraisals", "/goals", "/criteria"];
+  const kpiPaths = ["/appraisals", "/goals", "/criteria", "/cycles"];
   const isInsideKpi = kpiPaths.some(p => location === p || location.startsWith(`${p}/`));
 
   const [openGroups, setOpenGroups] = useState<Record<string, boolean>>(() => ({
