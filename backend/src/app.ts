@@ -14,26 +14,6 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app: Express = express();
 
 app.use(
-  createProxyMiddleware({
-    target: "http://localhost:3002",
-    changeOrigin: true,
-    pathFilter: "/crm/api",
-    pathRewrite: { "^/crm/api": "/api" },
-  }),
-);
-
-if (process.env.NODE_ENV === "development") {
-  app.use(
-    createProxyMiddleware({
-      target: "http://localhost:4000",
-      changeOrigin: true,
-      ws: true,
-      pathFilter: "/crm",
-    }),
-  );
-}
-
-app.use(
   pinoHttp({
     logger,
     autoLogging: {

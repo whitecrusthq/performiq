@@ -1,5 +1,5 @@
 import "dotenv/config";
-import { spawn, spawnSync } from "child_process";
+import { spawn } from "child_process";
 import path from "path";
 import { fileURLToPath } from "url";
 import app from "./app";
@@ -41,23 +41,5 @@ app.listen(port, (err) => {
       logger.warn({ code }, "PerformIQ Vite dev server exited");
     });
     logger.info("PerformIQ Vite dev server spawned on port 3000");
-
-    const crmDir = path.resolve(__dirname, "../../commscrm-temp/backend");
-    const crmDistPath = path.resolve(crmDir, "dist/index.mjs");
-    const buildResult = spawnSync("npm", ["run", "build"], { cwd: crmDir, stdio: "inherit" });
-    if (buildResult.status === 0) {
-      logger.info("CommsCRM backend built successfully");
-    } else {
-      logger.error("Failed to build CommsCRM backend, using existing dist");
-    }
-    const crm = spawn("node", ["--enable-source-maps", crmDistPath], {
-      cwd: crmDir,
-      env: { ...process.env, CRM_PORT: "3002", NODE_ENV: "development" },
-      stdio: "inherit",
-    });
-    crm.on("exit", (code) => {
-      logger.warn({ code }, "CommsCRM server process exited");
-    });
-    logger.info("CommsCRM server spawned as child process");
   }
 });

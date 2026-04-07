@@ -15,28 +15,6 @@ args = ["pnpm", "store", "prune"]
 env = { "CI" = "true" }
 
 [workflows]
-runButton = "Project"
-
-[[workflows.workflow]]
-name = "Project"
-mode = "parallel"
-author = "agent"
-
-[[workflows.workflow.tasks]]
-task = "workflow.run"
-args = "CommsCRM Frontend"
-
-[[workflows.workflow]]
-name = "CommsCRM Frontend"
-author = "agent"
-
-[[workflows.workflow.tasks]]
-task = "shell.exec"
-args = "cd /home/runner/workspace/commscrm-temp/frontend && PORT=4000 node node_modules/.bin/vite --host 0.0.0.0 --port 4000 --strictPort"
-waitForPort = 4000
-
-[workflows.workflow.metadata]
-outputType = "console"
 
 [agent]
 stack = "PNPM_WORKSPACE"
