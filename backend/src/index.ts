@@ -30,6 +30,17 @@ app.listen(port, (err) => {
   logger.info({ port }, "Server listening");
 
   if (process.env.NODE_ENV === "development") {
+    const frontendDir = path.resolve(__dirname, "../../frontend");
+    const vite = spawn("npx", ["vite", "--host", "0.0.0.0", "--port", "3000", "--strictPort"], {
+      cwd: frontendDir,
+      env: { ...process.env, FRONTEND_PORT: "3000" },
+      stdio: "inherit",
+    });
+    vite.on("exit", (code) => {
+      logger.warn({ code }, "PerformIQ Vite dev server exited");
+    });
+    logger.info("PerformIQ Vite dev server spawned on port 3000");
+
     const crmDir = path.resolve(__dirname, "../../commscrm-temp/backend");
     const crmDistPath = path.resolve(crmDir, "dist/index.mjs");
     const buildResult = spawnSync("npm", ["run", "build"], { cwd: crmDir, stdio: "inherit" });
