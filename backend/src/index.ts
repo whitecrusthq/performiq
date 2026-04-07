@@ -31,7 +31,8 @@ app.listen(port, (err) => {
 
   if (process.env.NODE_ENV === "development") {
     const frontendDir = path.resolve(__dirname, "../../frontend");
-    const vite = spawn("npx", ["vite", "--host", "0.0.0.0", "--port", "3000", "--strictPort"], {
+    const viteBin = path.resolve(frontendDir, "node_modules/.bin/vite");
+    const vite = spawn(viteBin, ["--host", "0.0.0.0", "--port", "3000", "--strictPort"], {
       cwd: frontendDir,
       env: { ...process.env, FRONTEND_PORT: "3000" },
       stdio: "inherit",
