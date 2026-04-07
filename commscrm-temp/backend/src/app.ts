@@ -55,7 +55,7 @@ if (process.env.NODE_ENV === "development") {
   app.use(
     "/",
     createProxyMiddleware({
-      target: "http://localhost:3001",
+      target: "http://localhost:4000",
       changeOrigin: true,
       ws: true,
       logLevel: "silent",
