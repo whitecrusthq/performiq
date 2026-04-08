@@ -185,14 +185,14 @@ export default function Appraisals() {
     for (const [k, v] of Object.entries(budgetValues)) {
       if (v && Number(v) > 0) budgetMap[Number(k)] = Number(v);
     }
-    const payload: any = {
+    const payload = {
       cycleId: parseInt(formData.cycleId),
       employeeId: parseInt(formData.employeeId),
       workflowType: formData.workflowType,
       reviewerIds,
       criteriaGroupId: formData.criteriaGroupId ? parseInt(formData.criteriaGroupId) : undefined,
       budgetValues: Object.keys(budgetMap).length > 0 ? budgetMap : undefined,
-    };
+    } as Record<string, unknown>;
     createMutation.mutate(
       { data: payload },
       {

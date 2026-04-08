@@ -303,6 +303,23 @@ router.get("/appraisals/:id", requireAuth, async (req: AuthRequest, res) => {
     const [appraisal] = await db.select().from(appraisalsTable).where(eq(appraisalsTable.id, Number(req.params.id))).limit(1);
     if (!appraisal) { res.status(404).json({ error: "Not found" }); return; }
 
+    const userId = req.user!.id;
+    const userRole = req.user!.role;
+    if (userRole === "employee" && appraisal.employeeId !== userId) {
+      res.status(403).json({ error: "You can only view your own appraisals" }); return;
+    }
+    if (userRole === "manager") {
+      const isOwner = appraisal.employeeId === userId;
+      const isReviewer = await db.select().from(appraisalReviewersTable)
+        .where(and(eq(appraisalReviewersTable.appraisalId, appraisal.id), eq(appraisalReviewersTable.reviewerId, userId)))
+        .limit(1);
+      const teamMembers = await db.select({ id: usersTable.id }).from(usersTable).where(eq(usersTable.managerId, userId));
+      const isTeamManager = teamMembers.some(m => m.id === appraisal.employeeId);
+      if (!isOwner && isReviewer.length === 0 && !isTeamManager) {
+        res.status(403).json({ error: "You can only view appraisals for your team or reviews assigned to you" }); return;
+      }
+    }
+
     const scores = await db.select().from(appraisalScoresTable).where(eq(appraisalScoresTable.appraisalId, appraisal.id));
     const enrichedScores = await Promise.all(scores.map(async s => {
       const [criterion] = await db.select().from(criteriaTable).where(eq(criteriaTable.id, s.criterionId)).limit(1);
@@ -327,6 +344,23 @@ router.put("/appraisals/:id", requireAuth, async (req: AuthRequest, res) => {
 
     const [current] = await db.select().from(appraisalsTable).where(eq(appraisalsTable.id, appraisalId)).limit(1);
     if (!current) { res.status(404).json({ error: "Not found" }); return; }
+
+    const putUserId = req.user!.id;
+    const putUserRole = req.user!.role;
+    if (putUserRole === "employee" && current.employeeId !== putUserId) {
+      res.status(403).json({ error: "You can only update your own appraisals" }); return;
+    }
+    if (putUserRole === "manager") {
+      const isOwner = current.employeeId === putUserId;
+      const isReviewerCheck = await db.select().from(appraisalReviewersTable)
+        .where(and(eq(appraisalReviewersTable.appraisalId, appraisalId), eq(appraisalReviewersTable.reviewerId, putUserId)))
+        .limit(1);
+      const teamMembersCheck = await db.select({ id: usersTable.id }).from(usersTable).where(eq(usersTable.managerId, putUserId));
+      const isTeamMgr = teamMembersCheck.some(m => m.id === current.employeeId);
+      if (!isOwner && isReviewerCheck.length === 0 && !isTeamMgr) {
+        res.status(403).json({ error: "You can only update appraisals for your team or reviews assigned to you" }); return;
+      }
+    }
 
     const updates: Partial<typeof appraisalsTable.$inferInsert> = {};
 
