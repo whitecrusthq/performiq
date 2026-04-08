@@ -68,6 +68,9 @@ Port 80 (Replit proxy) → Port 8080 (PerformIQ backend)
 ## Sales Target & Budget Features:
 - Criteria support target periods: monthly, quarterly, half_year, yearly
 - Appraisal scores have optional budget values (admin-prefilled per employee/criterion)
+- Budget assignment modes: "Individual" (one employee) or "By Category" (group by job title)
+- By Category: bulk-create appraisals for multiple employees with per-category budget targets
+- Backend: POST /api/appraisals/bulk accepts employeeIds array + budgetsByCategory keyed by job title
 - Employees see their budget target when filling appraisals; system auto-calculates % achieved vs weight
 - Resend for Review: admins/managers can send completed/in-progress appraisals back to self_review
 - Access control: managers can only resend/update budgets for their team members or assigned reviews

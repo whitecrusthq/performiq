@@ -202,6 +202,102 @@ router.post("/appraisals", requireAuth, async (req: AuthRequest, res) => {
   }
 });
 
+router.post("/appraisals/bulk", requireAuth, async (req: AuthRequest, res) => {
+  try {
+    if (!["admin", "super_admin", "manager"].includes(req.user!.role)) {
+      res.status(403).json({ error: "Forbidden" }); return;
+    }
+    const { cycleId, employeeIds, reviewerIds, workflowType, criteriaGroupId, budgetsByCategory } = req.body;
+    if (!Array.isArray(employeeIds) || employeeIds.length === 0) {
+      res.status(400).json({ error: "employeeIds must be a non-empty array" }); return;
+    }
+
+    const uniqueEmpIds = [...new Set(employeeIds.map(Number).filter(n => !isNaN(n) && n > 0))];
+    if (uniqueEmpIds.length === 0) {
+      res.status(400).json({ error: "No valid employee IDs provided" }); return;
+    }
+
+    const employees = await db.select().from(usersTable)
+      .where(inArray(usersTable.id, uniqueEmpIds));
+    const empMap = Object.fromEntries(employees.map(e => [e.id, e]));
+
+    if (req.user!.role === "manager") {
+      const teamMembers = await db.select({ id: usersTable.id }).from(usersTable)
+        .where(eq(usersTable.managerId, req.user!.id));
+      const teamIds = new Set(teamMembers.map(m => m.id));
+      const unauthorized = uniqueEmpIds.filter(id => !teamIds.has(id));
+      if (unauthorized.length > 0) {
+        res.status(403).json({ error: "You can only create appraisals for your team members" }); return;
+      }
+    }
+
+    const orderedReviewerIds: number[] = Array.isArray(reviewerIds) && reviewerIds.length > 0
+      ? reviewerIds.map(Number)
+      : (req.user!.role !== "employee" ? [req.user!.id] : []);
+
+    let criteriaToScore = await db.select().from(criteriaTable);
+    if (criteriaGroupId) {
+      const groupItems = await db.select().from(criteriaGroupItemsTable)
+        .where(eq(criteriaGroupItemsTable.groupId, Number(criteriaGroupId)));
+      const groupCriterionIds = new Set(groupItems.map(i => i.criterionId));
+      criteriaToScore = criteriaToScore.filter(c => groupCriterionIds.has(c.id));
+    }
+
+    const categoryBudgets: Record<string, Record<number, number>> = budgetsByCategory && typeof budgetsByCategory === 'object' ? budgetsByCategory : {};
+
+    const results = await db.transaction(async (tx) => {
+      const created = [];
+      for (const empId of uniqueEmpIds) {
+        const emp = empMap[empId];
+        if (!emp) continue;
+
+        const [appraisal] = await tx.insert(appraisalsTable)
+          .values({
+            cycleId: Number(cycleId),
+            employeeId: empId,
+            reviewerId: orderedReviewerIds[0] ?? null,
+            workflowType: workflowType ?? "admin_approval",
+            status: "self_review",
+            criteriaGroupId: criteriaGroupId ? Number(criteriaGroupId) : null,
+          })
+          .returning();
+
+        if (orderedReviewerIds.length > 0) {
+          await tx.insert(appraisalReviewersTable).values(
+            orderedReviewerIds.map((rid, idx) => ({
+              appraisalId: appraisal.id,
+              reviewerId: rid,
+              orderIndex: idx,
+              status: 'pending',
+            }))
+          ).onConflictDoNothing();
+        }
+
+        const category = (emp.jobTitle || "Uncategorized").trim();
+        const catBudget = categoryBudgets[category] || {};
+
+        if (criteriaToScore.length > 0) {
+          await tx.insert(appraisalScoresTable).values(
+            criteriaToScore.map(c => ({
+              appraisalId: appraisal.id,
+              criterionId: c.id,
+              budgetValue: catBudget[c.id] != null ? String(catBudget[c.id]) : null,
+            }))
+          );
+        }
+
+        created.push(appraisal);
+      }
+      return created;
+    });
+
+    res.status(201).json({ created: results.length, appraisalIds: results.map(a => a.id) });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Server error" });
+  }
+});
+
 router.get("/appraisals/:id", requireAuth, async (req: AuthRequest, res) => {
   try {
     const [appraisal] = await db.select().from(appraisalsTable).where(eq(appraisalsTable.id, Number(req.params.id))).limit(1);

@@ -3,7 +3,7 @@ import { useListAppraisals, useCreateAppraisal, useListCycles, useListUsers } fr
 import { useQueryClient } from "@tanstack/react-query";
 import { PageHeader, Card, StatusBadge, Button, EmptyState, Label } from "@/components/shared";
 import { format } from "date-fns";
-import { ClipboardList, Plus, X, Search, ChevronDown, ArrowUp, ArrowDown, UserPlus, Trash2 } from "lucide-react";
+import { ClipboardList, Plus, X, Search, ChevronDown, ArrowUp, ArrowDown, UserPlus, Trash2, Users, User, Check } from "lucide-react";
 import { BulkActionBar } from "@/components/bulk-action-bar";
 import { useAuth } from "@/hooks/use-auth";
 import { Link } from "wouter";
@@ -31,8 +31,12 @@ export default function Appraisals() {
 
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [formData, setFormData] = useState({ cycleId: "", employeeId: "", workflowType: "admin_approval", criteriaGroupId: "" });
-  const [reviewerSteps, setReviewerSteps] = useState<string[]>([""]); // array of user id strings
+  const [reviewerSteps, setReviewerSteps] = useState<string[]>([""]); 
   const [budgetValues, setBudgetValues] = useState<Record<number, string>>({});
+  const [assignMode, setAssignMode] = useState<"individual" | "category">("individual");
+  const [selectedEmployeeIds, setSelectedEmployeeIds] = useState<Set<number>>(new Set());
+  const [categoryBudgets, setCategoryBudgets] = useState<Record<string, Record<number, string>>>({});
+  const [bulkCreating, setBulkCreating] = useState(false);
 
   // Criteria groups
   const [criteriaGroups, setCriteriaGroups] = useState<any[]>([]);
@@ -111,9 +115,72 @@ export default function Appraisals() {
   const setReviewerAtStep = (idx: number, val: string) =>
     setReviewerSteps(prev => prev.map((v, i) => i === idx ? val : v));
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const employeesByCategory = useMemo(() => {
+    if (!users) return {};
+    const grouped: Record<string, typeof users> = {};
+    for (const u of users) {
+      if (u.role === "super_admin") continue;
+      const cat = (u.jobTitle || "Uncategorized").trim();
+      if (!grouped[cat]) grouped[cat] = [];
+      grouped[cat].push(u);
+    }
+    return grouped;
+  }, [users]);
+
+  const toggleCategoryEmployees = (category: string) => {
+    const emps = employeesByCategory[category] || [];
+    const allSelected = emps.every(e => selectedEmployeeIds.has(e.id));
+    setSelectedEmployeeIds(prev => {
+      const next = new Set(prev);
+      for (const e of emps) {
+        if (allSelected) next.delete(e.id); else next.add(e.id);
+      }
+      return next;
+    });
+  };
+
+  const setCategoryBudgetValue = (category: string, criterionId: number, value: string) => {
+    setCategoryBudgets(prev => ({
+      ...prev,
+      [category]: { ...(prev[category] || {}), [criterionId]: value },
+    }));
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     const reviewerIds = needsReviewer ? reviewerSteps.map(Number).filter(Boolean) : [];
+
+    if (assignMode === "category") {
+      if (selectedEmployeeIds.size === 0) return;
+      setBulkCreating(true);
+      const budgetsByCat: Record<string, Record<number, number>> = {};
+      for (const [cat, vals] of Object.entries(categoryBudgets)) {
+        budgetsByCat[cat] = {};
+        for (const [k, v] of Object.entries(vals)) {
+          if (v && Number(v) > 0) budgetsByCat[cat][Number(k)] = Number(v);
+        }
+      }
+      try {
+        await apiFetch("/api/appraisals/bulk", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            cycleId: parseInt(formData.cycleId),
+            employeeIds: [...selectedEmployeeIds],
+            workflowType: formData.workflowType,
+            reviewerIds,
+            criteriaGroupId: formData.criteriaGroupId ? parseInt(formData.criteriaGroupId) : undefined,
+            budgetsByCategory: Object.keys(budgetsByCat).length > 0 ? budgetsByCat : undefined,
+          }),
+        });
+        queryClient.invalidateQueries({ queryKey: ["/api/appraisals"] });
+        setIsDialogOpen(false);
+        resetForm();
+      } catch { /* handled by apiFetch */ }
+      setBulkCreating(false);
+      return;
+    }
+
     const budgetMap: Record<number, number> = {};
     for (const [k, v] of Object.entries(budgetValues)) {
       if (v && Number(v) > 0) budgetMap[Number(k)] = Number(v);
@@ -132,12 +199,19 @@ export default function Appraisals() {
         onSuccess: () => {
           queryClient.invalidateQueries({ queryKey: ["/api/appraisals"] });
           setIsDialogOpen(false);
-          setFormData({ cycleId: "", employeeId: "", workflowType: "admin_approval", criteriaGroupId: "" });
-          setReviewerSteps([""]);
-          setBudgetValues({});
+          resetForm();
         }
       }
     );
+  };
+
+  const resetForm = () => {
+    setFormData({ cycleId: "", employeeId: "", workflowType: "admin_approval", criteriaGroupId: "" });
+    setReviewerSteps([""]);
+    setBudgetValues({});
+    setAssignMode("individual");
+    setSelectedEmployeeIds(new Set());
+    setCategoryBudgets({});
   };
 
   if (isLoading) return <div className="p-8">Loading appraisals...</div>;
@@ -293,26 +367,84 @@ export default function Appraisals() {
       {/* Create Dialog */}
       {isDialogOpen && (
         <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <Card className="w-full max-w-md shadow-2xl animate-in fade-in zoom-in-95">
+          <Card className={`w-full shadow-2xl animate-in fade-in zoom-in-95 ${assignMode === "category" ? "max-w-lg" : "max-w-md"}`}>
             <div className="flex items-center justify-between p-6 border-b border-border">
               <h2 className="text-xl font-bold">Start New Appraisal</h2>
-              <button onClick={() => setIsDialogOpen(false)} className="text-muted-foreground hover:text-foreground"><X className="w-5 h-5" /></button>
+              <button onClick={() => { setIsDialogOpen(false); resetForm(); }} className="text-muted-foreground hover:text-foreground"><X className="w-5 h-5" /></button>
             </div>
-            <form onSubmit={handleSubmit} className="p-6 space-y-5">
+            <form onSubmit={handleSubmit} className="p-6 space-y-5 max-h-[70vh] overflow-y-auto">
               <div>
-                <Label>Select Employee</Label>
-                <select 
-                  className="w-full px-4 py-2.5 rounded-xl bg-background border border-border outline-none focus:ring-2 focus:ring-primary/20"
-                  value={formData.employeeId}
-                  onChange={e => setFormData({...formData, employeeId: e.target.value})}
-                  required
-                >
-                  <option value="">-- Choose employee --</option>
-                  {users?.map(u => (
-                    <option key={u.id} value={u.id}>{u.name} ({u.role})</option>
-                  ))}
-                </select>
+                <Label>Assignment Mode</Label>
+                <div className="flex gap-2 mt-1">
+                  <button type="button" onClick={() => setAssignMode("individual")}
+                    className={`flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl border text-sm font-medium transition-colors ${assignMode === "individual" ? "border-primary bg-primary/5 text-primary" : "border-border hover:bg-muted/40"}`}>
+                    <User className="w-4 h-4" /> Individual
+                  </button>
+                  <button type="button" onClick={() => setAssignMode("category")}
+                    className={`flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl border text-sm font-medium transition-colors ${assignMode === "category" ? "border-primary bg-primary/5 text-primary" : "border-border hover:bg-muted/40"}`}>
+                    <Users className="w-4 h-4" /> By Category
+                  </button>
+                </div>
+                <p className="text-xs text-muted-foreground mt-1">
+                  {assignMode === "individual" ? "Create an appraisal for a single employee." : "Select employees by job title category with group-level budget targets."}
+                </p>
               </div>
+
+              {assignMode === "individual" ? (
+                <div>
+                  <Label>Select Employee</Label>
+                  <select 
+                    className="w-full px-4 py-2.5 rounded-xl bg-background border border-border outline-none focus:ring-2 focus:ring-primary/20"
+                    value={formData.employeeId}
+                    onChange={e => setFormData({...formData, employeeId: e.target.value})}
+                    required={assignMode === "individual"}
+                  >
+                    <option value="">-- Choose employee --</option>
+                    {users?.map(u => (
+                      <option key={u.id} value={u.id}>{u.name} ({u.jobTitle || u.role})</option>
+                    ))}
+                  </select>
+                </div>
+              ) : (
+                <div>
+                  <Label>Select Employees by Category <span className="text-muted-foreground font-normal text-xs">({selectedEmployeeIds.size} selected)</span></Label>
+                  <div className="mt-2 space-y-3 max-h-52 overflow-y-auto border border-border rounded-xl p-3 bg-muted/10">
+                    {Object.entries(employeesByCategory).map(([category, emps]) => {
+                      const allChecked = emps.every(e => selectedEmployeeIds.has(e.id));
+                      const someChecked = emps.some(e => selectedEmployeeIds.has(e.id));
+                      return (
+                        <div key={category} className="space-y-1">
+                          <button type="button" onClick={() => toggleCategoryEmployees(category)}
+                            className="flex items-center gap-2 cursor-pointer group w-full text-left">
+                            <div className={`w-4 h-4 rounded border flex items-center justify-center transition-colors shrink-0 ${allChecked ? "bg-primary border-primary" : someChecked ? "bg-primary/40 border-primary" : "border-border group-hover:border-primary/50"}`}>
+                              {(allChecked || someChecked) && <Check className="w-3 h-3 text-white" />}
+                            </div>
+                            <span className="text-sm font-semibold text-foreground">{category}</span>
+                            <span className="text-xs text-muted-foreground">({emps.length})</span>
+                          </button>
+                          <div className="ml-6 space-y-0.5">
+                            {emps.map(emp => (
+                              <label key={emp.id} className="flex items-center gap-2 cursor-pointer py-0.5 hover:bg-muted/30 rounded px-1 -mx-1">
+                                <input type="checkbox" checked={selectedEmployeeIds.has(emp.id)}
+                                  onChange={() => {
+                                    setSelectedEmployeeIds(prev => {
+                                      const next = new Set(prev);
+                                      if (next.has(emp.id)) next.delete(emp.id); else next.add(emp.id);
+                                      return next;
+                                    });
+                                  }}
+                                  className="w-3.5 h-3.5 accent-primary" />
+                                <span className="text-sm">{emp.name}</span>
+                                <span className="text-xs text-muted-foreground">{emp.department || ""}</span>
+                              </label>
+                            ))}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
               <div>
                 <Label>Select Cycle</Label>
                 <select 
@@ -344,29 +476,86 @@ export default function Appraisals() {
                 const group = criteriaGroups.find((g: any) => String(g.id) === formData.criteriaGroupId);
                 const valueCriteria = group?.criteria?.filter((c: any) => c.type === 'value' || c.type === 'percentage') ?? [];
                 if (valueCriteria.length === 0) return null;
+
+                if (assignMode === "individual") {
+                  return (
+                    <div>
+                      <Label>Budget / Target Values <span className="text-muted-foreground font-normal text-xs">(set targets for this employee)</span></Label>
+                      <div className="space-y-2 mt-2 bg-muted/30 p-3 rounded-xl">
+                        {valueCriteria.map((c: any) => (
+                          <div key={c.id} className="flex items-center gap-3">
+                            <div className="flex-1 min-w-0">
+                              <p className="text-sm font-medium truncate">{c.name}</p>
+                              <p className="text-xs text-muted-foreground">
+                                Default: {Number(c.targetValue ?? c.target_value ?? 0).toLocaleString()}{c.unit ? ` ${c.unit}` : ""}
+                                {(c.targetPeriod ?? c.target_period) && <> · {(c.targetPeriod ?? c.target_period).replace('_', ' ')}</>}
+                              </p>
+                            </div>
+                            <input
+                              type="number"
+                              min="0"
+                              step="0.01"
+                              className="w-40 px-3 py-2 rounded-lg border border-border text-sm outline-none focus:ring-2 focus:ring-primary/20"
+                              placeholder={String(c.targetValue ?? c.target_value ?? "")}
+                              value={budgetValues[c.id] ?? ""}
+                              onChange={e => setBudgetValues(prev => ({ ...prev, [c.id]: e.target.value }))}
+                            />
+                            {c.unit && <span className="text-xs text-muted-foreground shrink-0">{c.unit}</span>}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  );
+                }
+
+                const selectedCategories = [...new Set(
+                  [...selectedEmployeeIds].map(id => {
+                    const u = users?.find(u => u.id === id);
+                    return (u?.jobTitle || "Uncategorized").trim();
+                  })
+                )];
+
+                if (selectedCategories.length === 0) return null;
+
                 return (
                   <div>
-                    <Label>Budget / Target Values <span className="text-muted-foreground font-normal text-xs">(set targets for this employee)</span></Label>
-                    <div className="space-y-2 mt-2 bg-muted/30 p-3 rounded-xl">
-                      {valueCriteria.map((c: any) => (
-                        <div key={c.id} className="flex items-center gap-3">
-                          <div className="flex-1 min-w-0">
-                            <p className="text-sm font-medium truncate">{c.name}</p>
-                            <p className="text-xs text-muted-foreground">
-                              Default: {Number(c.targetValue ?? c.target_value ?? 0).toLocaleString()}{c.unit ? ` ${c.unit}` : ""}
-                              {(c.targetPeriod ?? c.target_period) && <> · {(c.targetPeriod ?? c.target_period).replace('_', ' ')}</>}
-                            </p>
+                    <Label>Budget / Target Values by Category</Label>
+                    <p className="text-xs text-muted-foreground mb-2">Set different targets for each job category. All employees in a category share the same budget.</p>
+                    <div className="space-y-4">
+                      {selectedCategories.map(category => (
+                        <div key={category} className="bg-muted/30 p-3 rounded-xl">
+                          <div className="flex items-center gap-2 mb-2">
+                            <Users className="w-4 h-4 text-primary" />
+                            <span className="text-sm font-semibold">{category}</span>
+                            <span className="text-xs text-muted-foreground">
+                              ({[...selectedEmployeeIds].filter(id => {
+                                const u = users?.find(u => u.id === id);
+                                return (u?.jobTitle || "Uncategorized").trim() === category;
+                              }).length} employees)
+                            </span>
                           </div>
-                          <input
-                            type="number"
-                            min="0"
-                            step="0.01"
-                            className="w-40 px-3 py-2 rounded-lg border border-border text-sm outline-none focus:ring-2 focus:ring-primary/20"
-                            placeholder={String(c.targetValue ?? c.target_value ?? "")}
-                            value={budgetValues[c.id] ?? ""}
-                            onChange={e => setBudgetValues(prev => ({ ...prev, [c.id]: e.target.value }))}
-                          />
-                          {c.unit && <span className="text-xs text-muted-foreground shrink-0">{c.unit}</span>}
+                          <div className="space-y-2 ml-6">
+                            {valueCriteria.map((c: any) => (
+                              <div key={c.id} className="flex items-center gap-3">
+                                <div className="flex-1 min-w-0">
+                                  <p className="text-sm font-medium truncate">{c.name}</p>
+                                  <p className="text-xs text-muted-foreground">
+                                    Default: {Number(c.targetValue ?? c.target_value ?? 0).toLocaleString()}{c.unit ? ` ${c.unit}` : ""}
+                                  </p>
+                                </div>
+                                <input
+                                  type="number"
+                                  min="0"
+                                  step="0.01"
+                                  className="w-36 px-3 py-2 rounded-lg border border-border text-sm outline-none focus:ring-2 focus:ring-primary/20"
+                                  placeholder={String(c.targetValue ?? c.target_value ?? "")}
+                                  value={categoryBudgets[category]?.[c.id] ?? ""}
+                                  onChange={e => setCategoryBudgetValue(category, c.id, e.target.value)}
+                                />
+                                {c.unit && <span className="text-xs text-muted-foreground shrink-0">{c.unit}</span>}
+                              </div>
+                            ))}
+                          </div>
                         </div>
                       ))}
                     </div>
@@ -447,8 +636,14 @@ export default function Appraisals() {
                 </div>
               </div>
               <div className="pt-4 flex justify-end gap-3">
-                <Button type="button" variant="ghost" onClick={() => setIsDialogOpen(false)}>Cancel</Button>
-                <Button type="submit" isLoading={createMutation.isPending}>Start Appraisal</Button>
+                <Button type="button" variant="ghost" onClick={() => { setIsDialogOpen(false); resetForm(); }}>Cancel</Button>
+                {assignMode === "category" ? (
+                  <Button type="submit" isLoading={bulkCreating} disabled={selectedEmployeeIds.size === 0}>
+                    Start {selectedEmployeeIds.size} Appraisal{selectedEmployeeIds.size !== 1 ? "s" : ""}
+                  </Button>
+                ) : (
+                  <Button type="submit" isLoading={createMutation.isPending}>Start Appraisal</Button>
+                )}
               </div>
             </form>
           </Card>
