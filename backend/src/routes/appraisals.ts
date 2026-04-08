@@ -120,7 +120,9 @@ router.get("/appraisals", requireAuth, async (req: AuthRequest, res) => {
   }
 });
 
-function nextAppraisalStatus(current: string, workflowType: string, allReviewersDone: boolean): string | null {
+type AppraisalStatusValue = "pending" | "self_review" | "manager_review" | "pending_approval" | "completed";
+
+function nextAppraisalStatus(current: string, workflowType: string, allReviewersDone: boolean): AppraisalStatusValue | null {
   if (current === "self_review") return "manager_review";
   if (current === "manager_review") {
     if (!allReviewersDone) return null; // stay in manager_review, still more reviewers
@@ -251,7 +253,7 @@ router.put("/appraisals/:id", requireAuth, async (req: AuthRequest, res) => {
         .where(eq(appraisalReviewersTable.appraisalId, appraisalId));
       await db.delete(appraisalReviewerScoresTable)
         .where(eq(appraisalReviewerScoresTable.appraisalId, appraisalId));
-      updates.status = "self_review" as any;
+      updates.status = "self_review";
       updates.overallScore = null;
       updates.managerComment = null;
 
@@ -310,7 +312,7 @@ router.put("/appraisals/:id", requireAuth, async (req: AuthRequest, res) => {
         if (!hasNext) {
           // All reviewers done — advance appraisal status
           const next = nextAppraisalStatus(current.status, current.workflowType, true);
-          if (next) updates.status = next as any;
+          if (next) updates.status = next;
         }
         // If hasNext, stay in manager_review for the next reviewer
       } else if (current.status === "pending_approval") {
