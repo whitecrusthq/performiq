@@ -43,9 +43,6 @@ Thumbs.db
 # TypeScript build info
 *.tsbuildinfo
 
-# Drizzle
-drizzle/
-
 # Misc
 .sass-cache/
 connect.lock

@@ -9,8 +9,13 @@ if (!process.env.DATABASE_URL) {
 }
 
 export default defineConfig({
-  schema: path.join(__dirname, "./src/db/schema/index.ts"),
+  schema: "./src/db/schema/index.ts",
+  out: "./drizzle",
   dialect: "postgresql",
+  migrations: {
+    table: 'migrations',
+    schema: 'public',
+  },
   dbCredentials: {
     url: process.env.DATABASE_URL,
   },
