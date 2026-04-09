@@ -9,6 +9,7 @@ export const criteriaTable = pgTable("criteria", {
   type: text("type").notNull().default("rating"), // 'rating' | 'percentage' | 'value'
   targetValue: numeric("target_value", { precision: 15, scale: 2 }),
   unit: text("unit"), // e.g. '%', '$', 'units'
+  targetPeriod: text("target_period"), // 'monthly' | 'quarterly' | 'half_year' | 'yearly'
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 

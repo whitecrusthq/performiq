@@ -120,7 +120,9 @@ router.get("/appraisals", requireAuth, async (req: AuthRequest, res) => {
   }
 });
 
-function nextAppraisalStatus(current: string, workflowType: string, allReviewersDone: boolean): string | null {
+type AppraisalStatusValue = "pending" | "self_review" | "manager_review" | "pending_approval" | "completed";
+
+function nextAppraisalStatus(current: string, workflowType: string, allReviewersDone: boolean): AppraisalStatusValue | null {
   if (current === "self_review") return "manager_review";
   if (current === "manager_review") {
     if (!allReviewersDone) return null; // stay in manager_review, still more reviewers
@@ -174,9 +176,21 @@ router.post("/appraisals", requireAuth, async (req: AuthRequest, res) => {
       criteriaToScore = criteriaToScore.filter(c => groupCriterionIds.has(c.id));
     }
 
+    const { budgetValues } = req.body;
+    const budgetMap: Record<number, number> = {};
+    if (budgetValues && typeof budgetValues === 'object') {
+      for (const [k, v] of Object.entries(budgetValues)) {
+        budgetMap[Number(k)] = Number(v);
+      }
+    }
+
     if (criteriaToScore.length > 0) {
       await db.insert(appraisalScoresTable).values(
-        criteriaToScore.map(c => ({ appraisalId: appraisal.id, criterionId: c.id }))
+        criteriaToScore.map(c => ({
+          appraisalId: appraisal.id,
+          criterionId: c.id,
+          budgetValue: budgetMap[c.id] != null ? String(budgetMap[c.id]) : null,
+        }))
       );
     }
 
@@ -188,10 +202,123 @@ router.post("/appraisals", requireAuth, async (req: AuthRequest, res) => {
   }
 });
 
+router.post("/appraisals/bulk", requireAuth, async (req: AuthRequest, res) => {
+  try {
+    if (!["admin", "super_admin", "manager"].includes(req.user!.role)) {
+      res.status(403).json({ error: "Forbidden" }); return;
+    }
+    const { cycleId, employeeIds, reviewerIds, workflowType, criteriaGroupId, budgetsByCategory } = req.body;
+    if (!Array.isArray(employeeIds) || employeeIds.length === 0) {
+      res.status(400).json({ error: "employeeIds must be a non-empty array" }); return;
+    }
+
+    const uniqueEmpIds = [...new Set(employeeIds.map(Number).filter(n => !isNaN(n) && n > 0))];
+    if (uniqueEmpIds.length === 0) {
+      res.status(400).json({ error: "No valid employee IDs provided" }); return;
+    }
+
+    const employees = await db.select().from(usersTable)
+      .where(inArray(usersTable.id, uniqueEmpIds));
+    const empMap = Object.fromEntries(employees.map(e => [e.id, e]));
+
+    if (req.user!.role === "manager") {
+      const teamMembers = await db.select({ id: usersTable.id }).from(usersTable)
+        .where(eq(usersTable.managerId, req.user!.id));
+      const teamIds = new Set(teamMembers.map(m => m.id));
+      const unauthorized = uniqueEmpIds.filter(id => !teamIds.has(id));
+      if (unauthorized.length > 0) {
+        res.status(403).json({ error: "You can only create appraisals for your team members" }); return;
+      }
+    }
+
+    const orderedReviewerIds: number[] = Array.isArray(reviewerIds) && reviewerIds.length > 0
+      ? reviewerIds.map(Number)
+      : (req.user!.role !== "employee" ? [req.user!.id] : []);
+
+    let criteriaToScore = await db.select().from(criteriaTable);
+    if (criteriaGroupId) {
+      const groupItems = await db.select().from(criteriaGroupItemsTable)
+        .where(eq(criteriaGroupItemsTable.groupId, Number(criteriaGroupId)));
+      const groupCriterionIds = new Set(groupItems.map(i => i.criterionId));
+      criteriaToScore = criteriaToScore.filter(c => groupCriterionIds.has(c.id));
+    }
+
+    const categoryBudgets: Record<string, Record<number, number>> = budgetsByCategory && typeof budgetsByCategory === 'object' ? budgetsByCategory : {};
+
+    const results = await db.transaction(async (tx) => {
+      const created = [];
+      for (const empId of uniqueEmpIds) {
+        const emp = empMap[empId];
+        if (!emp) continue;
+
+        const [appraisal] = await tx.insert(appraisalsTable)
+          .values({
+            cycleId: Number(cycleId),
+            employeeId: empId,
+            reviewerId: orderedReviewerIds[0] ?? null,
+            workflowType: workflowType ?? "admin_approval",
+            status: "self_review",
+            criteriaGroupId: criteriaGroupId ? Number(criteriaGroupId) : null,
+          })
+          .returning();
+
+        if (orderedReviewerIds.length > 0) {
+          await tx.insert(appraisalReviewersTable).values(
+            orderedReviewerIds.map((rid, idx) => ({
+              appraisalId: appraisal.id,
+              reviewerId: rid,
+              orderIndex: idx,
+              status: 'pending',
+            }))
+          ).onConflictDoNothing();
+        }
+
+        const category = (emp.jobTitle || "Uncategorized").trim();
+        const catBudget = categoryBudgets[category] || {};
+
+        if (criteriaToScore.length > 0) {
+          await tx.insert(appraisalScoresTable).values(
+            criteriaToScore.map(c => ({
+              appraisalId: appraisal.id,
+              criterionId: c.id,
+              budgetValue: catBudget[c.id] != null ? String(catBudget[c.id]) : null,
+            }))
+          );
+        }
+
+        created.push(appraisal);
+      }
+      return created;
+    });
+
+    res.status(201).json({ created: results.length, appraisalIds: results.map(a => a.id) });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Server error" });
+  }
+});
+
 router.get("/appraisals/:id", requireAuth, async (req: AuthRequest, res) => {
   try {
     const [appraisal] = await db.select().from(appraisalsTable).where(eq(appraisalsTable.id, Number(req.params.id))).limit(1);
     if (!appraisal) { res.status(404).json({ error: "Not found" }); return; }
+
+    const userId = req.user!.id;
+    const userRole = req.user!.role;
+    if (userRole === "employee" && appraisal.employeeId !== userId) {
+      res.status(403).json({ error: "You can only view your own appraisals" }); return;
+    }
+    if (userRole === "manager") {
+      const isOwner = appraisal.employeeId === userId;
+      const isReviewer = await db.select().from(appraisalReviewersTable)
+        .where(and(eq(appraisalReviewersTable.appraisalId, appraisal.id), eq(appraisalReviewersTable.reviewerId, userId)))
+        .limit(1);
+      const teamMembers = await db.select({ id: usersTable.id }).from(usersTable).where(eq(usersTable.managerId, userId));
+      const isTeamManager = teamMembers.some(m => m.id === appraisal.employeeId);
+      if (!isOwner && isReviewer.length === 0 && !isTeamManager) {
+        res.status(403).json({ error: "You can only view appraisals for your team or reviews assigned to you" }); return;
+      }
+    }
 
     const scores = await db.select().from(appraisalScoresTable).where(eq(appraisalScoresTable.appraisalId, appraisal.id));
     const enrichedScores = await Promise.all(scores.map(async s => {
@@ -218,7 +345,131 @@ router.put("/appraisals/:id", requireAuth, async (req: AuthRequest, res) => {
     const [current] = await db.select().from(appraisalsTable).where(eq(appraisalsTable.id, appraisalId)).limit(1);
     if (!current) { res.status(404).json({ error: "Not found" }); return; }
 
+    const putUserId = req.user!.id;
+    const putUserRole = req.user!.role;
+    if (putUserRole === "employee" && current.employeeId !== putUserId) {
+      res.status(403).json({ error: "You can only update your own appraisals" }); return;
+    }
+    if (putUserRole === "manager") {
+      const isOwner = current.employeeId === putUserId;
+      const isReviewerCheck = await db.select().from(appraisalReviewersTable)
+        .where(and(eq(appraisalReviewersTable.appraisalId, appraisalId), eq(appraisalReviewersTable.reviewerId, putUserId)))
+        .limit(1);
+      const teamMembersCheck = await db.select({ id: usersTable.id }).from(usersTable).where(eq(usersTable.managerId, putUserId));
+      const isTeamMgr = teamMembersCheck.some(m => m.id === current.employeeId);
+      if (!isOwner && isReviewerCheck.length === 0 && !isTeamMgr) {
+        res.status(403).json({ error: "You can only update appraisals for your team or reviews assigned to you" }); return;
+      }
+    }
+
     const updates: Partial<typeof appraisalsTable.$inferInsert> = {};
+
+    const [preSubmitReviewerRow] = current.status === "manager_review"
+      ? await db.select().from(appraisalReviewersTable)
+          .where(and(eq(appraisalReviewersTable.appraisalId, appraisalId), eq(appraisalReviewersTable.status, 'in_progress')))
+          .limit(1)
+      : [undefined];
+    const submittingReviewerId = preSubmitReviewerRow?.reviewerId ?? req.user!.id;
+
+    if (action === "resend_review") {
+      const isEmployee = req.user!.id === current.employeeId;
+      if (!isEmployee && !["admin", "super_admin", "manager"].includes(req.user!.role)) {
+        res.status(403).json({ error: "Only the employee, admins, or managers can resend for review" }); return;
+      }
+      if (req.user!.role === "manager" && !isEmployee) {
+        const isReviewer = await db.select().from(appraisalReviewersTable)
+          .where(and(eq(appraisalReviewersTable.appraisalId, appraisalId), eq(appraisalReviewersTable.reviewerId, req.user!.id)))
+          .limit(1);
+        const teamMembers = await db.select({ id: usersTable.id }).from(usersTable).where(eq(usersTable.managerId, req.user!.id));
+        const isManager = teamMembers.some(m => m.id === current.employeeId);
+        if (isReviewer.length === 0 && !isManager) {
+          res.status(403).json({ error: "You can only resend appraisals for your team members or reviews assigned to you" }); return;
+        }
+      }
+      await db.update(appraisalReviewersTable)
+        .set({ status: 'pending', managerComment: null, reviewedAt: null })
+        .where(eq(appraisalReviewersTable.appraisalId, appraisalId));
+      await db.delete(appraisalReviewerScoresTable)
+        .where(eq(appraisalReviewerScoresTable.appraisalId, appraisalId));
+      updates.status = "self_review";
+      updates.overallScore = null;
+      updates.managerComment = null;
+
+      const { budgetValues: resendBudgets } = req.body;
+      if (resendBudgets && typeof resendBudgets === 'object') {
+        for (const [critIdStr, val] of Object.entries(resendBudgets)) {
+          await db.update(appraisalScoresTable)
+            .set({ budgetValue: val != null ? String(val) : null, managerScore: null, managerNote: null })
+            .where(and(eq(appraisalScoresTable.appraisalId, appraisalId), eq(appraisalScoresTable.criterionId, Number(critIdStr))));
+        }
+      }
+    }
+
+    if (action === "update_budgets") {
+      if (!["admin", "super_admin", "manager"].includes(req.user!.role)) {
+        res.status(403).json({ error: "Only admins/managers can update budget values" }); return;
+      }
+      if (req.user!.role === "manager") {
+        const isReviewer = await db.select().from(appraisalReviewersTable)
+          .where(and(eq(appraisalReviewersTable.appraisalId, appraisalId), eq(appraisalReviewersTable.reviewerId, req.user!.id)))
+          .limit(1);
+        const teamMembers = await db.select({ id: usersTable.id }).from(usersTable).where(eq(usersTable.managerId, req.user!.id));
+        const isManager = teamMembers.some(m => m.id === current.employeeId);
+        if (isReviewer.length === 0 && !isManager) {
+          res.status(403).json({ error: "You can only update budgets for your team members or reviews assigned to you" }); return;
+        }
+      }
+      const { budgetValues: budgetUpdates } = req.body;
+      if (budgetUpdates && typeof budgetUpdates === 'object') {
+        for (const [critIdStr, val] of Object.entries(budgetUpdates)) {
+          await db.update(appraisalScoresTable)
+            .set({ budgetValue: val != null ? String(val) : null })
+            .where(and(eq(appraisalScoresTable.appraisalId, appraisalId), eq(appraisalScoresTable.criterionId, Number(critIdStr))));
+        }
+      }
+    }
+
+    if (action === "update_actuals") {
+      if (!["admin", "super_admin", "manager"].includes(req.user!.role)) {
+        res.status(403).json({ error: "Only admins/managers can update actual values" }); return;
+      }
+      const { adminActualValues } = req.body;
+      if (adminActualValues && typeof adminActualValues === 'object') {
+        for (const [critIdStr, val] of Object.entries(adminActualValues)) {
+          await db.update(appraisalScoresTable)
+            .set({ adminActualValue: val != null ? String(val) : null })
+            .where(and(eq(appraisalScoresTable.appraisalId, appraisalId), eq(appraisalScoresTable.criterionId, Number(critIdStr))));
+        }
+      }
+      const allScores = await db.select().from(appraisalScoresTable).where(eq(appraisalScoresTable.appraisalId, appraisalId));
+      const enrichedScores = await Promise.all(allScores.map(async s => {
+        const [criterion] = await db.select().from(criteriaTable).where(eq(criteriaTable.id, s.criterionId)).limit(1);
+        return { ...s, criterion };
+      }));
+      const [enriched] = await Promise.all([enrichAppraisal(current)]);
+      res.json({ ...enriched, scores: enrichedScores });
+      return;
+    }
+
+    if (action === "accept_value") {
+      if (!["admin", "super_admin", "manager"].includes(req.user!.role)) {
+        res.status(403).json({ error: "Only admins/managers can accept values" }); return;
+      }
+      const { criterionId, accepted } = req.body;
+      if (criterionId && accepted) {
+        await db.update(appraisalScoresTable)
+          .set({ acceptedValue: accepted })
+          .where(and(eq(appraisalScoresTable.appraisalId, appraisalId), eq(appraisalScoresTable.criterionId, Number(criterionId))));
+      }
+      const allScores = await db.select().from(appraisalScoresTable).where(eq(appraisalScoresTable.appraisalId, appraisalId));
+      const enrichedScores = await Promise.all(allScores.map(async s => {
+        const [criterion] = await db.select().from(criteriaTable).where(eq(criteriaTable.id, s.criterionId)).limit(1);
+        return { ...s, criterion };
+      }));
+      const [enriched] = await Promise.all([enrichAppraisal(current)]);
+      res.json({ ...enriched, scores: enrichedScores });
+      return;
+    }
 
     if (action === "submit") {
       if (current.status === "self_review") {
@@ -241,7 +492,7 @@ router.put("/appraisals/:id", requireAuth, async (req: AuthRequest, res) => {
         if (!hasNext) {
           // All reviewers done — advance appraisal status
           const next = nextAppraisalStatus(current.status, current.workflowType, true);
-          if (next) updates.status = next as any;
+          if (next) updates.status = next;
         }
         // If hasNext, stay in manager_review for the next reviewer
       } else if (current.status === "pending_approval") {
@@ -256,13 +507,7 @@ router.put("/appraisals/:id", requireAuth, async (req: AuthRequest, res) => {
       updates.managerComment = managerComment;
     }
 
-    // Find current in-progress reviewer (if this is a manager/reviewer action)
-    const [inProgressReviewerRow] = current.status === "manager_review"
-      ? await db.select().from(appraisalReviewersTable)
-          .where(and(eq(appraisalReviewersTable.appraisalId, appraisalId), eq(appraisalReviewersTable.status, 'in_progress')))
-          .limit(1)
-      : [undefined];
-    const currentReviewerId = inProgressReviewerRow?.reviewerId ?? req.user!.id;
+    const currentReviewerId = submittingReviewerId;
 
     if (scores && Array.isArray(scores)) {
       for (const score of scores) {

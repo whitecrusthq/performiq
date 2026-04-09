@@ -10,6 +10,14 @@ import { apiFetch } from "@/lib/utils";
 const authHeader = () => ({ Authorization: `Bearer ${localStorage.getItem("token")}` });
 
 type CriteriaType = "rating" | "percentage" | "value";
+type TargetPeriod = "monthly" | "quarterly" | "half_year" | "yearly";
+
+const PERIOD_LABELS: Record<TargetPeriod, { label: string; months: number }> = {
+  monthly:   { label: "Monthly",   months: 1 },
+  quarterly: { label: "Quarterly", months: 3 },
+  half_year: { label: "Half Year", months: 6 },
+  yearly:    { label: "Yearly",    months: 12 },
+};
 
 interface CriteriaGroup {
   id: number;
@@ -42,6 +50,7 @@ export default function Criteria() {
   const [formData, setFormData] = useState({
     name: "", description: "", category: "Core", weight: 10,
     type: "rating" as CriteriaType, targetValue: "", unit: "",
+    targetPeriod: "" as string,
   });
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -54,6 +63,7 @@ export default function Criteria() {
       type: formData.type,
       targetValue: formData.type !== "rating" && formData.targetValue ? Number(formData.targetValue) : null,
       unit: formData.type !== "rating" && formData.unit ? formData.unit : null,
+      targetPeriod: formData.type !== "rating" && formData.targetPeriod ? formData.targetPeriod : null,
     };
     const cb = { onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["/api/criteria"] }); setIsDialogOpen(false); } };
     if (editingId) updateMutation.mutate({ id: editingId, data: payload }, cb);
@@ -66,6 +76,7 @@ export default function Criteria() {
       type: (crit.type ?? "rating") as CriteriaType,
       targetValue: crit.targetValue ?? crit.target_value ?? "",
       unit: crit.unit ?? "",
+      targetPeriod: crit.targetPeriod ?? crit.target_period ?? "",
     });
     setEditingId(crit.id);
     setIsDialogOpen(true);
@@ -172,7 +183,7 @@ export default function Criteria() {
       <PageHeader title="Evaluation Criteria" description="Configure the competencies and metrics used in appraisals.">
         <Button onClick={() => {
           if (activeTab === "criteria") {
-            setFormData({ name: "", description: "", category: "Core", weight: 10, type: "rating", targetValue: "", unit: "" });
+            setFormData({ name: "", description: "", category: "Core", weight: 10, type: "rating", targetValue: "", unit: "", targetPeriod: "" });
             setEditingId(null);
             setIsDialogOpen(true);
           } else {
@@ -247,6 +258,11 @@ export default function Criteria() {
                             {(crit.type === "percentage" || crit.type === "value") && (crit.targetValue ?? crit.target_value) && (
                               <span className="bg-muted px-2.5 py-1 rounded-lg text-xs font-medium">
                                 Target: {crit.targetValue ?? crit.target_value}{crit.unit ? ` ${crit.unit}` : ""}
+                              </span>
+                            )}
+                            {(crit.targetPeriod ?? crit.target_period) && (
+                              <span className="bg-blue-100 text-blue-700 px-2.5 py-1 rounded-lg text-xs font-semibold">
+                                {PERIOD_LABELS[(crit.targetPeriod ?? crit.target_period) as TargetPeriod]?.label ?? crit.targetPeriod ?? crit.target_period}
                               </span>
                             )}
                           </div>
@@ -357,26 +373,51 @@ export default function Criteria() {
                 </div>
               </div>
 
-              {/* Target value & unit — only for non-rating */}
+              {/* Target value, unit & period — only for non-rating */}
               {formData.type !== "rating" && (
-                <div className="grid grid-cols-2 gap-3 bg-muted/30 p-3 rounded-xl">
-                  <div>
-                    <Label>{formData.type === "percentage" ? "Target (%)" : "Target Value"}</Label>
-                    <Input
-                      type="number" step="0.01" min="0"
-                      value={formData.targetValue}
-                      onChange={e => setFormData({ ...formData, targetValue: e.target.value })}
-                      placeholder={formData.type === "percentage" ? "e.g. 100" : "e.g. 500000"}
-                      required
-                    />
+                <div className="space-y-3 bg-muted/30 p-3 rounded-xl">
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <Label>{formData.type === "percentage" ? "Target (%)" : "Target Value"}</Label>
+                      <Input
+                        type="number" step="0.01" min="0"
+                        value={formData.targetValue}
+                        onChange={e => setFormData({ ...formData, targetValue: e.target.value })}
+                        placeholder={formData.type === "percentage" ? "e.g. 100" : "e.g. 5000000"}
+                        required
+                      />
+                    </div>
+                    <div>
+                      <Label>Unit <span className="text-muted-foreground font-normal">(optional)</span></Label>
+                      <Input
+                        value={formData.unit}
+                        onChange={e => setFormData({ ...formData, unit: e.target.value })}
+                        placeholder={formData.type === "percentage" ? "%" : "$"}
+                      />
+                    </div>
                   </div>
                   <div>
-                    <Label>Unit <span className="text-muted-foreground font-normal">(optional)</span></Label>
-                    <Input
-                      value={formData.unit}
-                      onChange={e => setFormData({ ...formData, unit: e.target.value })}
-                      placeholder={formData.type === "percentage" ? "%" : "$"}
-                    />
+                    <Label>Target Period</Label>
+                    <div className="grid grid-cols-4 gap-2 mt-1.5">
+                      {(["monthly", "quarterly", "half_year", "yearly"] as TargetPeriod[]).map(p => (
+                        <button
+                          key={p}
+                          type="button"
+                          onClick={() => setFormData({ ...formData, targetPeriod: formData.targetPeriod === p ? "" : p })}
+                          className={`px-2 py-2 rounded-lg border text-xs font-medium transition-all text-center ${formData.targetPeriod === p ? "border-primary bg-primary/5 text-primary" : "border-border hover:bg-muted/40"}`}
+                        >
+                          {PERIOD_LABELS[p].label}
+                        </button>
+                      ))}
+                    </div>
+                    {formData.targetPeriod && formData.targetValue && (
+                      <p className="text-xs text-muted-foreground mt-2">
+                        {PERIOD_LABELS[formData.targetPeriod as TargetPeriod]?.label} target: {Number(formData.targetValue).toLocaleString()}{formData.unit ? ` ${formData.unit}` : ""}
+                        {formData.targetPeriod !== "monthly" && (
+                          <> (≈ {Math.round(Number(formData.targetValue) / PERIOD_LABELS[formData.targetPeriod as TargetPeriod].months).toLocaleString()}{formData.unit ? ` ${formData.unit}` : ""}/month)</>
+                        )}
+                      </p>
+                    )}
                   </div>
                 </div>
               )}

@@ -18,12 +18,13 @@ router.get("/criteria", requireAuth, async (_req, res) => {
 
 router.post("/criteria", requireAuth, requireRole("admin"), async (req, res) => {
   try {
-    const { name, description, category, weight, type, targetValue, unit } = req.body;
+    const { name, description, category, weight, type, targetValue, unit, targetPeriod } = req.body;
     const [criterion] = await db.insert(criteriaTable).values({
       name, description, category, weight,
       type: type ?? "rating",
       targetValue: targetValue ?? null,
       unit: unit ?? null,
+      targetPeriod: targetPeriod ?? null,
     }).returning();
     res.status(201).json(criterion);
   } catch {
@@ -33,9 +34,9 @@ router.post("/criteria", requireAuth, requireRole("admin"), async (req, res) => 
 
 router.put("/criteria/:id", requireAuth, requireRole("admin"), async (req, res) => {
   try {
-    const { name, description, category, weight, type, targetValue, unit } = req.body;
+    const { name, description, category, weight, type, targetValue, unit, targetPeriod } = req.body;
     const [criterion] = await db.update(criteriaTable)
-      .set({ name, description, category, weight, type: type ?? "rating", targetValue: targetValue ?? null, unit: unit ?? null })
+      .set({ name, description, category, weight, type: type ?? "rating", targetValue: targetValue ?? null, unit: unit ?? null, targetPeriod: targetPeriod ?? null })
       .where(eq(criteriaTable.id, Number(req.params.id)))
       .returning();
     if (!criterion) { res.status(404).json({ error: "Criterion not found" }); return; }
