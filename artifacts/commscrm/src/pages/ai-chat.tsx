@@ -157,6 +157,8 @@ export default function AiChat() {
   const [exceptionReason, setExceptionReason] = useState("");
   const [editingException, setEditingException] = useState<AiException | null>(null);
   const [showExceptionForm, setShowExceptionForm] = useState(false);
+  const [isUploadingExceptions, setIsUploadingExceptions] = useState(false);
+  const exceptionFileRef = useRef<HTMLInputElement>(null);
 
   // Provider settings form state
   const [editProvider, setEditProvider] = useState("gemini");
@@ -249,6 +251,37 @@ export default function AiChat() {
     },
     onError: () => toast({ title: "Failed to delete exception", variant: "destructive" }),
   });
+
+  const uploadExceptionFile = useCallback(async (file: File) => {
+    const allowed = ["application/pdf", "text/plain", "text/markdown", "text/csv"];
+    const allowedExt = [".pdf", ".txt", ".md", ".csv"];
+    const ext = "." + file.name.split(".").pop()?.toLowerCase();
+    if (!allowed.includes(file.type) && !allowedExt.includes(ext)) {
+      toast({ title: "Unsupported file type", description: "Please upload PDF, TXT, MD, or CSV files.", variant: "destructive" });
+      return;
+    }
+    if (file.size > 10 * 1024 * 1024) {
+      toast({ title: "File too large", description: "Maximum file size is 10 MB.", variant: "destructive" });
+      return;
+    }
+    setIsUploadingExceptions(true);
+    try {
+      const token = localStorage.getItem("crm_token");
+      const baseUrl = getBaseUrl();
+      const formData = new FormData();
+      formData.append("file", file);
+      const res = await fetch(`${baseUrl}/ai/exceptions/upload`, { method: "POST", headers: { Authorization: `Bearer ${token}` }, body: formData });
+      if (!res.ok) { const err = await res.json().catch(() => ({})); throw new Error(err.error || "Upload failed"); }
+      const data = await res.json();
+      qc.invalidateQueries({ queryKey: ["ai-exceptions"] });
+      toast({ title: "Exceptions imported!", description: `${data.imported} added, ${data.skipped} skipped (duplicates).` });
+    } catch (err: unknown) {
+      toast({ title: "Upload failed", description: err instanceof Error ? err.message : "Please try again.", variant: "destructive" });
+    } finally {
+      setIsUploadingExceptions(false);
+      if (exceptionFileRef.current) exceptionFileRef.current.value = "";
+    }
+  }, [qc, toast]);
 
   const uploadFile = useCallback(async (file: File) => {
     const allowed = ["application/pdf", "text/plain", "text/markdown", "text/csv"];
@@ -863,17 +896,38 @@ export default function AiChat() {
                     <CardTitle className="text-base">Exception List</CardTitle>
                     <CardDescription>Topics and phrases the AI will refuse to discuss or respond to.</CardDescription>
                   </div>
-                  <Button
-                    size="sm"
-                    onClick={() => {
-                      setEditingException(null);
-                      setExceptionPhrase("");
-                      setExceptionReason("");
-                      setShowExceptionForm(true);
+                  <div className="flex gap-2">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      disabled={isUploadingExceptions}
+                      onClick={() => exceptionFileRef.current?.click()}
+                    >
+                      {isUploadingExceptions ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <Upload className="h-4 w-4 mr-1" />}
+                      Upload File
+                    </Button>
+                    <Button
+                      size="sm"
+                      onClick={() => {
+                        setEditingException(null);
+                        setExceptionPhrase("");
+                        setExceptionReason("");
+                        setShowExceptionForm(true);
+                      }}
+                    >
+                      <Plus className="h-4 w-4 mr-1" /> Add Exception
+                    </Button>
+                  </div>
+                  <input
+                    ref={exceptionFileRef}
+                    type="file"
+                    accept=".pdf,.txt,.md,.csv"
+                    className="hidden"
+                    onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      if (file) uploadExceptionFile(file);
                     }}
-                  >
-                    <Plus className="h-4 w-4 mr-1" /> Add Exception
-                  </Button>
+                  />
                 </div>
               </CardHeader>
               <CardContent className="space-y-3">
@@ -988,6 +1042,16 @@ export default function AiChat() {
                   <p>• The AI will politely decline and offer to help with something else</p>
                   <p>• Toggle exceptions on/off without deleting them</p>
                   <p>• Useful for blocking competitor info, sensitive data, or off-topic requests</p>
+                </CardContent>
+              </Card>
+              <Card>
+                <CardHeader className="pb-2"><CardTitle className="text-sm">Upload file format</CardTitle></CardHeader>
+                <CardContent className="text-xs text-muted-foreground space-y-2">
+                  <p>Upload a PDF, TXT, MD, or CSV file with one exception per line.</p>
+                  <p>Optionally add a reason with a separator:</p>
+                  <p className="font-mono bg-muted rounded px-1.5 py-0.5">competitor pricing — Confidential</p>
+                  <p className="font-mono bg-muted rounded px-1.5 py-0.5">internal salary | HR policy</p>
+                  <p>Lines starting with #, //, or --- are ignored. Duplicates are skipped automatically.</p>
                 </CardContent>
               </Card>
               <Card>

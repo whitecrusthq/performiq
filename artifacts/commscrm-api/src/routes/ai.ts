@@ -299,6 +299,41 @@ router.post("/ai/exceptions", requireAuth, async (req: AuthRequest, res) => {
   }
 });
 
+router.post("/ai/exceptions/upload", requireAuth, upload.single("file"), async (req: AuthRequest, res) => {
+  try {
+    const file = req.file;
+    if (!file) { res.status(400).json({ error: "No file provided" }); return; }
+
+    const text = await extractText(file.buffer, file.mimetype);
+    if (!text.trim()) { res.status(400).json({ error: "Could not extract text from this file" }); return; }
+
+    const lines = text
+      .split("\n")
+      .map((l) => l.trim())
+      .filter((l) => l.length > 0 && l.length < 500)
+      .filter((l) => !/^#|^\/\/|^---/.test(l));
+
+    if (lines.length === 0) { res.status(400).json({ error: "No valid exception entries found in file" }); return; }
+
+    const created: InstanceType<typeof AiException>[] = [];
+    for (const line of lines) {
+      const separatorMatch = line.match(/^(.+?)\s*[—–\-|:]\s*(.+)$/);
+      const phrase = separatorMatch ? separatorMatch[1].trim() : line;
+      const reason = separatorMatch ? separatorMatch[2].trim() : null;
+      const existing = await AiException.findOne({ where: { phrase } });
+      if (!existing) {
+        const exception = await AiException.create({ phrase, reason });
+        created.push(exception);
+      }
+    }
+
+    res.status(201).json({ imported: created.length, skipped: lines.length - created.length, exceptions: created });
+  } catch (err: unknown) {
+    console.error("Exception upload error:", err);
+    res.status(500).json({ error: err instanceof Error ? err.message : "Upload failed" });
+  }
+});
+
 router.put("/ai/exceptions/:id", requireAuth, async (req: AuthRequest, res) => {
   try {
     const exception = await AiException.findByPk(req.params.id);
