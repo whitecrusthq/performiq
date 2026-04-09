@@ -340,7 +340,7 @@ export default function AppraisalDetail() {
                 const effectiveTarget = budget > 0 ? budget : target;
                 const periodLabel = (crit.targetPeriod ?? (crit as any).target_period) ? ((crit.targetPeriod ?? (crit as any).target_period) as string).replace('_', ' ') : null;
 
-                const ScoreInput = ({ color, isActive, isSelf }: { color: string; isActive: boolean; isSelf: boolean }) => {
+                const renderScoreInput = (color: string, isActive: boolean, isSelf: boolean) => {
                   if (!isActive) return null;
                   if (critType === "percentage" || critType === "value") {
                     const adminVal = Number(scoreItem.adminActualValue ?? (scoreItem as Record<string, unknown>).admin_actual_value ?? 0);
@@ -522,7 +522,7 @@ export default function AppraisalDetail() {
                   );
                 };
 
-                const ScoreDisplay = ({ scoreVal, noteVal, waitingMsg }: { scoreVal: any; noteVal: any; waitingMsg?: string }) => {
+                const renderScoreDisplay = (scoreVal: any, noteVal: any, waitingMsg?: string) => {
                   const actualVal = scoreItem.actualValue != null ? Number(scoreItem.actualValue) : null;
                   const displayPct = actualVal != null && effectiveTarget > 0 ? Math.min(100, (actualVal / effectiveTarget) * 100) : null;
                   const displayWeighted = displayPct != null ? (displayPct / 100) * Number(crit.weight) : null;
@@ -564,8 +564,8 @@ export default function AppraisalDetail() {
                         <User className="w-4 h-4 text-amber-600" /> Self Evaluation
                       </h5>
                       {isSelfReviewActive
-                        ? <ScoreInput color="amber" isActive={true} isSelf={true} />
-                        : <ScoreDisplay scoreVal={scoreItem.selfScore} noteVal={scoreItem.selfNote} waitingMsg="No comments provided." />
+                        ? renderScoreInput("amber", true, true)
+                        : renderScoreDisplay(scoreItem.selfScore, scoreItem.selfNote, "No comments provided.")
                       }
                     </div>
 
@@ -575,8 +575,8 @@ export default function AppraisalDetail() {
                         <CheckCircle2 className="w-4 h-4 text-blue-600" /> Manager Evaluation
                       </h5>
                       {isManagerReviewActive
-                        ? <ScoreInput color="blue" isActive={true} isSelf={false} />
-                        : <ScoreDisplay scoreVal={scoreItem.managerScore} noteVal={scoreItem.managerNote} waitingMsg="Waiting for manager review." />
+                        ? renderScoreInput("blue", true, false)
+                        : renderScoreDisplay(scoreItem.managerScore, scoreItem.managerNote, "Waiting for manager review.")
                       }
                     </div>
                   </div>
