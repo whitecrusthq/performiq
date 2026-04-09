@@ -366,18 +366,6 @@ export default function AppraisalDetail() {
                           </div>
                         )}
 
-                        {adminVal > 0 && (
-                          <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg">
-                            <div className="flex items-center gap-2 text-sm">
-                              <ShieldCheck className="w-4 h-4 text-blue-600 shrink-0" />
-                              <span className="font-semibold text-blue-700">Back-Office Value:</span>
-                              <span className="font-bold text-blue-800">{adminVal.toLocaleString()}{unit ? ` ${unit}` : ""}</span>
-                            </div>
-                            {accepted === "admin" && (
-                              <p className="text-xs text-blue-600 mt-1 ml-6">Accepted by reviewer</p>
-                            )}
-                          </div>
-                        )}
 
                         {isSelf && adminVal > 0 && (() => {
                           const isDeclined = declinedCriteria.has(crit.id);
