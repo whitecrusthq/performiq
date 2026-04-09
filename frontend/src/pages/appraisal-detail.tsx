@@ -6,6 +6,7 @@ import { PageHeader, Card, StatusBadge, Button, Label } from "@/components/share
 import { useAuth } from "@/hooks/use-auth";
 import { CheckCircle2, User, Star, FileText, ShieldCheck, ThumbsUp, ArrowRight, Users, MessageSquare, ArrowLeft, RotateCcw, Target } from "lucide-react";
 import { format } from "date-fns";
+import { apiFetch } from "@/lib/utils";
 
 const WORKFLOW_ROUTES: Record<string, { label: string; steps: string[] }> = {
   self_only:       { label: "Self Only",              steps: ["Self Review", "Completed"] },
@@ -28,9 +29,11 @@ export default function AppraisalDetail() {
 
   const updateMutation = useUpdateAppraisal({ request: { headers } });
 
-  // Local form state for scores
   const [scores, setScores] = useState<Record<number, { score: number, note: string, actualValue?: number }>>({});
   const [generalComment, setGeneralComment] = useState("");
+  const [adminActualValues, setAdminActualValues] = useState<Record<number, string>>({});
+  const [savingAdminActuals, setSavingAdminActuals] = useState(false);
+  const [showAdminActuals, setShowAdminActuals] = useState(false);
 
   useEffect(() => {
     if (appraisal) {
@@ -73,6 +76,35 @@ export default function AppraisalDetail() {
       ...prev,
       [criterionId]: { ...prev[criterionId], actualValue: actualVal, score: Math.round(computed * 10) / 10 }
     }));
+  };
+
+  const handleSaveAdminActuals = async () => {
+    setSavingAdminActuals(true);
+    const vals: Record<number, number> = {};
+    for (const [k, v] of Object.entries(adminActualValues)) {
+      if (v && Number(v) > 0) vals[Number(k)] = Number(v);
+    }
+    try {
+      await apiFetch(`/api/appraisals/${appraisalId}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "update_actuals", adminActualValues: vals }),
+      });
+      queryClient.invalidateQueries({ queryKey: [`/api/appraisals/${appraisalId}`] });
+      setShowAdminActuals(false);
+    } catch {}
+    setSavingAdminActuals(false);
+  };
+
+  const handleAcceptValue = async (appraisalId: number, criterionId: number, accepted: "admin" | "employee") => {
+    try {
+      await apiFetch(`/api/appraisals/${appraisalId}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "accept_value", criterionId, accepted }),
+      });
+      queryClient.invalidateQueries({ queryKey: [`/api/appraisals/${appraisalId}`] });
+    } catch {}
   };
 
   const handleSubmit = (action: 'save' | 'submit') => {
@@ -252,8 +284,15 @@ export default function AppraisalDetail() {
                 const ScoreInput = ({ color, isActive, isSelf }: { color: string; isActive: boolean; isSelf: boolean }) => {
                   if (!isActive) return null;
                   if (critType === "percentage" || critType === "value") {
-                    const computedPct = effectiveTarget > 0 && myVal.actualValue != null ? Math.min(100, (myVal.actualValue / effectiveTarget) * 100) : null;
+                    const adminVal = Number(scoreItem.adminActualValue ?? (scoreItem as Record<string, unknown>).admin_actual_value ?? 0);
+                    const empVal = myVal.actualValue;
+                    const accepted: string | null = (scoreItem.acceptedValue ?? (scoreItem as Record<string, unknown>).accepted_value ?? null) as string | null;
+                    const hasDispute = adminVal > 0 && empVal != null && empVal > 0 && Math.abs(adminVal - empVal) > 0.01;
+
+                    const displayVal = accepted === "employee" ? empVal : accepted === "admin" ? adminVal : (empVal ?? adminVal);
+                    const computedPct = effectiveTarget > 0 && displayVal ? Math.min(100, (displayVal / effectiveTarget) * 100) : null;
                     const weightedScore = computedPct != null ? (computedPct / 100) * Number(crit.weight) : null;
+
                     return (
                       <div className="space-y-3">
                         {budget > 0 && (
@@ -265,38 +304,100 @@ export default function AppraisalDetail() {
                             </div>
                           </div>
                         )}
-                        <div>
-                          <Label>{critType === "percentage" ? `Actual %${unit ? ` (${unit})` : ""}` : `Actual Value${unit ? ` (${unit})` : ""}`}</Label>
-                          <div className="flex items-center gap-2 mt-1">
-                            <input
-                              type="number" min="0" step="0.01"
-                              value={myVal.actualValue ?? ""}
-                              onChange={e => handleActualValueChange(crit.id, parseFloat(e.target.value) || 0, target, budget)}
-                              className="flex-1 px-3 py-2 rounded-lg border border-border text-sm outline-none focus:ring-2 focus:ring-primary/20"
-                              placeholder={`Target: ${effectiveTarget.toLocaleString()}${unit ? ` ${unit}` : ""}`}
-                            />
-                            {unit && <span className="text-sm text-muted-foreground font-medium shrink-0">{unit}</span>}
-                          </div>
-                          {myVal.actualValue != null && effectiveTarget > 0 && (
-                            <div className="mt-2 space-y-1">
-                              <div className="flex items-center gap-3">
-                                <div className="flex-1 bg-muted rounded-full h-2.5">
-                                  <div
-                                    className={`h-2.5 rounded-full transition-all ${(computedPct ?? 0) >= 100 ? 'bg-green-500' : (computedPct ?? 0) >= 70 ? (color === 'amber' ? 'bg-amber-500' : 'bg-blue-500') : 'bg-red-400'}`}
-                                    style={{ width: `${Math.min(100, computedPct ?? 0)}%` }}
-                                  />
-                                </div>
-                                <span className={`text-sm font-bold ${(computedPct ?? 0) >= 100 ? 'text-green-700' : (computedPct ?? 0) >= 70 ? 'text-amber-700' : 'text-red-600'}`}>
-                                  {computedPct?.toFixed(1)}%
-                                </span>
-                              </div>
-                              <div className="flex justify-between text-xs text-muted-foreground">
-                                <span>Actual: {myVal.actualValue.toLocaleString()} / {effectiveTarget.toLocaleString()}{unit ? ` ${unit}` : ""}</span>
-                                <span>Weighted: {weightedScore?.toFixed(1)}% of {crit.weight}%</span>
-                              </div>
+
+                        {adminVal > 0 && (
+                          <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                            <div className="flex items-center gap-2 text-sm">
+                              <ShieldCheck className="w-4 h-4 text-blue-600 shrink-0" />
+                              <span className="font-semibold text-blue-700">Back-Office Value:</span>
+                              <span className="font-bold text-blue-800">{adminVal.toLocaleString()}{unit ? ` ${unit}` : ""}</span>
                             </div>
-                          )}
-                        </div>
+                            {accepted === "admin" && (
+                              <p className="text-xs text-blue-600 mt-1 ml-6">Accepted by reviewer</p>
+                            )}
+                          </div>
+                        )}
+
+                        {isSelf && (
+                          <div>
+                            <Label>
+                              {adminVal > 0 
+                                ? `Your Counter Value (optional — submit if you disagree with the back-office figure)` 
+                                : critType === "percentage" ? `Actual %${unit ? ` (${unit})` : ""}` : `Actual Value${unit ? ` (${unit})` : ""}`}
+                            </Label>
+                            <div className="flex items-center gap-2 mt-1">
+                              <input
+                                type="number" min="0" step="0.01"
+                                value={empVal ?? ""}
+                                onChange={e => handleActualValueChange(crit.id, parseFloat(e.target.value) || 0, target, budget)}
+                                className={`flex-1 px-3 py-2 rounded-lg border text-sm outline-none focus:ring-2 focus:ring-primary/20 ${hasDispute ? "border-amber-400 bg-amber-50/50" : "border-border"}`}
+                                placeholder={adminVal > 0 ? `Back-office: ${adminVal.toLocaleString()}` : `Target: ${effectiveTarget.toLocaleString()}${unit ? ` ${unit}` : ""}`}
+                              />
+                              {unit && <span className="text-sm text-muted-foreground font-medium shrink-0">{unit}</span>}
+                            </div>
+                            {hasDispute && (
+                              <p className="text-xs text-amber-600 mt-1 font-medium">
+                                Your value differs from the back-office figure. The reviewer will compare both before finalizing.
+                              </p>
+                            )}
+                          </div>
+                        )}
+
+                        {!isSelf && !isActive && adminVal > 0 && empVal != null && empVal > 0 && (
+                          <div className="text-sm text-muted-foreground">
+                            Employee reported: <span className="font-semibold">{empVal.toLocaleString()}{unit ? ` ${unit}` : ""}</span>
+                          </div>
+                        )}
+
+                        {hasDispute && !isSelf && isActive && (
+                          <div className="p-3 bg-amber-50 border border-amber-300 rounded-lg space-y-2">
+                            <div className="flex items-center gap-2 text-sm font-semibold text-amber-800">
+                              <span className="text-base">&#9888;</span> Value Dispute
+                            </div>
+                            <div className="grid grid-cols-2 gap-3">
+                              <button
+                                type="button"
+                                onClick={() => handleAcceptValue(appraisalId, crit.id, "admin")}
+                                className={`p-2.5 rounded-lg border text-sm text-left transition-colors ${accepted === "admin" ? "border-blue-500 bg-blue-50 ring-2 ring-blue-200" : "border-border hover:bg-blue-50/50"}`}
+                              >
+                                <p className="font-semibold text-blue-700">Back-Office</p>
+                                <p className="font-bold">{adminVal.toLocaleString()}{unit ? ` ${unit}` : ""}</p>
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleAcceptValue(appraisalId, crit.id, "employee")}
+                                className={`p-2.5 rounded-lg border text-sm text-left transition-colors ${accepted === "employee" ? "border-amber-500 bg-amber-50 ring-2 ring-amber-200" : "border-border hover:bg-amber-50/50"}`}
+                              >
+                                <p className="font-semibold text-amber-700">Employee Counter</p>
+                                <p className="font-bold">{empVal!.toLocaleString()}{unit ? ` ${unit}` : ""}</p>
+                              </button>
+                            </div>
+                            {accepted && (
+                              <p className="text-xs text-green-700 font-medium">Accepted: {accepted === "admin" ? "Back-Office" : "Employee"} value</p>
+                            )}
+                          </div>
+                        )}
+
+                        {displayVal != null && displayVal > 0 && effectiveTarget > 0 && (
+                          <div className="space-y-1">
+                            <div className="flex items-center gap-3">
+                              <div className="flex-1 bg-muted rounded-full h-2.5">
+                                <div
+                                  className={`h-2.5 rounded-full transition-all ${(computedPct ?? 0) >= 100 ? 'bg-green-500' : (computedPct ?? 0) >= 70 ? (color === 'amber' ? 'bg-amber-500' : 'bg-blue-500') : 'bg-red-400'}`}
+                                  style={{ width: `${Math.min(100, computedPct ?? 0)}%` }}
+                                />
+                              </div>
+                              <span className={`text-sm font-bold ${(computedPct ?? 0) >= 100 ? 'text-green-700' : (computedPct ?? 0) >= 70 ? 'text-amber-700' : 'text-red-600'}`}>
+                                {computedPct?.toFixed(1)}%
+                              </span>
+                            </div>
+                            <div className="flex justify-between text-xs text-muted-foreground">
+                              <span>Actual: {displayVal.toLocaleString()} / {effectiveTarget.toLocaleString()}{unit ? ` ${unit}` : ""}</span>
+                              <span>Weighted: {weightedScore?.toFixed(1)}% of {crit.weight}%</span>
+                            </div>
+                          </div>
+                        )}
+
                         <div>
                           <Label>Comments</Label>
                           <textarea
@@ -571,6 +672,106 @@ export default function AppraisalDetail() {
           </div>
         </Card>
       )}
+
+      {/* Admin: Set Back-Office Actual Values */}
+      {(user?.role === 'admin' || user?.role === 'super_admin' || user?.role === 'manager') &&
+        appraisal.status !== 'completed' && (() => {
+        const valueCriteria = appraisal.scores.filter(s => {
+          const t = s.criterion?.type ?? "rating";
+          return t === "value" || t === "percentage";
+        });
+        if (valueCriteria.length === 0) return null;
+        return (
+          <Card className="p-6 mb-8 border-blue-200 bg-blue-50/30">
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="text-lg font-bold flex items-center gap-2">
+                <ShieldCheck className="w-5 h-5 text-blue-600" />
+                Back-Office Actual Values
+              </h3>
+              <Button
+                variant="outline"
+                size="sm"
+                className="border-blue-300 text-blue-700 hover:bg-blue-100"
+                onClick={() => {
+                  if (!showAdminActuals) {
+                    const init: Record<number, string> = {};
+                    valueCriteria.forEach(s => {
+                      const existing = Number(s.adminActualValue ?? (s as Record<string, unknown>).admin_actual_value ?? 0);
+                      if (existing > 0) init[s.criterionId] = String(existing);
+                    });
+                    setAdminActualValues(init);
+                  }
+                  setShowAdminActuals(!showAdminActuals);
+                }}
+              >
+                {showAdminActuals ? "Cancel" : "Edit Values"}
+              </Button>
+            </div>
+            <p className="text-sm text-muted-foreground mb-3">
+              Enter the official actual values from back-office computation. The employee will see these and can submit a counter value if they disagree.
+            </p>
+            {!showAdminActuals ? (
+              <div className="space-y-2">
+                {valueCriteria.map(s => {
+                  const crit = s.criterion;
+                  const val = Number(s.adminActualValue ?? (s as Record<string, unknown>).admin_actual_value ?? 0);
+                  const empVal = Number(s.actualValue ?? 0);
+                  const hasDispute = val > 0 && empVal > 0 && Math.abs(val - empVal) > 0.01;
+                  return (
+                    <div key={s.criterionId} className="flex items-center justify-between py-2 px-3 bg-white/60 rounded-lg">
+                      <span className="text-sm font-medium">{crit?.name}</span>
+                      <div className="flex items-center gap-3">
+                        {val > 0 ? (
+                          <span className="text-sm font-bold text-blue-700">{val.toLocaleString()}{crit?.unit ? ` ${crit.unit}` : ""}</span>
+                        ) : (
+                          <span className="text-xs text-muted-foreground">Not set</span>
+                        )}
+                        {hasDispute && (
+                          <span className="text-xs font-semibold text-amber-600 bg-amber-100 px-2 py-0.5 rounded-full">Disputed</span>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {valueCriteria.map(s => {
+                  const crit = s.criterion;
+                  return (
+                    <div key={s.criterionId} className="flex items-center gap-3">
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium truncate">{crit?.name}</p>
+                        <p className="text-xs text-muted-foreground">
+                          Budget: {Number(s.budgetValue ?? (s as Record<string, unknown>).budget_value ?? crit?.targetValue ?? 0).toLocaleString()}{crit?.unit ? ` ${crit.unit}` : ""}
+                        </p>
+                      </div>
+                      <input
+                        type="number" min="0" step="0.01"
+                        className="w-44 px-3 py-2 rounded-lg border border-blue-300 text-sm outline-none focus:ring-2 focus:ring-blue-200 bg-white"
+                        placeholder="Actual value"
+                        value={adminActualValues[s.criterionId] ?? ""}
+                        onChange={e => setAdminActualValues(prev => ({ ...prev, [s.criterionId]: e.target.value }))}
+                      />
+                      {crit?.unit && <span className="text-xs text-muted-foreground shrink-0">{crit.unit}</span>}
+                    </div>
+                  );
+                })}
+                <div className="flex justify-end pt-2">
+                  <Button
+                    size="sm"
+                    className="bg-blue-600 hover:bg-blue-700 text-white gap-2"
+                    isLoading={savingAdminActuals}
+                    onClick={handleSaveAdminActuals}
+                  >
+                    <ShieldCheck className="w-4 h-4" /> Save Back-Office Values
+                  </Button>
+                </div>
+              </div>
+            )}
+          </Card>
+        );
+      })()}
 
       {/* Resend for Review — available for admins/managers when appraisal is beyond self_review */}
       {(user?.role === 'admin' || user?.role === 'super_admin' || user?.role === 'manager') &&

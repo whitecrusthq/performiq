@@ -421,6 +421,48 @@ router.put("/appraisals/:id", requireAuth, async (req: AuthRequest, res) => {
       }
     }
 
+    if (action === "update_actuals") {
+      if (!["admin", "super_admin", "manager"].includes(req.user!.role)) {
+        res.status(403).json({ error: "Only admins/managers can update actual values" }); return;
+      }
+      const { adminActualValues } = req.body;
+      if (adminActualValues && typeof adminActualValues === 'object') {
+        for (const [critIdStr, val] of Object.entries(adminActualValues)) {
+          await db.update(appraisalScoresTable)
+            .set({ adminActualValue: val != null ? String(val) : null })
+            .where(and(eq(appraisalScoresTable.appraisalId, appraisalId), eq(appraisalScoresTable.criterionId, Number(critIdStr))));
+        }
+      }
+      const allScores = await db.select().from(appraisalScoresTable).where(eq(appraisalScoresTable.appraisalId, appraisalId));
+      const enrichedScores = await Promise.all(allScores.map(async s => {
+        const [criterion] = await db.select().from(criteriaTable).where(eq(criteriaTable.id, s.criterionId)).limit(1);
+        return { ...s, criterion };
+      }));
+      const [enriched] = await Promise.all([enrichAppraisal(current)]);
+      res.json({ ...enriched, scores: enrichedScores });
+      return;
+    }
+
+    if (action === "accept_value") {
+      if (!["admin", "super_admin", "manager"].includes(req.user!.role)) {
+        res.status(403).json({ error: "Only admins/managers can accept values" }); return;
+      }
+      const { criterionId, accepted } = req.body;
+      if (criterionId && accepted) {
+        await db.update(appraisalScoresTable)
+          .set({ acceptedValue: accepted })
+          .where(and(eq(appraisalScoresTable.appraisalId, appraisalId), eq(appraisalScoresTable.criterionId, Number(criterionId))));
+      }
+      const allScores = await db.select().from(appraisalScoresTable).where(eq(appraisalScoresTable.appraisalId, appraisalId));
+      const enrichedScores = await Promise.all(allScores.map(async s => {
+        const [criterion] = await db.select().from(criteriaTable).where(eq(criteriaTable.id, s.criterionId)).limit(1);
+        return { ...s, criterion };
+      }));
+      const [enriched] = await Promise.all([enrichAppraisal(current)]);
+      res.json({ ...enriched, scores: enrichedScores });
+      return;
+    }
+
     if (action === "submit") {
       if (current.status === "self_review") {
         // Move to manager_review and activate first reviewer

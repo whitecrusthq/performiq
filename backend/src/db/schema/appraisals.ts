@@ -37,6 +37,8 @@ export const appraisalScoresTable = pgTable("appraisal_scores", {
   selfNote: text("self_note"),
   managerNote: text("manager_note"),
   actualValue: numeric("actual_value", { precision: 15, scale: 2 }),
+  adminActualValue: numeric("admin_actual_value", { precision: 15, scale: 2 }),
+  acceptedValue: text("accepted_value"),
   budgetValue: numeric("budget_value", { precision: 15, scale: 2 }),
 });
 
