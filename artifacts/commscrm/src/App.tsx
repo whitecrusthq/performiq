@@ -26,6 +26,7 @@ import PublicFeedback from "@/pages/public-feedback";
 import KpiPage from "@/pages/kpi";
 import ContactsAnalyticsPage from "@/pages/contacts-analytics";
 import PaymentsPage from "@/pages/payments";
+import Products from "@/pages/products";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -78,6 +79,7 @@ function Router() {
       <Route path="/kpi" component={() => <PrivateRoute component={KpiPage} />} />
       <Route path="/contacts-analytics" component={() => <PrivateRoute component={ContactsAnalyticsPage} />} />
       <Route path="/payments" component={() => <PrivateRoute component={PaymentsPage} />} />
+      <Route path="/products" component={() => <PrivateRoute component={Products} />} />
       <Route path="/feedback-form" component={PublicFeedback} />
       <Route component={NotFound} />
     </Switch>

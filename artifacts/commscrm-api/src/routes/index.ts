@@ -23,6 +23,7 @@ import customerGroupsRouter from "./customer-groups.js";
 import sitesRouter from "./sites.js";
 import paymentConfigsRouter from "./payment-configs.js";
 import paymentsRouter from "./payments.js";
+import productsRouter from "./products.js";
 
 const router = Router();
 
@@ -53,5 +54,6 @@ router.use(customerGroupsRouter);
 router.use(sitesRouter);
 router.use(paymentConfigsRouter);
 router.use(paymentsRouter);
+router.use(productsRouter);
 
 export default router;

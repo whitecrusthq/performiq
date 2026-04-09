@@ -20,6 +20,7 @@ pnpm workspace monorepo using TypeScript. Each package manages its own dependenc
 - **Completely independent** from the main project — no shared dependencies with `api-server`, `api-spec`, `api-zod`, or `db` packages
 - **AI Assistant**: Supports multiple providers (Gemini, OpenAI, Anthropic, custom). Features knowledge base (document upload), exceptions & compliance, system prompt editor, and test chat.
 - **AI Exceptions**: `crm_ai_exceptions` table — CRUD at `/crm-api/ai/exceptions`. Two types: `exception` (blocked topics the AI refuses to discuss) and `compliance` (full documents the AI must follow when responding). Both are injected into all AI prompts. Upload via file or add manually.
+- **Product Menu**: Product catalog at `/products` — three tabs: Catalog (grid view with search, filter by category), Categories (CRUD), API Sources (connect REST APIs and webhooks to sync inventory). Models: `crm_products`, `crm_product_categories`, `crm_product_sources`. Webhook endpoint: `POST /crm-api/product-webhook/:secret` (no auth required). API sync: `POST /crm-api/product-sources/:id/sync`.
 
 ## Stack
 

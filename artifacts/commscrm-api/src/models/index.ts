@@ -25,6 +25,10 @@ export type { TxStatus, TxProvider, TxCurrency } from "./PaymentTransaction.js";
 export { PaymentLink } from "./PaymentLink.js";
 export type { LinkStatus } from "./PaymentLink.js";
 export { AiException } from "./AiException.js";
+export { Product } from "./Product.js";
+export { ProductCategory } from "./ProductCategory.js";
+export { ProductSource } from "./ProductSource.js";
+export type { SourceType } from "./ProductSource.js";
 
 import { Agent } from "./Agent.js";
 import { Customer } from "./Customer.js";
@@ -67,3 +71,11 @@ AgentAttendancePing.belongsTo(AgentAttendance, { foreignKey: "attendanceId", as:
 import { AgentShift } from "./AgentShift.js";
 Agent.hasMany(AgentShift, { foreignKey: "agentId", as: "shifts" });
 AgentShift.belongsTo(Agent, { foreignKey: "agentId", as: "agent" });
+
+import { Product } from "./Product.js";
+import { ProductCategory } from "./ProductCategory.js";
+import { ProductSource } from "./ProductSource.js";
+ProductCategory.hasMany(Product, { foreignKey: "categoryId", as: "products" });
+Product.belongsTo(ProductCategory, { foreignKey: "categoryId", as: "category" });
+ProductSource.hasMany(Product, { foreignKey: "sourceId", as: "products" });
+Product.belongsTo(ProductSource, { foreignKey: "sourceId", as: "source" });
