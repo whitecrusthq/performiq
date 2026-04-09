@@ -4,7 +4,7 @@ import { useGetAppraisal, useUpdateAppraisal } from "../lib";
 import { useQueryClient } from "@tanstack/react-query";
 import { PageHeader, Card, StatusBadge, Button, Label } from "@/components/shared";
 import { useAuth } from "@/hooks/use-auth";
-import { CheckCircle2, User, Star, FileText, ShieldCheck, ThumbsUp, ArrowRight, Users, MessageSquare, ArrowLeft, RotateCcw, Target } from "lucide-react";
+import { CheckCircle2, User, Star, FileText, ShieldCheck, ThumbsUp, ArrowRight, Users, MessageSquare, ArrowLeft, RotateCcw, Target, Pencil, Trash2, Plus, X } from "lucide-react";
 import { format } from "date-fns";
 import { apiFetch } from "@/lib/utils";
 
@@ -36,6 +36,12 @@ export default function AppraisalDetail() {
   const [showAdminActuals, setShowAdminActuals] = useState(false);
   const [formInitialized, setFormInitialized] = useState(false);
   const [declinedCriteria, setDeclinedCriteria] = useState<Set<number>>(new Set());
+  const [showEditPanel, setShowEditPanel] = useState(false);
+  const [editBudgets, setEditBudgets] = useState<Record<number, string>>({});
+  const [editingReviewer, setEditingReviewer] = useState(false);
+  const [availableUsers, setAvailableUsers] = useState<any[]>([]);
+  const [newReviewerId, setNewReviewerId] = useState("");
+  const [savingEdit, setSavingEdit] = useState(false);
 
   useEffect(() => {
     if (appraisal && !formInitialized) {
@@ -251,6 +257,206 @@ export default function AppraisalDetail() {
           </div>
         </div>
       </Card>
+
+      {/* Edit Appraisal — admin/manager can edit when employee hasn't submitted */}
+      {(user?.role === 'admin' || user?.role === 'super_admin' || user?.role === 'manager') &&
+        appraisal.status === 'self_review' && (
+        <div className="mb-6">
+          {!showEditPanel ? (
+            <div className="flex gap-3">
+              <Button
+                variant="outline"
+                size="sm"
+                className="gap-2"
+                onClick={() => {
+                  const init: Record<number, string> = {};
+                  appraisal.scores.forEach(s => {
+                    const bv = Number(s.budgetValue ?? (s as Record<string, unknown>).budget_value ?? 0);
+                    if (bv > 0) init[s.criterionId] = String(bv);
+                  });
+                  setEditBudgets(init);
+                  setShowEditPanel(true);
+                }}
+              >
+                <Pencil className="w-4 h-4" /> Edit Appraisal
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                className="gap-2 text-destructive border-destructive/30 hover:bg-destructive/10"
+                onClick={async () => {
+                  if (!confirm("Delete this appraisal? This cannot be undone.")) return;
+                  await apiFetch(`/api/appraisals/${appraisalId}`, { method: "DELETE" });
+                  navigate("/appraisals");
+                }}
+              >
+                <Trash2 className="w-4 h-4" /> Delete
+              </Button>
+            </div>
+          ) : (
+            <Card className="p-6 border-primary/30 bg-primary/5">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-lg font-bold flex items-center gap-2">
+                  <Pencil className="w-5 h-5 text-primary" /> Edit Appraisal
+                </h3>
+                <Button variant="ghost" size="sm" onClick={() => setShowEditPanel(false)}>
+                  <X className="w-4 h-4" />
+                </Button>
+              </div>
+
+              {(() => {
+                const valueCriteria = appraisal.scores.filter(s => {
+                  const t = s.criterion?.type ?? "rating";
+                  return t === "value" || t === "percentage";
+                });
+                return valueCriteria.length > 0 ? (
+                  <div className="mb-5">
+                    <h4 className="text-sm font-semibold mb-2">Budget Values</h4>
+                    <div className="space-y-2">
+                      {valueCriteria.map(s => {
+                        const crit = s.criterion;
+                        return (
+                          <div key={s.criterionId} className="flex items-center gap-3">
+                            <span className="text-sm flex-1 min-w-0 truncate">{crit?.name}</span>
+                            <input
+                              type="number" min="0" step="0.01"
+                              className="w-44 px-3 py-2 rounded-lg border border-border text-sm outline-none focus:ring-2 focus:ring-primary/20"
+                              placeholder="Budget value"
+                              value={editBudgets[s.criterionId] ?? ""}
+                              onChange={e => setEditBudgets(prev => ({ ...prev, [s.criterionId]: e.target.value }))}
+                            />
+                            {crit?.unit && <span className="text-xs text-muted-foreground shrink-0">{crit.unit}</span>}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                ) : null;
+              })()}
+
+              <div className="mb-5">
+                <h4 className="text-sm font-semibold mb-2">Reviewers</h4>
+                <div className="space-y-2">
+                  {reviewers.map((r: any) => (
+                    <div key={r.id} className="flex items-center justify-between py-2 px-3 bg-white/60 rounded-lg border border-border">
+                      <div className="flex items-center gap-2">
+                        <User className="w-4 h-4 text-muted-foreground" />
+                        <span className="text-sm font-medium">{r.name}</span>
+                        <span className="text-xs text-muted-foreground">({r.email})</span>
+                      </div>
+                      {user?.role === 'admin' || user?.role === 'super_admin' ? (
+                        <button
+                          type="button"
+                          className="text-xs text-destructive hover:underline"
+                          onClick={async () => {
+                            if (!confirm(`Remove ${r.name} as reviewer?`)) return;
+                            await apiFetch(`/api/appraisals/${appraisalId}/reviewers/${r.id}`, { method: "DELETE" });
+                            queryClient.invalidateQueries({ queryKey: [`/api/appraisals/${appraisalId}`] });
+                            setFormInitialized(false);
+                          }}
+                        >
+                          Remove
+                        </button>
+                      ) : null}
+                    </div>
+                  ))}
+                  {reviewers.length === 0 && (
+                    <p className="text-sm text-muted-foreground">No reviewers assigned.</p>
+                  )}
+                  {(user?.role === 'admin' || user?.role === 'super_admin') && (
+                    <div>
+                      {!editingReviewer ? (
+                        <Button variant="outline" size="sm" className="gap-2 mt-1" onClick={async () => {
+                          const resp = await apiFetch("/api/users");
+                          const users = await resp.json();
+                          setAvailableUsers(Array.isArray(users) ? users.filter((u: any) => u.role === 'manager' || u.role === 'admin' || u.role === 'super_admin') : []);
+                          setEditingReviewer(true);
+                        }}>
+                          <Plus className="w-4 h-4" /> Add Reviewer
+                        </Button>
+                      ) : (
+                        <div className="flex items-center gap-2 mt-1">
+                          <select
+                            className="flex-1 px-3 py-2 rounded-lg border border-border text-sm"
+                            value={newReviewerId}
+                            onChange={e => setNewReviewerId(e.target.value)}
+                          >
+                            <option value="">Select reviewer...</option>
+                            {availableUsers
+                              .filter(u => !reviewers.some((r: any) => r.id === u.id) && u.id !== appraisal.employeeId)
+                              .map(u => (
+                                <option key={u.id} value={u.id}>{u.name} ({u.role})</option>
+                              ))}
+                          </select>
+                          <Button size="sm" disabled={!newReviewerId} onClick={async () => {
+                            await apiFetch(`/api/appraisals/${appraisalId}/reviewers`, {
+                              method: "POST",
+                              body: JSON.stringify({ reviewerId: Number(newReviewerId) }),
+                            });
+                            setNewReviewerId("");
+                            setEditingReviewer(false);
+                            setFormInitialized(false);
+                            queryClient.invalidateQueries({ queryKey: [`/api/appraisals/${appraisalId}`] });
+                          }}>
+                            Add
+                          </Button>
+                          <Button variant="ghost" size="sm" onClick={() => { setEditingReviewer(false); setNewReviewerId(""); }}>
+                            Cancel
+                          </Button>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              <div className="flex justify-between items-center pt-3 border-t border-border">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="gap-2 text-destructive border-destructive/30 hover:bg-destructive/10"
+                  onClick={async () => {
+                    if (!confirm("Delete this appraisal? This cannot be undone.")) return;
+                    await apiFetch(`/api/appraisals/${appraisalId}`, { method: "DELETE" });
+                    navigate("/appraisals");
+                  }}
+                >
+                  <Trash2 className="w-4 h-4" /> Delete Appraisal
+                </Button>
+                <div className="flex gap-2">
+                  <Button variant="outline" size="sm" onClick={() => setShowEditPanel(false)}>Cancel</Button>
+                  <Button
+                    size="sm"
+                    className="gap-2"
+                    isLoading={savingEdit}
+                    onClick={async () => {
+                      setSavingEdit(true);
+                      try {
+                        const budgetValues: Record<number, number> = {};
+                        for (const [k, v] of Object.entries(editBudgets)) {
+                          if (v && Number(v) > 0) budgetValues[Number(k)] = Number(v);
+                        }
+                        if (Object.keys(budgetValues).length > 0) {
+                          await apiFetch(`/api/appraisals/${appraisalId}`, {
+                            method: "PUT",
+                            body: JSON.stringify({ action: "update_budgets", budgetValues }),
+                          });
+                        }
+                        setFormInitialized(false);
+                        queryClient.invalidateQueries({ queryKey: [`/api/appraisals/${appraisalId}`] });
+                        setShowEditPanel(false);
+                      } catch {}
+                      setSavingEdit(false);
+                    }}
+                  >
+                    <CheckCircle2 className="w-4 h-4" /> Save Changes
+                  </Button>
+                </div>
+              </div>
+            </Card>
+          )}
+        </div>
+      )}
 
       {/* Accept All Back-Office Values — employee self-review shortcut */}
       {isSelfReviewActive && (() => {
