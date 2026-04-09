@@ -364,6 +364,13 @@ router.put("/appraisals/:id", requireAuth, async (req: AuthRequest, res) => {
 
     const updates: Partial<typeof appraisalsTable.$inferInsert> = {};
 
+    const [preSubmitReviewerRow] = current.status === "manager_review"
+      ? await db.select().from(appraisalReviewersTable)
+          .where(and(eq(appraisalReviewersTable.appraisalId, appraisalId), eq(appraisalReviewersTable.status, 'in_progress')))
+          .limit(1)
+      : [undefined];
+    const submittingReviewerId = preSubmitReviewerRow?.reviewerId ?? req.user!.id;
+
     if (action === "resend_review") {
       const isEmployee = req.user!.id === current.employeeId;
       if (!isEmployee && !["admin", "super_admin", "manager"].includes(req.user!.role)) {
@@ -500,13 +507,7 @@ router.put("/appraisals/:id", requireAuth, async (req: AuthRequest, res) => {
       updates.managerComment = managerComment;
     }
 
-    // Find current in-progress reviewer (if this is a manager/reviewer action)
-    const [inProgressReviewerRow] = current.status === "manager_review"
-      ? await db.select().from(appraisalReviewersTable)
-          .where(and(eq(appraisalReviewersTable.appraisalId, appraisalId), eq(appraisalReviewersTable.status, 'in_progress')))
-          .limit(1)
-      : [undefined];
-    const currentReviewerId = inProgressReviewerRow?.reviewerId ?? req.user!.id;
+    const currentReviewerId = submittingReviewerId;
 
     if (scores && Array.isArray(scores)) {
       for (const score of scores) {

@@ -47,16 +47,31 @@ export default function AppraisalDetail() {
     if (appraisal && !formInitialized) {
       const initialScores: Record<number, { score: number, note: string, actualValue?: number }> = {};
       const isSelf = appraisal.status === 'self_review';
+      const reviewersList: any[] = (appraisal as any).reviewers ?? [];
+      const activeRev = reviewersList.find((r: any) => r.stepStatus === 'in_progress');
+      const reviewerScoresData: any[] = (appraisal as any).reviewerScores ?? [];
+      const myReviewerEntry = activeRev ? reviewerScoresData.find((rs: any) => rs.reviewerId === activeRev.id) : null;
+      const myReviewerScores: any[] = myReviewerEntry?.scores ?? [];
 
       appraisal.scores.forEach(s => {
-        initialScores[s.criterionId] = {
-          score: Number((isSelf ? s.selfScore : s.managerScore) ?? 3) || 3,
-          note: (isSelf ? s.selfNote : s.managerNote) || "",
-          actualValue: s.actualValue ? Number(s.actualValue) : undefined,
-        };
+        if (isSelf) {
+          initialScores[s.criterionId] = {
+            score: Number(s.selfScore ?? 3) || 3,
+            note: s.selfNote || "",
+            actualValue: s.actualValue ? Number(s.actualValue) : undefined,
+          };
+        } else {
+          const myRevScore = myReviewerScores.find((rs: any) => rs.criterionId === s.criterionId);
+          initialScores[s.criterionId] = {
+            score: myRevScore ? Number(myRevScore.score ?? 3) || 3 : 3,
+            note: myRevScore?.note || "",
+            actualValue: s.actualValue ? Number(s.actualValue) : undefined,
+          };
+        }
       });
       setScores(initialScores);
-      setGeneralComment((isSelf ? appraisal.selfComment : appraisal.managerComment) || "");
+      const myRevComment = !isSelf && myReviewerEntry ? (myReviewerEntry.comment || "") : "";
+      setGeneralComment(isSelf ? (appraisal.selfComment || "") : myRevComment);
       setFormInitialized(true);
     }
   }, [appraisal, formInitialized]);
