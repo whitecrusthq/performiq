@@ -351,8 +351,9 @@ export default function AppraisalDetail() {
                     const hasDispute = adminVal > 0 && empVal != null && empVal > 0 && Math.abs(adminVal - empVal) > 0.01;
 
                     const displayVal = accepted === "employee" ? empVal : accepted === "admin" ? adminVal : (empVal ?? adminVal);
-                    const computedPct = effectiveTarget > 0 && displayVal ? Math.min(100, (displayVal / effectiveTarget) * 100) : null;
-                    const weightedScore = computedPct != null ? (computedPct / 100) * Number(crit.weight) : null;
+                    const achievementRatio = effectiveTarget > 0 && displayVal ? (displayVal / effectiveTarget) : null;
+                    const computedPct = achievementRatio != null ? Math.min(100, achievementRatio * 100) : null;
+                    const weightedScore = achievementRatio != null ? achievementRatio * (Number(crit.weight) / 100) * 100 : null;
 
                     return (
                       <div className="space-y-3">
@@ -517,8 +518,8 @@ export default function AppraisalDetail() {
                               </span>
                             </div>
                             <div className="flex justify-between text-xs text-muted-foreground">
-                              <span>Actual: {displayVal.toLocaleString()} / {effectiveTarget.toLocaleString()}{unit ? ` ${unit}` : ""}</span>
-                              <span>Weighted: {weightedScore?.toFixed(1)}% of {crit.weight}%</span>
+                              <span>Achieved: {displayVal.toLocaleString()} / {effectiveTarget.toLocaleString()}{unit ? ` ${unit}` : ""}</span>
+                              <span>Weighted Score: {weightedScore?.toFixed(1)} (Weight: {crit.weight}%)</span>
                             </div>
                           </div>
                         )}
@@ -569,7 +570,7 @@ export default function AppraisalDetail() {
                 const renderScoreDisplay = (scoreVal: any, noteVal: any, waitingMsg?: string) => {
                   const actualVal = scoreItem.actualValue != null ? Number(scoreItem.actualValue) : null;
                   const displayPct = actualVal != null && effectiveTarget > 0 ? Math.min(100, (actualVal / effectiveTarget) * 100) : null;
-                  const displayWeighted = displayPct != null ? (displayPct / 100) * Number(crit.weight) : null;
+                  const displayWeighted = displayPct != null ? (displayPct / 100) * (Number(crit.weight) / 100) * 100 : null;
                   return (
                     <div>
                       {(critType === "percentage" || critType === "value") && budget > 0 && (
@@ -590,7 +591,7 @@ export default function AppraisalDetail() {
                             </span>
                           )}
                           {displayWeighted != null && (
-                            <span className="text-xs text-muted-foreground ml-1">Weighted: {displayWeighted.toFixed(1)}%/{crit.weight}%</span>
+                            <span className="text-xs text-muted-foreground ml-1">Weighted Score: {displayWeighted.toFixed(1)} (Weight: {crit.weight}%)</span>
                           )}
                         </div>
                       ) : null}
