@@ -315,7 +315,7 @@ function ProductDialog({
               <Select value={form.currency} onValueChange={(v) => setForm({ ...form, currency: v })}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
-                  {["USD", "EUR", "GBP", "NGN", "GHS", "KES", "ZAR", "AED", "INR", "CAD", "AUD"].map((c) => (
+                  {["USD", "EUR", "GBP", "NGN", "GHS", "KES", "ZAR", "AED", "INR", "CAD", "AUD", "JPY", "CNY", "BRL", "MXN", "SAR", "EGP", "TZS", "UGX", "XOF", "XAF"].map((c) => (
                     <SelectItem key={c} value={c}>{c}</SelectItem>
                   ))}
                 </SelectContent>

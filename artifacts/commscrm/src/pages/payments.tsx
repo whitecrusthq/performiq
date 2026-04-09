@@ -229,7 +229,7 @@ function DashboardTab({ days, setDays }: { days: number; setDays: (d: number) =>
       {/* Revenue Chart */}
       <Card>
         <CardHeader className="pb-3 flex flex-row items-center justify-between gap-4">
-          <CardTitle className="text-base font-semibold">Revenue Trend (USD)</CardTitle>
+          <CardTitle className="text-base font-semibold">Revenue Trend</CardTitle>
           <Select value={String(days)} onValueChange={(v) => setDays(Number(v))}>
             <SelectTrigger className="h-8 w-32 text-xs">
               <SelectValue />
@@ -586,7 +586,7 @@ function AnalyticsTab() {
       {/* Revenue trend */}
       <Card>
         <CardHeader className="pb-2">
-          <CardTitle className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">Daily Revenue (USD)</CardTitle>
+          <CardTitle className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">Daily Revenue</CardTitle>
         </CardHeader>
         <CardContent>
           <ResponsiveContainer width="100%" height={240}>

@@ -2,8 +2,16 @@ import { Router } from "express";
 import { Op } from "sequelize";
 import { PaymentTransaction } from "../models/PaymentTransaction.js";
 import { PaymentLink } from "../models/PaymentLink.js";
+import { BrandingSettings } from "../models/BrandingSettings.js";
 import { requireAuth, AuthRequest } from "../middlewares/auth.js";
 import crypto from "crypto";
+
+async function getDefaultCurrency(): Promise<string> {
+  try {
+    const b = await BrandingSettings.findByPk(1);
+    return b?.defaultCurrency || "USD";
+  } catch { return "USD"; }
+}
 
 const router = Router();
 
@@ -12,9 +20,10 @@ async function seedDemoTransactions() {
   const count = await PaymentTransaction.count();
   if (count > 0) return;
 
+  const defCurrency = await getDefaultCurrency();
   const providers = ["stripe", "paystack", "flutterwave", "paypal", "square"] as const;
   const statuses  = ["success", "success", "success", "failed", "pending", "refunded"] as const;
-  const currencies = ["USD", "NGN", "GHS", "USD", "USD"] as const;
+  const currencies = [defCurrency, defCurrency, defCurrency, defCurrency, defCurrency] as const;
   const customers = [
     { name: "Amara Okonkwo",   email: "amara@example.com" },
     { name: "James Blackwell", email: "james@example.com" },
@@ -50,7 +59,7 @@ async function seedDemoTransactions() {
     const descIdx   = Math.floor(Math.random() * descriptions.length);
     const daysAgo   = Math.floor(Math.random() * 90);
     const baseAmount = [49, 99, 149, 199, 249, 299, 499, 999, 1499, 29][Math.floor(Math.random() * 10)];
-    const multiplier = currencies[provIdx] === "NGN" ? 1600 : currencies[provIdx] === "GHS" ? 12 : 1;
+    const multiplier = 1;
     const paidAt = statuses[statusIdx] === "success" || statuses[statusIdx] === "refunded"
       ? new Date(now.getTime() - daysAgo * 86400000)
       : null;
@@ -75,6 +84,7 @@ async function seedDemoTransactions() {
 async function seedDemoLinks(origin: string) {
   const count = await PaymentLink.count();
   if (count > 0) return;
+  const defCurrency = await getDefaultCurrency();
   const providers = ["stripe", "paystack", "flutterwave", "paypal", "square"] as const;
   const statuses  = ["active", "active", "paid", "expired", "cancelled"] as const;
   const now = new Date();
@@ -90,7 +100,7 @@ async function seedDemoLinks(origin: string) {
       title:        ["Premium Plan Upgrade", "Invoice #INV-20240" + (i + 1), "Subscription Renewal", "Product Order", "Service Fee"][i % 5],
       description:  "Payment link generated via CommsCRM",
       amount:       [49, 99, 149, 199, 29][i % 5],
-      currency:     "USD" as const,
+      currency:     defCurrency,
       status:       statuses[sIdx],
       linkToken:    token,
       linkUrl:      `${origin}/pay/${token}`,
@@ -122,17 +132,16 @@ router.get("/api/payments/stats", requireAuth, async (req, res) => {
     const failed    = all.filter((t) => t.status === "failed");
     const pending   = all.filter((t) => t.status === "pending");
     const refunded  = all.filter((t) => t.status === "refunded");
-    const totalRevenue = success.reduce((s, t) => s + (t.currency === "USD" ? t.amount : t.currency === "NGN" ? t.amount / 1600 : t.currency === "GHS" ? t.amount / 12 : t.amount), 0);
+    const totalRevenue = success.reduce((s, t) => s + t.amount, 0);
     const avgOrderValue = success.length ? totalRevenue / success.length : 0;
 
     const byProvider = ["stripe","paystack","flutterwave","paypal","square"].map((p) => {
       const pTx    = all.filter((t) => t.provider === p);
       const pOk    = pTx.filter((t) => t.status === "success");
-      const pRev   = pOk.reduce((s, t) => s + (t.currency === "USD" ? t.amount : t.currency === "NGN" ? t.amount / 1600 : t.currency === "GHS" ? t.amount / 12 : t.amount), 0);
+      const pRev   = pOk.reduce((s, t) => s + t.amount, 0);
       return { provider: p, total: pTx.length, success: pOk.length, revenue: Math.round(pRev * 100) / 100 };
     }).filter((p) => p.total > 0);
 
-    // daily trend for chart
     const trend: Record<string, { date: string; revenue: number; count: number }> = {};
     for (let d = days - 1; d >= 0; d--) {
       const dt = new Date(Date.now() - d * 86400000);
@@ -142,8 +151,7 @@ router.get("/api/payments/stats", requireAuth, async (req, res) => {
     for (const t of success) {
       const key = new Date(t.createdAt).toISOString().slice(0, 10);
       if (trend[key]) {
-        const usdAmount = t.currency === "USD" ? t.amount : t.currency === "NGN" ? t.amount / 1600 : t.currency === "GHS" ? t.amount / 12 : t.amount;
-        trend[key].revenue += usdAmount;
+        trend[key].revenue += t.amount;
         trend[key].count   += 1;
       }
     }
