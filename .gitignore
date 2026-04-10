@@ -49,12 +49,12 @@ Thumbs.db
 artifacts/
 scripts/
 lib/
-pnpm-workspace.yaml
-pnpm-lock.yaml
-tsconfig.base.json
-tsconfig.json
-package.json
-replit.md
+/pnpm-workspace.yaml
+/pnpm-lock.yaml
+/tsconfig.base.json
+/tsconfig.json
+/package.json
+/replit.md
 .replit-artifact/
 
 # Environment
