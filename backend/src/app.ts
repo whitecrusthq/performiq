@@ -49,6 +49,7 @@ const authLimiter = rateLimit({
 app.use("/crm-api/auth/login", authLimiter);
 
 app.use("/crm-api", router);
+app.use("/api", router);
 
 if (process.env.NODE_ENV === "development") {
   const { createProxyMiddleware } = await import("http-proxy-middleware");
