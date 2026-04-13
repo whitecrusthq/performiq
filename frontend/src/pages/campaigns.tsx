@@ -139,6 +139,18 @@ export default function Campaigns() {
     (c.phone ?? "").includes(memberSearch)
   );
 
+  const [sendCampaignId, setSendCampaignId] = useState<number | null>(null);
+  const [deleteCampaignId, setDeleteCampaignId] = useState<number | null>(null);
+
+  const { data: channelsStatus } = useQuery<{
+    email: { configured: boolean; provider: string };
+    sms: { configured: boolean; provider: string };
+    whatsapp: { configured: boolean; provider: string };
+  }>({
+    queryKey: ["campaigns-channels-status"],
+    queryFn: () => apiGet("/campaigns/channels-status"),
+  });
+
   // ── Campaign mutations ───────────────────────────────────────────
   const createCampaignMutation = useMutation({
     mutationFn: (data: { name: string; channel: string; message: string; status: string; groupId?: string }) =>
@@ -148,6 +160,28 @@ export default function Campaigns() {
       setIsNewCampOpen(false);
       setNewName(""); setNewChannel("whatsapp"); setNewMessage(""); setNewGroupId("all");
       toast({ title: "Campaign created" });
+    },
+  });
+
+  const sendCampaignMutation = useMutation({
+    mutationFn: (id: number) => apiPost<{ ok: boolean; sent: number; failed: number; errors?: string[] }>(`/campaigns/${id}/send`, {}),
+    onSuccess: (data) => {
+      qc.invalidateQueries({ queryKey: ["campaigns"] });
+      setSendCampaignId(null);
+      const failMsg = data.failed > 0 ? ` (${data.failed} failed)` : "";
+      toast({ title: "Campaign sent!", description: `${data.sent} messages delivered${failMsg}` });
+    },
+    onError: (err: any) => {
+      toast({ title: "Send failed", description: err?.message || "Could not send campaign", variant: "destructive" });
+    },
+  });
+
+  const deleteCampaignMutation = useMutation({
+    mutationFn: (id: number) => apiDelete(`/campaigns/${id}`),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["campaigns"] });
+      setDeleteCampaignId(null);
+      toast({ title: "Campaign deleted" });
     },
   });
 
@@ -396,7 +430,25 @@ export default function Campaigns() {
                         <TableCell className="text-right text-sm">{campaign.recipients.toLocaleString()}</TableCell>
                         <TableCell className="text-right text-sm">{campaign.status === "sent" ? `${campaign.openRate}%` : "—"}</TableCell>
                         <TableCell className="text-right text-sm">{campaign.status === "sent" ? `${campaign.clickRate}%` : "—"}</TableCell>
-                        <TableCell className="text-right"><Button variant="ghost" size="sm">View</Button></TableCell>
+                        <TableCell className="text-right">
+                          <div className="flex items-center justify-end gap-1">
+                            {campaign.status !== "sent" && ["email", "sms", "whatsapp"].includes(campaign.channel) && (
+                              <Button
+                                variant="default"
+                                size="sm"
+                                className="gap-1 h-7 text-xs"
+                                onClick={() => setSendCampaignId(campaign.id)}
+                              >
+                                <Send className="h-3 w-3" /> Send
+                              </Button>
+                            )}
+                            {campaign.status !== "sent" && (
+                              <Button variant="ghost" size="sm" className="h-7 w-7 p-0 text-red-500 hover:text-red-700" onClick={() => setDeleteCampaignId(campaign.id)}>
+                                <Trash2 className="h-3.5 w-3.5" />
+                              </Button>
+                            )}
+                          </div>
+                        </TableCell>
                       </TableRow>
                     );
                   })}
@@ -775,7 +827,7 @@ export default function Campaigns() {
         </DialogContent>
       </Dialog>
 
-      {/* ── Delete Confirm Dialog ────────────────────────────────────── */}
+      {/* ── Delete Group Confirm Dialog ─────────────────────────────── */}
       <Dialog open={deleteGroupId !== null} onOpenChange={(o) => { if (!o) setDeleteGroupId(null); }}>
         <DialogContent className="sm:max-w-[380px]">
           <DialogHeader>
@@ -786,6 +838,53 @@ export default function Campaigns() {
             <Button variant="outline" onClick={() => setDeleteGroupId(null)}>Cancel</Button>
             <Button variant="destructive" onClick={() => deleteGroupId && deleteGroupMutation.mutate(deleteGroupId)} disabled={deleteGroupMutation.isPending}>
               {deleteGroupMutation.isPending ? "Deleting..." : "Delete Group"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ── Send Campaign Confirm Dialog ──────────────────────────────── */}
+      <Dialog open={sendCampaignId !== null} onOpenChange={(o) => { if (!o) setSendCampaignId(null); }}>
+        <DialogContent className="sm:max-w-[440px]">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2"><Send className="h-5 w-5" /> Send Campaign</DialogTitle>
+            <DialogDescription>
+              {(() => {
+                const camp = campaigns.find((c) => c.id === sendCampaignId);
+                if (!camp) return "Campaign not found.";
+                const ch = camp.channel;
+                const isConfigured = ch === "email" ? channelsStatus?.email?.configured : ch === "sms" ? channelsStatus?.sms?.configured : ch === "whatsapp" ? channelsStatus?.whatsapp?.configured : false;
+                if (!isConfigured) {
+                  return `${ch === "email" ? "Mailgun (Email)" : "Twilio (" + (ch === "sms" ? "SMS" : "WhatsApp") + ")"} is not configured. Go to Settings to set it up first.`;
+                }
+                return `This will send "${camp.name}" via ${ch.toUpperCase()} to all customers with ${ch === "email" ? "an email address" : "a phone number"} on file. This action cannot be undone.`;
+              })()}
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setSendCampaignId(null)}>Cancel</Button>
+            <Button
+              onClick={() => sendCampaignId && sendCampaignMutation.mutate(sendCampaignId)}
+              disabled={sendCampaignMutation.isPending}
+              className="gap-2"
+            >
+              {sendCampaignMutation.isPending ? <><Loader2 className="h-4 w-4 animate-spin" /> Sending...</> : <><Send className="h-4 w-4" /> Send Now</>}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ── Delete Campaign Confirm Dialog ────────────────────────────── */}
+      <Dialog open={deleteCampaignId !== null} onOpenChange={(o) => { if (!o) setDeleteCampaignId(null); }}>
+        <DialogContent className="sm:max-w-[380px]">
+          <DialogHeader>
+            <DialogTitle>Delete Campaign</DialogTitle>
+            <DialogDescription>This will permanently delete this campaign.</DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDeleteCampaignId(null)}>Cancel</Button>
+            <Button variant="destructive" onClick={() => deleteCampaignId && deleteCampaignMutation.mutate(deleteCampaignId)} disabled={deleteCampaignMutation.isPending}>
+              {deleteCampaignMutation.isPending ? "Deleting..." : "Delete Campaign"}
             </Button>
           </DialogFooter>
         </DialogContent>

@@ -3,6 +3,7 @@ import { Op } from "sequelize";
 import { Campaign, Customer } from "../models/index.js";
 import { requireAuth, AuthRequest } from "../middlewares/auth.js";
 import { getEmailSettings, buildMailgunConfig, sendEmail } from "../lib/mailgun.js";
+import { getMessagingSettings, buildTwilioConfig, sendSms, sendWhatsapp } from "../lib/twilio.js";
 
 const router = Router();
 
@@ -48,46 +49,8 @@ router.put("/campaigns/:id", requireAuth, async (req: AuthRequest, res) => {
 
     if (status && status !== campaign.status) {
       campaign.status = status;
-
       if (status === "sent") {
         campaign.sentAt = new Date();
-
-        // ── Send via Mailgun for email campaigns ──────────────────────────
-        if (campaign.channel === "email") {
-          try {
-            const emailSettings = await getEmailSettings();
-            if (emailSettings?.isActive) {
-              const config = await buildMailgunConfig(emailSettings);
-              if (config) {
-                // Fetch all customers with email addresses
-                const customers = await Customer.findAll({
-                  where: { email: { [Op.ne]: null as unknown as string } },
-                  attributes: ["email", "name"],
-                });
-
-                const recipients = customers.filter((c) => c.email).map((c) => c.email as string);
-                campaign.recipients = recipients.length;
-
-                if (recipients.length > 0) {
-                  // Mailgun supports batch sending via recipient-variables
-                  // Send in batches of 1000 (Mailgun limit)
-                  const BATCH = 1000;
-                  for (let i = 0; i < recipients.length; i += BATCH) {
-                    await sendEmail(config, {
-                      to: recipients.slice(i, i + BATCH),
-                      subject: campaign.name,
-                      text: campaign.message,
-                      html: `<div style="font-family:sans-serif;max-width:600px;margin:0 auto"><p>${campaign.message.replace(/\n/g, "<br>")}</p><hr><p style="font-size:12px;color:#888">You are receiving this because you are a registered customer. To unsubscribe, contact support.</p></div>`,
-                    });
-                  }
-                }
-              }
-            }
-          } catch (mailErr) {
-            console.error("Mailgun send error (non-fatal):", mailErr);
-            // Continue — mark campaign as sent even if email fails, so the UI doesn't break
-          }
-        }
       }
     }
 
@@ -114,60 +77,146 @@ router.delete("/campaigns/:id", requireAuth, async (req: AuthRequest, res) => {
   }
 });
 
-// Dedicated send-now endpoint
 router.post("/campaigns/:id/send", requireAuth, async (req: AuthRequest, res) => {
   try {
     const campaign = await Campaign.findByPk(req.params.id);
     if (!campaign) { res.status(404).json({ error: "Campaign not found" }); return; }
-    if (campaign.channel !== "email") { res.status(400).json({ error: "Only email campaigns can be sent via Mailgun" }); return; }
     if (campaign.status === "sent") { res.status(400).json({ error: "Campaign already sent" }); return; }
 
-    const emailSettings = await getEmailSettings();
-    if (!emailSettings?.isActive) {
-      res.status(400).json({ error: "Mailgun is not configured or not active. Go to Settings → Email to configure it." });
-      return;
-    }
-
-    const config = await buildMailgunConfig(emailSettings);
-    if (!config) {
-      res.status(400).json({ error: "Mailgun configuration is incomplete (missing API key, domain, or from email)." });
-      return;
-    }
-
-    const customers = await Customer.findAll({
-      where: { email: { [Op.ne]: null as unknown as string } },
-      attributes: ["email", "name"],
-    });
-
-    const recipients = customers.filter((c) => c.email).map((c) => c.email as string);
-    if (recipients.length === 0) {
-      res.status(400).json({ error: "No customers with email addresses found." });
-      return;
-    }
-
-    // Send in batches
-    const BATCH = 1000;
+    const channel = campaign.channel;
     let sent = 0;
-    for (let i = 0; i < recipients.length; i += BATCH) {
-      await sendEmail(config, {
-        to: recipients.slice(i, i + BATCH),
-        subject: campaign.name,
-        text: campaign.message,
-        html: `<div style="font-family:sans-serif;max-width:600px;margin:0 auto"><p>${campaign.message.replace(/\n/g, "<br>")}</p><hr><p style="font-size:12px;color:#888">You are receiving this because you are a registered customer. To unsubscribe, contact support.</p></div>`,
+    let failed = 0;
+    const errors: string[] = [];
+
+    if (channel === "email") {
+      const emailSettings = await getEmailSettings();
+      if (!emailSettings?.isActive) {
+        res.status(400).json({ error: "Email (Mailgun) is not configured or not active. Go to Settings → Email to set it up." });
+        return;
+      }
+      const config = await buildMailgunConfig(emailSettings);
+      if (!config) {
+        res.status(400).json({ error: "Mailgun configuration is incomplete (missing API key, domain, or from email)." });
+        return;
+      }
+
+      const customers = await Customer.findAll({
+        where: { email: { [Op.and]: [{ [Op.ne]: null as unknown as string }, { [Op.ne]: "" }] } },
+        attributes: ["email", "name"],
       });
-      sent += recipients.slice(i, i + BATCH).length;
+      const recipients = customers.filter((c) => c.email).map((c) => c.email as string);
+      if (recipients.length === 0) {
+        res.status(400).json({ error: "No customers with email addresses found." });
+        return;
+      }
+
+      const BATCH = 1000;
+      for (let i = 0; i < recipients.length; i += BATCH) {
+        try {
+          await sendEmail(config, {
+            to: recipients.slice(i, i + BATCH),
+            subject: campaign.name,
+            text: campaign.message,
+            html: `<div style="font-family:sans-serif;max-width:600px;margin:0 auto"><p>${campaign.message.replace(/\n/g, "<br>")}</p><hr><p style="font-size:12px;color:#888">To unsubscribe, contact support.</p></div>`,
+          });
+          sent += recipients.slice(i, i + BATCH).length;
+        } catch (err) {
+          failed += recipients.slice(i, i + BATCH).length;
+          errors.push(err instanceof Error ? err.message : "Email batch failed");
+        }
+      }
+    } else if (channel === "sms") {
+      const msgSettings = await getMessagingSettings();
+      if (!msgSettings?.smsEnabled) {
+        res.status(400).json({ error: "SMS is not enabled. Go to Settings → Messaging to configure Twilio SMS." });
+        return;
+      }
+      const config = await buildTwilioConfig(msgSettings);
+      if (!config || !config.phoneNumber) {
+        res.status(400).json({ error: "Twilio SMS configuration is incomplete (missing Account SID, Auth Token, or Phone Number)." });
+        return;
+      }
+
+      const customers = await Customer.findAll({
+        where: { phone: { [Op.and]: [{ [Op.ne]: null as unknown as string }, { [Op.ne]: "" }] } },
+        attributes: ["phone", "name"],
+      });
+      const phones = customers.filter((c) => c.phone).map((c) => c.phone as string);
+      if (phones.length === 0) {
+        res.status(400).json({ error: "No customers with phone numbers found." });
+        return;
+      }
+
+      for (const phone of phones) {
+        try {
+          await sendSms(config, { to: phone, body: campaign.message });
+          sent++;
+        } catch (err) {
+          failed++;
+          if (errors.length < 5) errors.push(`${phone}: ${err instanceof Error ? err.message : "Failed"}`);
+        }
+      }
+    } else if (channel === "whatsapp") {
+      const msgSettings = await getMessagingSettings();
+      if (!msgSettings?.whatsappEnabled) {
+        res.status(400).json({ error: "WhatsApp is not enabled. Go to Settings → Messaging to configure Twilio WhatsApp." });
+        return;
+      }
+      const config = await buildTwilioConfig(msgSettings);
+      if (!config || !config.whatsappNumber) {
+        res.status(400).json({ error: "Twilio WhatsApp configuration is incomplete (missing Account SID, Auth Token, or WhatsApp Number)." });
+        return;
+      }
+
+      const customers = await Customer.findAll({
+        where: { phone: { [Op.and]: [{ [Op.ne]: null as unknown as string }, { [Op.ne]: "" }] } },
+        attributes: ["phone", "name"],
+      });
+      const phones = customers.filter((c) => c.phone).map((c) => c.phone as string);
+      if (phones.length === 0) {
+        res.status(400).json({ error: "No customers with phone numbers found." });
+        return;
+      }
+
+      for (const phone of phones) {
+        try {
+          await sendWhatsapp(config, { to: phone, body: campaign.message });
+          sent++;
+        } catch (err) {
+          failed++;
+          if (errors.length < 5) errors.push(`${phone}: ${err instanceof Error ? err.message : "Failed"}`);
+        }
+      }
+    } else {
+      res.status(400).json({ error: `Sending is not supported for channel "${channel}". Supported: email, sms, whatsapp.` });
+      return;
     }
 
     campaign.status = "sent";
     campaign.sentAt = new Date();
-    campaign.recipients = recipients.length;
+    campaign.recipients = sent + failed;
     await campaign.save();
 
-    res.json({ ok: true, sent, campaign });
+    res.json({ ok: true, sent, failed, errors: errors.length > 0 ? errors : undefined, campaign });
   } catch (err) {
     console.error("Campaign send error:", err);
     const msg = err instanceof Error ? err.message : "Failed to send campaign";
     res.status(500).json({ error: msg });
+  }
+});
+
+router.get("/campaigns/channels-status", requireAuth, async (_req: AuthRequest, res) => {
+  try {
+    const emailSettings = await getEmailSettings();
+    const msgSettings = await getMessagingSettings();
+
+    res.json({
+      email: { configured: !!emailSettings?.isActive, provider: "Mailgun" },
+      sms: { configured: !!msgSettings?.smsEnabled, provider: "Twilio" },
+      whatsapp: { configured: !!msgSettings?.whatsappEnabled, provider: "Twilio" },
+    });
+  } catch (err) {
+    res.status(500).json({ error: "Internal server error" });
   }
 });
 

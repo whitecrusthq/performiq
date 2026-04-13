@@ -24,6 +24,7 @@ import sitesRouter from "./sites.js";
 import paymentConfigsRouter from "./payment-configs.js";
 import paymentsRouter from "./payments.js";
 import productsRouter from "./products.js";
+import messagingSettingsRouter from "./messaging-settings.js";
 
 const router = Router();
 
@@ -55,5 +56,6 @@ router.use(sitesRouter);
 router.use(paymentConfigsRouter);
 router.use(paymentsRouter);
 router.use(productsRouter);
+router.use(messagingSettingsRouter);
 
 export default router;

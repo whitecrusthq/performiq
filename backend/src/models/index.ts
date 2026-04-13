@@ -29,6 +29,7 @@ export { Product } from "./Product.js";
 export { ProductCategory } from "./ProductCategory.js";
 export { ProductSource } from "./ProductSource.js";
 export type { SourceType } from "./ProductSource.js";
+export { MessagingSettings } from "./MessagingSettings.js";
 
 import { Agent } from "./Agent.js";
 import { Customer } from "./Customer.js";

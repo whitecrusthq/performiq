@@ -78,7 +78,7 @@ const ALL_MENUS = [
 const MENU_GROUPS = ["Core", "Analytics", "Tools", "Admin"] as const;
 type MenuSlug = typeof ALL_MENUS[number]["slug"];
 
-type SettingsSection = "channels" | "automation" | "email" | "team" | "appearance" | "retention" | "followups" | "sites" | "security" | "payments";
+type SettingsSection = "channels" | "automation" | "email" | "messaging" | "team" | "appearance" | "retention" | "followups" | "sites" | "security" | "payments";
 
 interface ApiSite {
   id: number;
@@ -121,6 +121,7 @@ const NAV_ITEMS: NavItem[] = [
   { id: "security",    label: "Security",        description: "2FA & account safety",  icon: ShieldCheck },
   { id: "automation",  label: "AI & Automation", description: "Bot & escalation",      icon: Bot },
   { id: "email",       label: "Email",           description: "Mailgun broadcasting",  icon: Mail },
+  { id: "messaging",   label: "SMS & WhatsApp",  description: "Twilio messaging",      icon: MessageCircle },
   { id: "followups",   label: "Follow-ups",      description: "Automation rules",      icon: CalendarClock },
   { id: "team",        label: "Team",            description: "Agents & roles",        icon: Users },
   { id: "appearance",  label: "Appearance",      description: "Branding & colors",     icon: Palette, adminOnly: true },
@@ -652,6 +653,62 @@ export default function Settings() {
       setMgTestResult({ ok: false, message: "Network error" });
     } finally {
       setMgTesting(false);
+    }
+  };
+
+  // ── Twilio Messaging state ──────────────────────────────────────────────────
+  interface MsgConfig {
+    id: number;
+    provider: string;
+    hasAccountSid: boolean;
+    hasAuthToken: boolean;
+    twilioPhoneNumber: string | null;
+    twilioWhatsappNumber: string | null;
+    smsEnabled: boolean;
+    whatsappEnabled: boolean;
+  }
+  const [twAccountSid, setTwAccountSid] = useState("");
+  const [twAuthToken, setTwAuthToken] = useState("");
+  const [twPhoneNumber, setTwPhoneNumber] = useState("");
+  const [twWhatsappNumber, setTwWhatsappNumber] = useState("");
+  const [twSmsEnabled, setTwSmsEnabled] = useState(false);
+  const [twWhatsappEnabled, setTwWhatsappEnabled] = useState(false);
+  const [showTwSid, setShowTwSid] = useState(false);
+  const [showTwToken, setShowTwToken] = useState(false);
+  const [twTesting, setTwTesting] = useState(false);
+  const [twTestResult, setTwTestResult] = useState<{ ok: boolean; message: string } | null>(null);
+
+  const { data: msgConfig, isLoading: msgLoading } = useQuery<MsgConfig>({
+    queryKey: ["messaging-settings"],
+    queryFn: () => apiGet("/messaging-settings"),
+    onSuccess: (d: MsgConfig) => {
+      setTwPhoneNumber(d.twilioPhoneNumber ?? "");
+      setTwWhatsappNumber(d.twilioWhatsappNumber ?? "");
+      setTwSmsEnabled(d.smsEnabled ?? false);
+      setTwWhatsappEnabled(d.whatsappEnabled ?? false);
+    },
+  } as Parameters<typeof useQuery>[0]);
+
+  const saveMsgMutation = useMutation({
+    mutationFn: (data: Record<string, unknown>) => apiPut("/messaging-settings", data),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["messaging-settings"] });
+      setTwTestResult(null);
+      toast({ title: "Messaging settings saved!", description: "Twilio configuration updated." });
+    },
+    onError: () => toast({ title: "Failed to save settings", variant: "destructive" }),
+  });
+
+  const testTwilio = async () => {
+    setTwTesting(true);
+    setTwTestResult(null);
+    try {
+      const res = await apiPost<{ ok: boolean; message: string }>("/messaging-settings/test", {});
+      setTwTestResult(res);
+    } catch {
+      setTwTestResult({ ok: false, message: "Network error" });
+    } finally {
+      setTwTesting(false);
     }
   };
 
@@ -1663,6 +1720,178 @@ export default function Settings() {
                   >
                     {saveEmailMutation.isPending && <Loader2 className="h-4 w-4 animate-spin" />}
                     Save Mailgun Settings
+                  </Button>
+                </CardFooter>
+              </Card>
+            </>
+          )}
+
+          {/* ── MESSAGING (SMS & WhatsApp) ──────────────────────────────── */}
+          {activeSection === "messaging" && (
+            <>
+              <div>
+                <h2 className="text-xl font-bold">SMS & WhatsApp Messaging</h2>
+                <p className="text-sm text-muted-foreground mt-1">Connect Twilio to send bulk SMS and WhatsApp messages from Campaigns.</p>
+              </div>
+              <Card>
+                <CardHeader>
+                  <div className="flex items-start justify-between">
+                    <div className="flex items-center gap-3">
+                      <div className="h-10 w-10 rounded-xl bg-[#F22F46]/10 flex items-center justify-center">
+                        <MessageCircle className="h-5 w-5 text-[#F22F46]" />
+                      </div>
+                      <div>
+                        <CardTitle className="flex items-center gap-2">
+                          Twilio
+                          {(msgConfig?.smsEnabled || msgConfig?.whatsappEnabled) ? (
+                            <Badge className="bg-green-100 text-green-700 border-green-200 dark:bg-green-900/20 dark:text-green-400">Active</Badge>
+                          ) : (
+                            <Badge variant="secondary">Inactive</Badge>
+                          )}
+                        </CardTitle>
+                        <CardDescription>API credentials for SMS and WhatsApp messaging</CardDescription>
+                      </div>
+                    </div>
+                  </div>
+                </CardHeader>
+                <CardContent className="space-y-5">
+                  {msgLoading ? (
+                    <div className="flex justify-center py-6"><Loader2 className="h-5 w-5 animate-spin text-muted-foreground" /></div>
+                  ) : (
+                    <>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        <div className="sm:col-span-2">
+                          <Label className="flex items-center gap-1.5 mb-1.5">
+                            Account SID
+                            {msgConfig?.hasAccountSid && <Badge variant="secondary" className="text-[10px] h-4">stored</Badge>}
+                          </Label>
+                          <div className="relative">
+                            <Input
+                              type={showTwSid ? "text" : "password"}
+                              placeholder={msgConfig?.hasAccountSid ? "••••••••• (leave blank to keep existing)" : "ACxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"}
+                              value={twAccountSid}
+                              onChange={(e) => setTwAccountSid(e.target.value)}
+                              className="pr-10 font-mono text-sm"
+                            />
+                            <button onClick={() => setShowTwSid((v) => !v)} className="absolute right-3 top-2.5 text-muted-foreground hover:text-foreground">
+                              {showTwSid ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                            </button>
+                          </div>
+                          <p className="text-xs text-muted-foreground mt-1">
+                            Find this at <span className="font-mono">console.twilio.com → Account Info</span>
+                          </p>
+                        </div>
+                        <div className="sm:col-span-2">
+                          <Label className="flex items-center gap-1.5 mb-1.5">
+                            Auth Token
+                            {msgConfig?.hasAuthToken && <Badge variant="secondary" className="text-[10px] h-4">stored</Badge>}
+                          </Label>
+                          <div className="relative">
+                            <Input
+                              type={showTwToken ? "text" : "password"}
+                              placeholder={msgConfig?.hasAuthToken ? "••••••••• (leave blank to keep existing)" : "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"}
+                              value={twAuthToken}
+                              onChange={(e) => setTwAuthToken(e.target.value)}
+                              className="pr-10 font-mono text-sm"
+                            />
+                            <button onClick={() => setShowTwToken((v) => !v)} className="absolute right-3 top-2.5 text-muted-foreground hover:text-foreground">
+                              {showTwToken ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                      <Separator />
+                      <div className="space-y-4">
+                        <div className="flex items-center justify-between p-4 rounded-lg border bg-muted/20">
+                          <div className="flex items-center gap-3">
+                            <div className="h-8 w-8 rounded-lg bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center">
+                              <MessageSquare className="h-4 w-4 text-blue-600 dark:text-blue-400" />
+                            </div>
+                            <div>
+                              <p className="font-medium text-sm">SMS</p>
+                              <p className="text-xs text-muted-foreground">Send bulk SMS to customers with phone numbers</p>
+                            </div>
+                          </div>
+                          <Switch checked={twSmsEnabled} onCheckedChange={setTwSmsEnabled} />
+                        </div>
+                        {twSmsEnabled && (
+                          <div className="pl-4 border-l-2 border-blue-200 dark:border-blue-800">
+                            <Label className="mb-1.5">Twilio Phone Number (SMS)</Label>
+                            <Input
+                              placeholder="+1234567890"
+                              value={twPhoneNumber}
+                              onChange={(e) => setTwPhoneNumber(e.target.value)}
+                              className="font-mono text-sm max-w-sm"
+                            />
+                            <p className="text-xs text-muted-foreground mt-1">Your Twilio phone number for sending SMS</p>
+                          </div>
+                        )}
+
+                        <div className="flex items-center justify-between p-4 rounded-lg border bg-muted/20">
+                          <div className="flex items-center gap-3">
+                            <div className="h-8 w-8 rounded-lg bg-green-100 dark:bg-green-900/30 flex items-center justify-center">
+                              <SiWhatsapp className="h-4 w-4 text-green-600 dark:text-green-400" />
+                            </div>
+                            <div>
+                              <p className="font-medium text-sm">WhatsApp</p>
+                              <p className="text-xs text-muted-foreground">Send bulk WhatsApp messages via Twilio</p>
+                            </div>
+                          </div>
+                          <Switch checked={twWhatsappEnabled} onCheckedChange={setTwWhatsappEnabled} />
+                        </div>
+                        {twWhatsappEnabled && (
+                          <div className="pl-4 border-l-2 border-green-200 dark:border-green-800">
+                            <Label className="mb-1.5">Twilio WhatsApp Number</Label>
+                            <Input
+                              placeholder="+1234567890"
+                              value={twWhatsappNumber}
+                              onChange={(e) => setTwWhatsappNumber(e.target.value)}
+                              className="font-mono text-sm max-w-sm"
+                            />
+                            <p className="text-xs text-muted-foreground mt-1">Your Twilio WhatsApp-enabled number (or Sandbox number for testing)</p>
+                          </div>
+                        )}
+                      </div>
+                      <Separator />
+                      <div>
+                        <p className="text-sm font-medium mb-3">Test Connection</p>
+                        <div className="flex gap-3 items-center">
+                          <Button variant="outline" onClick={testTwilio} disabled={twTesting} className="gap-2">
+                            {twTesting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Zap className="h-4 w-4" />}
+                            Test Twilio Connection
+                          </Button>
+                        </div>
+                        {twTestResult && (
+                          <div className={`mt-3 p-3 rounded-lg border text-xs flex items-start gap-2 ${twTestResult.ok ? "bg-green-50 border-green-200 text-green-700 dark:bg-green-950/20 dark:border-green-900 dark:text-green-400" : "bg-red-50 border-red-200 text-red-700 dark:bg-red-950/20 dark:border-red-900 dark:text-red-400"}`}>
+                            {twTestResult.ok ? <CheckCircle2 className="h-4 w-4 shrink-0 mt-0.5" /> : <XCircle className="h-4 w-4 shrink-0 mt-0.5" />}
+                            <span>{twTestResult.message}</span>
+                          </div>
+                        )}
+                      </div>
+                      <div className="p-4 rounded-xl bg-muted/40 border text-xs text-muted-foreground space-y-1.5">
+                        <p className="font-semibold text-foreground text-sm">How SMS & WhatsApp broadcasting works</p>
+                        <p>When you send an <strong>SMS</strong> or <strong>WhatsApp campaign</strong> from the Campaigns page, CommsCRM sends the message to all customers who have a phone number on file.</p>
+                        <p className="mt-1">SMS uses your Twilio phone number, WhatsApp uses your Twilio WhatsApp-enabled number. Messages are sent one-by-one through the Twilio API.</p>
+                        <p className="mt-1">For WhatsApp, you need an approved WhatsApp Business profile or use the Twilio Sandbox for testing.</p>
+                      </div>
+                    </>
+                  )}
+                </CardContent>
+                <CardFooter className="border-t bg-muted/20 px-6 py-4">
+                  <Button
+                    onClick={() => saveMsgMutation.mutate({
+                      accountSid: twAccountSid || undefined,
+                      authToken: twAuthToken || undefined,
+                      twilioPhoneNumber: twPhoneNumber,
+                      twilioWhatsappNumber: twWhatsappNumber,
+                      smsEnabled: twSmsEnabled,
+                      whatsappEnabled: twWhatsappEnabled,
+                    })}
+                    disabled={saveMsgMutation.isPending}
+                    className="gap-2"
+                  >
+                    {saveMsgMutation.isPending && <Loader2 className="h-4 w-4 animate-spin" />}
+                    Save Twilio Settings
                   </Button>
                 </CardFooter>
               </Card>
