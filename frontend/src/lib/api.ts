@@ -31,7 +31,7 @@ export async function apiFetch(path: string, options: RequestInit = {}): Promise
     headers["Authorization"] = `Bearer ${token}`;
   }
 
-  const response = await fetch(`${BASE_URL}${path}`, { credentials: "include", ...options, headers });
+  const response = await fetch(`${BASE_URL}${path}`, { ...options, headers });
 
   if (response.status === 401) {
     clearToken();

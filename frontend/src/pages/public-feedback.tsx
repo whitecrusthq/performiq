@@ -7,10 +7,10 @@ import { Star, CheckCircle2, MessageSquare } from "lucide-react";
 import { getBaseUrl } from "@/lib/api";
 
 const LABELS: Record<number, { text: string; emoji: string; color: string }> = {
-  1: { text: "Terrible",  emoji: "😞", color: "text-red-500" },
-  2: { text: "Poor",      emoji: "😕", color: "text-orange-500" },
-  3: { text: "Okay",      emoji: "😐", color: "text-yellow-500" },
-  4: { text: "Good",      emoji: "😊", color: "text-blue-500" },
+  1: { text: "Terrible", emoji: "😞", color: "text-red-500" },
+  2: { text: "Poor", emoji: "😕", color: "text-orange-500" },
+  3: { text: "Okay", emoji: "😐", color: "text-yellow-500" },
+  4: { text: "Good", emoji: "😊", color: "text-blue-500" },
   5: { text: "Excellent", emoji: "🤩", color: "text-green-500" },
 };
 
@@ -27,16 +27,23 @@ export default function PublicFeedback() {
   const info = active ? LABELS[active] : null;
 
   const handleSubmit = async () => {
-    if (!rating) { setError("Please select a rating before submitting."); return; }
+    if (!rating) {
+      setError("Please select a rating before submitting.");
+      return;
+    }
     setLoading(true);
     setError("");
     try {
       const baseUrl = getBaseUrl();
       const res = await fetch(`${baseUrl}/feedback/public`, {
         method: "POST",
-        credentials: "include",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ rating, comment: comment || undefined, customerName: name || undefined, channel: "web" }),
+        body: JSON.stringify({
+          rating,
+          comment: comment || undefined,
+          customerName: name || undefined,
+          channel: "web",
+        }),
       });
       if (!res.ok) throw new Error("Submission failed");
       setSubmitted(true);
@@ -57,17 +64,25 @@ export default function PublicFeedback() {
             </div>
           </div>
           <div>
-            <h2 className="text-2xl font-bold text-foreground">Thank you{name ? `, ${name.split(" ")[0]}` : ""}!</h2>
+            <h2 className="text-2xl font-bold text-foreground">
+              Thank you{name ? `, ${name.split(" ")[0]}` : ""}!
+            </h2>
             <p className="text-muted-foreground mt-2 text-base">
-              Your feedback has been submitted. We really appreciate you taking the time to let us know how we're doing.
+              Your feedback has been submitted. We really appreciate you taking
+              the time to let us know how we're doing.
             </p>
           </div>
           <div className="flex justify-center gap-0.5">
             {[1, 2, 3, 4, 5].map((s) => (
-              <Star key={s} className={`h-7 w-7 ${s <= rating ? "text-yellow-400 fill-yellow-400" : "text-muted-foreground/20"}`} />
+              <Star
+                key={s}
+                className={`h-7 w-7 ${s <= rating ? "text-yellow-400 fill-yellow-400" : "text-muted-foreground/20"}`}
+              />
             ))}
           </div>
-          <p className="text-sm text-muted-foreground">You can close this page now.</p>
+          <p className="text-sm text-muted-foreground">
+            You can close this page now.
+          </p>
         </div>
       </div>
     );
@@ -86,7 +101,9 @@ export default function PublicFeedback() {
               </div>
             </div>
             <h1 className="text-2xl font-bold">Share Your Experience</h1>
-            <p className="text-violet-100 mt-1 text-sm">How would you rate your recent interaction with us?</p>
+            <p className="text-violet-100 mt-1 text-sm">
+              How would you rate your recent interaction with us?
+            </p>
           </div>
 
           {/* Form */}
@@ -99,7 +116,10 @@ export default function PublicFeedback() {
                     key={s}
                     onMouseEnter={() => setHover(s)}
                     onMouseLeave={() => setHover(0)}
-                    onClick={() => { setRating(s); setError(""); }}
+                    onClick={() => {
+                      setRating(s);
+                      setError("");
+                    }}
                     className="transition-transform hover:scale-110 active:scale-95 p-1"
                     aria-label={`Rate ${s} stars`}
                   >
@@ -114,18 +134,27 @@ export default function PublicFeedback() {
                 ))}
               </div>
               {info && (
-                <p className={`text-lg font-semibold transition-all ${info.color}`}>
+                <p
+                  className={`text-lg font-semibold transition-all ${info.color}`}
+                >
                   {info.emoji} {info.text}
                 </p>
               )}
               {!active && (
-                <p className="text-sm text-muted-foreground">Tap a star to rate</p>
+                <p className="text-sm text-muted-foreground">
+                  Tap a star to rate
+                </p>
               )}
             </div>
 
             {/* Name */}
             <div className="space-y-1.5">
-              <Label className="text-sm font-medium">Your name <span className="text-muted-foreground font-normal">(optional)</span></Label>
+              <Label className="text-sm font-medium">
+                Your name{" "}
+                <span className="text-muted-foreground font-normal">
+                  (optional)
+                </span>
+              </Label>
               <Input
                 placeholder="e.g. Sarah"
                 value={name}
@@ -136,7 +165,12 @@ export default function PublicFeedback() {
 
             {/* Comment */}
             <div className="space-y-1.5">
-              <Label className="text-sm font-medium">Additional comments <span className="text-muted-foreground font-normal">(optional)</span></Label>
+              <Label className="text-sm font-medium">
+                Additional comments{" "}
+                <span className="text-muted-foreground font-normal">
+                  (optional)
+                </span>
+              </Label>
               <Textarea
                 placeholder="Tell us more about your experience..."
                 value={comment}
@@ -159,7 +193,8 @@ export default function PublicFeedback() {
             </Button>
 
             <p className="text-center text-xs text-muted-foreground">
-              Your feedback helps us improve our service. Thank you for your time.
+              Your feedback helps us improve our service. Thank you for your
+              time.
             </p>
           </div>
         </div>
