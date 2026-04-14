@@ -47,6 +47,7 @@ const authLimiter = rateLimit({
 });
 
 app.use("/crm-api/auth/login", authLimiter);
+app.use("/api/auth/login", authLimiter);
 
 app.use("/crm-api", router);
 app.use("/api", router);

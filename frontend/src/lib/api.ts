@@ -1,4 +1,5 @@
-const BASE_URL = `${import.meta.env.BASE_URL.replace(/\/$/, "")}/crm-api`;
+const API_PREFIX = import.meta.env.VITE_API_PREFIX || "/crm-api";
+const BASE_URL = `${import.meta.env.BASE_URL.replace(/\/$/, "")}${API_PREFIX}`;
 
 export function getBaseUrl(): string {
   return BASE_URL;
