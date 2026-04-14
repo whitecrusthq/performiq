@@ -12,7 +12,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 const app: Express = express();
 
-app.set("trust proxy", true);
+// app.set("trust proxy", true);
 
 app.use(
   pinoHttp({
@@ -40,6 +40,7 @@ const authLimiter = rateLimit({
   max: 30,
   standardHeaders: true,
   legacyHeaders: false,
+  validate: { trustProxy: false },
   message: { error: "Too many requests, please try again later." },
 });
 
