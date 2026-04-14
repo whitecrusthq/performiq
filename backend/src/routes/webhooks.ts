@@ -307,15 +307,17 @@ router.post("/widget/message", async (req, res) => {
     await storeIncomingMessage(conversation, message);
 
     let aiReply: string | null = null;
+    let aiReplyId: number | null = null;
     try {
       aiReply = await generateWidgetAiReply(conversation, name);
       if (aiReply) {
-        await Message.create({
+        const botMsg = await Message.create({
           conversationId: conversation.id,
           sender: "bot",
           content: aiReply,
           isRead: true,
         });
+        aiReplyId = botMsg.id;
         await Conversation.update({ lastMessageAt: new Date() }, { where: { id: conversation.id } });
       }
     } catch (aiErr) {
@@ -326,6 +328,7 @@ router.post("/widget/message", async (req, res) => {
       success: true,
       conversationId: conversation.id,
       aiReply: aiReply || null,
+      aiReplyId: aiReplyId,
     });
   } catch (err) {
     console.error("Widget message error:", err);
@@ -637,6 +640,9 @@ async function loadHistory(){
     try{
       var idData=await apiCall("GET","/widget/messages?widgetId="+encodeURIComponent(wId)+"&visitorId="+encodeURIComponent(visitorId));
       if(idData.messages&&idData.messages.length>0){
+        for(var j=0;j<idData.messages.length;j++){
+          if(idData.messages[j].id)shownMsgIds[idData.messages[j].id]=true;
+        }
         lastMsgId=idData.messages[idData.messages.length-1].id||0;
       }
     }catch(e){}
@@ -646,6 +652,7 @@ async function loadHistory(){
 var lastMsgId=0;
 var pollTimer=null;
 var conversationStarted=false;
+var shownMsgIds={};
 
 async function send(){
   if(sending)return;
@@ -656,20 +663,19 @@ async function send(){
   sending=true;
 
   addMsg(msg,"usr");
-  showTyping();
 
   try{
     var data=await apiCall("POST","/widget/message",{
       widgetId:wId,visitorId:visitorId,visitorName:cfg.visitorName||null,message:msg
     });
-    hideTyping();
-    if(data.aiReply){
+    if(data.aiReply&&data.aiReplyId){
+      shownMsgIds[data.aiReplyId]=true;
+      if(data.aiReplyId>lastMsgId)lastMsgId=data.aiReplyId;
       addMsg(data.aiReply,"bot");
     }
     conversationStarted=true;
     if(!pollTimer)startPolling();
   }catch(e){
-    hideTyping();
     addMsg("Sorry, something went wrong. Please try again.","bot");
     console.error("CommsCRM: send failed",e);
   }finally{
@@ -680,7 +686,7 @@ async function send(){
 }
 
 async function pollMessages(){
-  if(!chatOpen&&!conversationStarted)return;
+  if(!conversationStarted)return;
   try{
     var url="/widget/messages?widgetId="+encodeURIComponent(wId)+"&visitorId="+encodeURIComponent(visitorId);
     if(lastMsgId>0)url+="&afterId="+lastMsgId;
@@ -688,6 +694,8 @@ async function pollMessages(){
     if(data.messages&&data.messages.length>0){
       for(var i=0;i<data.messages.length;i++){
         var m=data.messages[i];
+        if(m.id&&shownMsgIds[m.id])continue;
+        if(m.id)shownMsgIds[m.id]=true;
         addMsg(m.content,"bot");
         if(m.id&&m.id>lastMsgId)lastMsgId=m.id;
       }
