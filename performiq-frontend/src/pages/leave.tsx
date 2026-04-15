@@ -131,6 +131,7 @@ export default function Leave() {
   const [expandedPolicyTeam, setExpandedPolicyTeam] = useState<Record<number, boolean>>({});
   const [balanceFilterType, setBalanceFilterType] = useState<string>("all");
   const [balanceFilterName, setBalanceFilterName] = useState<string>("");
+  const [returningDaysFilter, setReturningDaysFilter] = useState<string>("3");
 
   const isManager = user && ["super_admin", "admin", "manager"].includes(user.role);
   const isAdmin = user?.role === "admin" || user?.role === "super_admin";
@@ -351,6 +352,7 @@ export default function Leave() {
     setBulkDeleting(false);
   };
 
+  const maxDays = returningDaysFilter === "all" ? Infinity : Number(returningDaysFilter);
   const returningRequests = requests.filter(r => {
     if (r.status !== "approved") return false;
     const end = new Date(r.endDate);
@@ -358,7 +360,7 @@ export default function Leave() {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
     const diffDays = Math.ceil((end.getTime() - today.getTime()) / 86400000);
-    return diffDays >= 0 && diffDays <= 3;
+    return diffDays >= 0 && diffDays <= maxDays;
   }).sort((a, b) => new Date(a.endDate).getTime() - new Date(b.endDate).getTime());
 
   const tabs: { key: TabType; label: string; icon: React.ReactNode; badge?: number }[] = [
@@ -576,18 +578,40 @@ export default function Leave() {
       {/* RETURNING SOON TAB */}
       {activeTab === "returning" && isManager && (
         <div className="space-y-4">
-          <div className="flex items-center gap-3 mb-2">
-            <h3 className="text-lg font-bold text-foreground flex items-center gap-2">
-              <UserCheck className="w-5 h-5 text-blue-600" /> Staff Returning Soon
-            </h3>
-            <span className="text-sm text-muted-foreground">Employees returning from leave within the next 3 days</span>
+          <div className="flex items-center justify-between mb-2 flex-wrap gap-3">
+            <div className="flex items-center gap-3">
+              <h3 className="text-lg font-bold text-foreground flex items-center gap-2">
+                <UserCheck className="w-5 h-5 text-blue-600" /> Staff Returning From Leave
+              </h3>
+              <span className="text-sm text-muted-foreground hidden sm:inline">
+                {returningDaysFilter === "all" ? "Showing all upcoming returns" : `Returning within ${returningDaysFilter} day${returningDaysFilter === "1" ? "" : "s"}`}
+              </span>
+            </div>
+            <div className="flex items-center gap-2">
+              <Filter className="w-4 h-4 text-muted-foreground" />
+              <select
+                value={returningDaysFilter}
+                onChange={e => setReturningDaysFilter(e.target.value)}
+                className="border rounded-lg px-3 py-1.5 text-sm bg-background"
+              >
+                <option value="0">Today</option>
+                <option value="1">Within 1 day</option>
+                <option value="3">Within 3 days</option>
+                <option value="7">Within 7 days</option>
+                <option value="14">Within 14 days</option>
+                <option value="30">Within 30 days</option>
+                <option value="all">All upcoming</option>
+              </select>
+            </div>
           </div>
 
           {returningRequests.length === 0 ? (
             <Card className="p-8 text-center">
               <UserCheck className="w-10 h-10 text-muted-foreground/40 mx-auto mb-3" />
-              <p className="text-sm font-medium text-muted-foreground">No staff returning in the next 3 days</p>
-              <p className="text-xs text-muted-foreground mt-1">Employees whose approved leave ends within 0–3 days will appear here.</p>
+              <p className="text-sm font-medium text-muted-foreground">
+                {returningDaysFilter === "all" ? "No upcoming returns from leave" : `No staff returning within ${returningDaysFilter} day${returningDaysFilter === "1" ? "" : "s"}`}
+              </p>
+              <p className="text-xs text-muted-foreground mt-1">Employees whose approved leave is ending will appear here.</p>
             </Card>
           ) : (
             <div className="space-y-3">
