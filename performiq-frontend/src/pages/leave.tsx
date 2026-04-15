@@ -69,8 +69,9 @@ interface UserOption { id: number; name: string; role: string; department?: stri
 
 interface LeavePolicy {
   id: number; leaveType: string; daysAllocated: number;
-  cycleStartMonth: number; cycleStartDay: number;
-  cycleEndMonth: number; cycleEndDay: number;
+  cycleMode: string; cycleStartMonth: number; cycleStartDay: number;
+  cycleEndMonth: number; cycleEndDay: number; cycleDays: number;
+  rolloverEnabled: boolean; maxRolloverDays: number;
 }
 
 interface LeaveBalanceItem {
@@ -100,8 +101,9 @@ export default function Leave() {
   const [balances, setBalances] = useState<LeaveBalanceItem[]>([]);
   const [policies, setPolicies] = useState<LeavePolicy[]>([]);
   const [policyForm, setPolicyForm] = useState<Partial<LeavePolicy> & { leaveType: string }>({
-    leaveType: "annual", daysAllocated: 0,
+    leaveType: "annual", daysAllocated: 0, cycleMode: "dates",
     cycleStartMonth: 1, cycleStartDay: 1, cycleEndMonth: 12, cycleEndDay: 31,
+    cycleDays: 365, rolloverEnabled: false, maxRolloverDays: 0,
   });
   const [isPolicyDialogOpen, setIsPolicyDialogOpen] = useState(false);
   const [teamBalances, setTeamBalances] = useState<any[]>([]);
@@ -646,7 +648,8 @@ export default function Leave() {
           <div className="flex items-center justify-between">
             <h3 className="text-lg font-bold text-foreground">Leave Cycle Settings</h3>
             <Button onClick={() => {
-              setPolicyForm({ leaveType: "annual", daysAllocated: 0, cycleStartMonth: 1, cycleStartDay: 1, cycleEndMonth: 12, cycleEndDay: 31 });
+              setPolicyForm({ leaveType: "annual", daysAllocated: 0, cycleMode: "dates", cycleStartMonth: 1, cycleStartDay: 1, cycleEndMonth: 12, cycleEndDay: 31, cycleDays: 365, rolloverEnabled: false, maxRolloverDays: 0 });
+              setMutationError(null);
               setIsPolicyDialogOpen(true);
             }}>
               <Plus className="w-4 h-4 mr-2" /> Add Policy
@@ -687,14 +690,29 @@ export default function Leave() {
                       <span className="text-muted-foreground">Days Allocated</span>
                       <span className="font-bold text-foreground">{p.daysAllocated} days</span>
                     </div>
-                    <div className="flex justify-between">
-                      <span className="text-muted-foreground">Cycle Start</span>
-                      <span className="font-medium">{p.cycleStartDay} {MONTHS[p.cycleStartMonth - 1]}</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-muted-foreground">Cycle End</span>
-                      <span className="font-medium">{p.cycleEndDay} {MONTHS[p.cycleEndMonth - 1]}</span>
-                    </div>
+                    {p.cycleMode === "days" ? (
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">Cycle Length</span>
+                        <span className="font-medium">{p.cycleDays} days</span>
+                      </div>
+                    ) : (
+                      <>
+                        <div className="flex justify-between">
+                          <span className="text-muted-foreground">Cycle Start</span>
+                          <span className="font-medium">{p.cycleStartDay} {MONTHS[p.cycleStartMonth - 1]}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-muted-foreground">Cycle End</span>
+                          <span className="font-medium">{p.cycleEndDay} {MONTHS[p.cycleEndMonth - 1]}</span>
+                        </div>
+                      </>
+                    )}
+                    {p.rolloverEnabled && (
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">Rollover</span>
+                        <span className="font-medium text-blue-600">{p.maxRolloverDays > 0 ? `Up to ${p.maxRolloverDays} days` : "Unlimited"}</span>
+                      </div>
+                    )}
                   </div>
                 </Card>
               ))}
@@ -884,7 +902,7 @@ export default function Leave() {
                 </select>
               </div>
               <div>
-                <Label>Days Allocated Per Year</Label>
+                <Label>Days Allocated Per Cycle</Label>
                 <input
                   type="number"
                   className="w-full px-4 py-2 border rounded-xl bg-background text-sm"
@@ -893,51 +911,109 @@ export default function Leave() {
                   onChange={e => setPolicyForm({ ...policyForm, daysAllocated: e.target.value === "" ? 0 : Number(e.target.value) })}
                 />
               </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <Label>Cycle Start Month</Label>
-                  <select
-                    className="w-full px-4 py-2 border rounded-xl bg-background text-sm"
-                    value={policyForm.cycleStartMonth ?? 1}
-                    onChange={e => setPolicyForm({ ...policyForm, cycleStartMonth: Number(e.target.value) })}
-                  >
-                    {MONTHS.map((m, i) => <option key={i} value={i + 1}>{m}</option>)}
-                  </select>
-                </div>
-                <div>
-                  <Label>Cycle Start Day</Label>
-                  <Input
-                    type="number"
-                    min={1}
-                    max={31}
-                    value={policyForm.cycleStartDay ?? 1}
-                    onChange={e => setPolicyForm({ ...policyForm, cycleStartDay: Number(e.target.value) })}
-                  />
-                </div>
+
+              <div>
+                <Label>Cycle Mode</Label>
+                <select
+                  className="w-full px-4 py-2 border rounded-xl bg-background text-sm"
+                  value={policyForm.cycleMode ?? "dates"}
+                  onChange={e => setPolicyForm({ ...policyForm, cycleMode: e.target.value })}
+                >
+                  <option value="dates">Fixed Dates (e.g. Jan 1 – Dec 31)</option>
+                  <option value="days">Number of Days (e.g. 365 days)</option>
+                </select>
               </div>
-              <div className="grid grid-cols-2 gap-3">
+
+              {policyForm.cycleMode === "days" ? (
                 <div>
-                  <Label>Cycle End Month</Label>
-                  <select
-                    className="w-full px-4 py-2 border rounded-xl bg-background text-sm"
-                    value={policyForm.cycleEndMonth ?? 12}
-                    onChange={e => setPolicyForm({ ...policyForm, cycleEndMonth: Number(e.target.value) })}
-                  >
-                    {MONTHS.map((m, i) => <option key={i} value={i + 1}>{m}</option>)}
-                  </select>
-                </div>
-                <div>
-                  <Label>Cycle End Day</Label>
-                  <Input
+                  <Label>Cycle Length (days)</Label>
+                  <input
                     type="number"
+                    className="w-full px-4 py-2 border rounded-xl bg-background text-sm"
                     min={1}
-                    max={31}
-                    value={policyForm.cycleEndDay ?? 31}
-                    onChange={e => setPolicyForm({ ...policyForm, cycleEndDay: Number(e.target.value) })}
+                    value={policyForm.cycleDays ?? 365}
+                    onChange={e => setPolicyForm({ ...policyForm, cycleDays: Number(e.target.value) })}
                   />
+                  <p className="text-xs text-muted-foreground mt-1">Cycle resets every {policyForm.cycleDays || 365} days from the employee's start date.</p>
                 </div>
+              ) : (
+                <>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <Label>Cycle Start Month</Label>
+                      <select
+                        className="w-full px-4 py-2 border rounded-xl bg-background text-sm"
+                        value={policyForm.cycleStartMonth ?? 1}
+                        onChange={e => setPolicyForm({ ...policyForm, cycleStartMonth: Number(e.target.value) })}
+                      >
+                        {MONTHS.map((m, i) => <option key={i} value={i + 1}>{m}</option>)}
+                      </select>
+                    </div>
+                    <div>
+                      <Label>Cycle Start Day</Label>
+                      <Input
+                        type="number"
+                        min={1}
+                        max={31}
+                        value={policyForm.cycleStartDay ?? 1}
+                        onChange={e => setPolicyForm({ ...policyForm, cycleStartDay: Number(e.target.value) })}
+                      />
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <Label>Cycle End Month</Label>
+                      <select
+                        className="w-full px-4 py-2 border rounded-xl bg-background text-sm"
+                        value={policyForm.cycleEndMonth ?? 12}
+                        onChange={e => setPolicyForm({ ...policyForm, cycleEndMonth: Number(e.target.value) })}
+                      >
+                        {MONTHS.map((m, i) => <option key={i} value={i + 1}>{m}</option>)}
+                      </select>
+                    </div>
+                    <div>
+                      <Label>Cycle End Day</Label>
+                      <Input
+                        type="number"
+                        min={1}
+                        max={31}
+                        value={policyForm.cycleEndDay ?? 31}
+                        onChange={e => setPolicyForm({ ...policyForm, cycleEndDay: Number(e.target.value) })}
+                      />
+                    </div>
+                  </div>
+                </>
+              )}
+
+              <hr className="border-border" />
+
+              <div className="flex items-center justify-between">
+                <div>
+                  <Label className="text-sm">Enable Rollover</Label>
+                  <p className="text-xs text-muted-foreground">Carry unused days to the next cycle</p>
+                </div>
+                <input
+                  type="checkbox"
+                  className="w-5 h-5 accent-primary cursor-pointer"
+                  checked={policyForm.rolloverEnabled ?? false}
+                  onChange={e => setPolicyForm({ ...policyForm, rolloverEnabled: e.target.checked, maxRolloverDays: e.target.checked ? (policyForm.maxRolloverDays || 0) : 0 })}
+                />
               </div>
-              <p className="text-xs text-muted-foreground">This will automatically allocate the specified days to all employees for the current cycle year.</p>
+
+              {policyForm.rolloverEnabled && (
+                <div>
+                  <Label>Max Rollover Days</Label>
+                  <input
+                    type="number"
+                    className="w-full px-4 py-2 border rounded-xl bg-background text-sm"
+                    min={0}
+                    value={policyForm.maxRolloverDays ?? 0}
+                    onChange={e => setPolicyForm({ ...policyForm, maxRolloverDays: Number(e.target.value) })}
+                  />
+                  <p className="text-xs text-muted-foreground mt-1">Set to 0 for unlimited rollover.</p>
+                </div>
+              )}
+
               <div className="flex gap-3 pt-2">
                 <Button type="button" variant="outline" className="flex-1" onClick={() => setIsPolicyDialogOpen(false)}>Cancel</Button>
                 <Button type="submit" className="flex-1" isLoading={submitting}>Save Policy</Button>
