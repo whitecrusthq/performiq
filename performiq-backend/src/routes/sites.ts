@@ -16,12 +16,12 @@ router.get("/sites", requireAuth, async (_req, res) => {
 
 router.post("/sites", requireAuth, requireRole("admin"), async (req, res) => {
   try {
-    const { name, address, city, country, description } = req.body;
+    const { name, address, city, region, country, description } = req.body;
     if (!name?.trim()) {
       res.status(400).json({ error: "Site name is required" });
       return;
     }
-    const [site] = await db.insert(sitesTable).values({ name: name.trim(), address, city, country, description }).returning();
+    const [site] = await db.insert(sitesTable).values({ name: name.trim(), address, city, region, country, description }).returning();
     res.status(201).json(site);
   } catch (err: any) {
     if (err.code === "23505") res.status(409).json({ error: "A site with this name already exists" });
@@ -31,13 +31,13 @@ router.post("/sites", requireAuth, requireRole("admin"), async (req, res) => {
 
 router.put("/sites/:id", requireAuth, requireRole("admin"), async (req, res) => {
   try {
-    const { name, address, city, country, description } = req.body;
+    const { name, address, city, region, country, description } = req.body;
     if (!name?.trim()) {
       res.status(400).json({ error: "Site name is required" });
       return;
     }
     const [site] = await db.update(sitesTable)
-      .set({ name: name.trim(), address, city, country, description })
+      .set({ name: name.trim(), address, city, region, country, description })
       .where(eq(sitesTable.id, Number(req.params.id)))
       .returning();
     if (!site) { res.status(404).json({ error: "Site not found" }); return; }

@@ -36,6 +36,13 @@
       "when": 1776237943425,
       "tag": "0004_harsh_nomad",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1776238236711,
+      "tag": "0005_pink_greymalkin",
+      "breakpoints": true
     }
   ]
 }

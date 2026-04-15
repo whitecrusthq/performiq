@@ -5,6 +5,7 @@ export const sitesTable = pgTable("sites", {
   name: text("name").notNull().unique(),
   address: text("address"),
   city: text("city"),
+  region: text("region"),
   country: text("country"),
   description: text("description"),
   createdAt: timestamp("created_at").notNull().defaultNow(),

@@ -11,6 +11,7 @@ interface Site {
   name: string;
   address?: string | null;
   city?: string | null;
+  region?: string | null;
   country?: string | null;
   description?: string | null;
   createdAt: string;
@@ -36,7 +37,7 @@ function useSites() {
   return { sites, isLoading, refresh };
 }
 
-const EMPTY_FORM = { name: "", address: "", city: "", country: "", description: "" };
+const EMPTY_FORM = { name: "", address: "", city: "", region: "", country: "", description: "" };
 
 export default function Sites() {
   const { user } = useAuth();
@@ -57,7 +58,7 @@ export default function Sites() {
   };
 
   const openEdit = (site: Site) => {
-    setFormData({ name: site.name, address: site.address || "", city: site.city || "", country: site.country || "", description: site.description || "" });
+    setFormData({ name: site.name, address: site.address || "", city: site.city || "", region: site.region || "", country: site.country || "", description: site.description || "" });
     setEditingId(site.id);
     setError(null);
     setIsDialogOpen(true);
@@ -159,10 +160,10 @@ export default function Sites() {
                       </div>
                       <div className="min-w-0">
                         <p className="font-semibold text-foreground truncate">{site.name}</p>
-                        {(site.city || site.country) && (
+                        {(site.city || site.region || site.country) && (
                           <p className="text-xs text-muted-foreground flex items-center gap-1 mt-0.5">
                             <Globe className="w-3 h-3" />
-                            {[site.city, site.country].filter(Boolean).join(", ")}
+                            {[site.city, site.region, site.country].filter(Boolean).join(", ")}
                           </p>
                         )}
                       </div>
@@ -197,8 +198,9 @@ export default function Sites() {
               <div><Label>Address</Label><Input value={formData.address} onChange={e => setFormData({ ...formData, address: e.target.value })} placeholder="Street address" /></div>
               <div className="grid grid-cols-2 gap-4">
                 <div><Label>City</Label><Input value={formData.city} onChange={e => setFormData({ ...formData, city: e.target.value })} placeholder="City" /></div>
-                <div><Label>Country</Label><Input value={formData.country} onChange={e => setFormData({ ...formData, country: e.target.value })} placeholder="Country" /></div>
+                <div><Label>Region</Label><Input value={formData.region} onChange={e => setFormData({ ...formData, region: e.target.value })} placeholder="e.g. West Africa, South East" /></div>
               </div>
+              <div><Label>Country</Label><Input value={formData.country} onChange={e => setFormData({ ...formData, country: e.target.value })} placeholder="Country" /></div>
               <div><Label>Description</Label><Input value={formData.description} onChange={e => setFormData({ ...formData, description: e.target.value })} placeholder="Optional notes" /></div>
               {error && (
                 <div className="flex items-start gap-2 rounded-xl bg-destructive/10 border border-destructive/20 text-destructive px-4 py-3 text-sm">
