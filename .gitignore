@@ -9,6 +9,7 @@ out-tsc/
 *.tsbuildinfo
 .expo
 .expo-shared
+.vscode/
 
 # Environment variables
 .env
