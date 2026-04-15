@@ -177,24 +177,27 @@ export default function Leave() {
 
   const handleSaveLeaveType = async (e: React.FormEvent) => {
     e.preventDefault();
+    setMutationError(null);
     setSubmitting(true);
     try {
       if (editingLeaveType) {
         const r = await apiFetch(`/api/leave-types/${editingLeaveType.id}`, {
-          method: "PUT", headers: { "Content-Type": "application/json" },
+          method: "PUT",
           body: JSON.stringify({ label: leaveTypeForm.label }),
         });
         if (r.ok) { setIsLeaveTypeDialogOpen(false); loadLeaveTypes(); setEditingLeaveType(null); }
         else { const d = await r.json(); setMutationError(d.error || "Failed to update"); }
       } else {
         const r = await apiFetch("/api/leave-types", {
-          method: "POST", headers: { "Content-Type": "application/json" },
+          method: "POST",
           body: JSON.stringify(leaveTypeForm),
         });
         if (r.ok) { setIsLeaveTypeDialogOpen(false); loadLeaveTypes(); }
         else { const d = await r.json(); setMutationError(d.error || "Failed to create"); }
       }
-    } catch {}
+    } catch (err) {
+      setMutationError("Network error");
+    }
     setSubmitting(false);
   };
 
@@ -276,7 +279,7 @@ export default function Leave() {
     setSubmitting(true);
     try {
       const r = await apiFetch("/api/leave-policies", {
-        method: "POST", headers: { "Content-Type": "application/json" },
+        method: "POST",
         body: JSON.stringify(policyForm),
       });
       if (r.ok) {

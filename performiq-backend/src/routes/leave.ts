@@ -85,7 +85,7 @@ async function enrichLeaveRequest(r: typeof leaveRequestsTable.$inferSelect, use
   };
 }
 
-router.get("/leave-types", requireAuth, async (_req: AuthRequest, res) => {
+router.get("/leave-types", async (_req, res) => {
   try {
     const types = await db.select().from(leaveTypesTable).orderBy(asc(leaveTypesTable.name));
     res.json(types);
