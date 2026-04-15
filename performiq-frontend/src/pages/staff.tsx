@@ -182,10 +182,23 @@ function StaffPanel({ staffId, canEdit, onClose, onUpdated }: {
   const [draft, setDraft] = useState<any>({});
   const isAdminUser = currentUser?.role === "admin" || currentUser?.role === "super_admin";
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
+  const [uploadingReviewDoc, setUploadingReviewDoc] = useState(false);
 
   const { data: staff, isLoading, refetch } = useQuery({
     queryKey: ["staff-detail", staffId],
     queryFn: () => apiFetchJson(`/api/users/${staffId}`),
+  });
+
+  const { data: confirmationData, refetch: refetchConfirmation } = useQuery({
+    queryKey: ["confirmation-review", staffId],
+    queryFn: () => apiFetchJson(`/api/confirmation-reviews/${staffId}`),
+    enabled: !!staff?.probationEndDate,
+  });
+
+  const { data: employeeAppraisals } = useQuery({
+    queryKey: ["employee-appraisals", staffId],
+    queryFn: () => apiFetchJson(`/api/appraisals?employeeId=${staffId}`),
+    enabled: !!staff?.probationEndDate && isAdminUser,
   });
 
   const handlePhotoUpload = async (file: File) => {
@@ -631,7 +644,7 @@ function StaffPanel({ staffId, canEdit, onClose, onUpdated }: {
                   {staff?.probationEndDate && (
                     <div className="border-t border-border/50 pt-4">
                       <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-3 flex items-center gap-1.5">
-                        <Clock className="w-3.5 h-3.5" /> Probation Period
+                        <Clock className="w-3.5 h-3.5" /> Probation & Confirmation
                       </h4>
                       {(() => {
                         const end = new Date(staff.probationEndDate);
@@ -645,8 +658,94 @@ function StaffPanel({ staffId, canEdit, onClose, onUpdated }: {
                           failed:    { label: "Failed",         color: "bg-red-100 text-red-700" },
                         };
                         const sc = statusConfig[status] ?? statusConfig.active;
+                        const activeReview = confirmationData?.active;
+                        const linkedAppraisal = confirmationData?.linkedAppraisal;
+                        const completedAppraisals = (Array.isArray(employeeAppraisals) ? employeeAppraisals : []).filter((a: any) => a.status === "completed");
+
+                        const handleInitiateReview = async () => {
+                          try {
+                            await apiFetchJson("/api/confirmation-reviews", {
+                              method: "POST",
+                              body: JSON.stringify({ employeeId: staffId }),
+                            });
+                            refetchConfirmation();
+                            toast({ title: "Confirmation review initiated" });
+                          } catch (e: any) {
+                            toast({ title: "Error", description: e.message, variant: "destructive" });
+                          }
+                        };
+
+                        const handleLinkAppraisal = async (appraisalId: number) => {
+                          try {
+                            await apiFetchJson(`/api/confirmation-reviews/${activeReview.id}/link-appraisal`, {
+                              method: "PUT",
+                              body: JSON.stringify({ appraisalId }),
+                            });
+                            refetchConfirmation();
+                            toast({ title: "Appraisal linked" });
+                          } catch (e: any) {
+                            toast({ title: "Error", description: e.message, variant: "destructive" });
+                          }
+                        };
+
+                        const handleUploadReviewDoc = async (file: File) => {
+                          if (file.size > 10 * 1024 * 1024) {
+                            toast({ title: "File too large", description: "Maximum 10MB", variant: "destructive" });
+                            return;
+                          }
+                          setUploadingReviewDoc(true);
+                          try {
+                            const urlRes = await apiFetchJson("/api/storage/uploads/request-url", { method: "POST" });
+                            await fetch(urlRes.uploadURL, { method: "PUT", headers: { "Content-Type": file.type }, body: file });
+                            const objectId = urlRes.objectPath.split("/").pop();
+                            const docPath = `/api/storage/objects/${objectId}`;
+                            await apiFetchJson(`/api/confirmation-reviews/${activeReview.id}/document`, {
+                              method: "PUT",
+                              body: JSON.stringify({ documentPath: docPath, documentName: file.name }),
+                            });
+                            refetchConfirmation();
+                            toast({ title: "Review document uploaded" });
+                          } catch (e: any) {
+                            toast({ title: "Upload failed", description: e.message, variant: "destructive" });
+                          } finally {
+                            setUploadingReviewDoc(false);
+                          }
+                        };
+
+                        const handleApprove = async () => {
+                          if (!confirm("Approve confirmation and mark this employee as confirmed?")) return;
+                          try {
+                            await apiFetchJson(`/api/confirmation-reviews/${activeReview.id}/approve`, { method: "PUT", body: JSON.stringify({}) });
+                            refetchConfirmation();
+                            refetch();
+                            toast({ title: "Employee confirmed successfully" });
+                          } catch (e: any) {
+                            toast({ title: "Error", description: e.message, variant: "destructive" });
+                          }
+                        };
+
+                        const handleReject = async () => {
+                          const reason = prompt("Reason for rejecting confirmation:");
+                          if (reason === null) return;
+                          try {
+                            await apiFetchJson(`/api/confirmation-reviews/${activeReview.id}/reject`, { method: "PUT", body: JSON.stringify({ reason }) });
+                            refetchConfirmation();
+                            toast({ title: "Confirmation rejected" });
+                          } catch (e: any) {
+                            toast({ title: "Error", description: e.message, variant: "destructive" });
+                          }
+                        };
+
+                        const reviewStatusLabels: Record<string, { label: string; color: string }> = {
+                          pending_appraisal: { label: "Awaiting Appraisal", color: "bg-amber-100 text-amber-700" },
+                          pending_document:  { label: "Awaiting Document",  color: "bg-blue-100 text-blue-700" },
+                          pending_approval:  { label: "Ready for Approval", color: "bg-indigo-100 text-indigo-700" },
+                          completed:         { label: "Approved",           color: "bg-green-100 text-green-700" },
+                          rejected:          { label: "Rejected",           color: "bg-red-100 text-red-700" },
+                        };
+
                         return (
-                          <div className="bg-muted/30 rounded-xl p-4 space-y-2">
+                          <div className="bg-muted/30 rounded-xl p-4 space-y-3">
                             <div className="flex items-center gap-2">
                               <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${sc.color}`}>{sc.label}</span>
                               <span className="text-sm text-muted-foreground">
@@ -655,17 +754,15 @@ function StaffPanel({ staffId, canEdit, onClose, onUpdated }: {
                             </div>
                             {(status === "active" || status === "extended") && (
                               <p className={`text-sm font-medium ${daysLeft <= 0 ? "text-red-600" : daysLeft <= 14 ? "text-amber-600" : "text-foreground"}`}>
-                                {daysLeft <= 0 ? "Probation period has ended — awaiting confirmation" : `${daysLeft} day${daysLeft !== 1 ? "s" : ""} remaining`}
+                                {daysLeft <= 0 ? "Probation period has ended — awaiting confirmation review" : `${daysLeft} day${daysLeft !== 1 ? "s" : ""} remaining`}
                               </p>
                             )}
-                            {isAdminUser && (status === "active" || status === "extended") && (
+
+                            {isAdminUser && (status === "active" || status === "extended") && !activeReview && (
                               <div className="flex gap-2 pt-1">
-                                <button onClick={async () => {
-                                  if (!confirm("Confirm this employee has passed probation?")) return;
-                                  await apiFetchJson(`/api/onboarding/probation/${staffId}`, { method: "PUT", body: JSON.stringify({ action: "confirm" }) });
-                                  refetch();
-                                }} className="px-3 py-1.5 rounded-lg bg-green-600 text-white text-xs font-medium hover:bg-green-700 transition-colors">
-                                  Confirm Passed
+                                <button onClick={handleInitiateReview}
+                                  className="px-3 py-1.5 rounded-lg bg-primary text-primary-foreground text-xs font-medium hover:bg-primary/90 transition-colors flex items-center gap-1.5">
+                                  <CheckCircle2 className="w-3.5 h-3.5" /> Initiate Confirmation Review
                                 </button>
                                 <button onClick={async () => {
                                   const days = prompt("Extend probation by how many days?", "30");
@@ -682,6 +779,111 @@ function StaffPanel({ staffId, canEdit, onClose, onUpdated }: {
                                 }} className="px-3 py-1.5 rounded-lg text-red-600 border border-red-200 text-xs font-medium hover:bg-red-50 transition-colors">
                                   Fail
                                 </button>
+                              </div>
+                            )}
+
+                            {activeReview && (
+                              <div className="border-t border-border/30 pt-3 space-y-3">
+                                <div className="flex items-center justify-between">
+                                  <h5 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Confirmation Review</h5>
+                                  <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${reviewStatusLabels[activeReview.status]?.color ?? "bg-gray-100 text-gray-700"}`}>
+                                    {reviewStatusLabels[activeReview.status]?.label ?? activeReview.status}
+                                  </span>
+                                </div>
+
+                                <div className="flex items-center gap-1 text-xs">
+                                  {["pending_appraisal", "pending_document", "pending_approval", "completed"].map((step, i) => {
+                                    const stepLabels = ["Appraisal", "Document", "Approval", "Done"];
+                                    const stepOrder = ["pending_appraisal", "pending_document", "pending_approval", "completed"];
+                                    const currentIdx = stepOrder.indexOf(activeReview.status);
+                                    const isComplete = i < currentIdx || activeReview.status === "completed";
+                                    const isCurrent = i === currentIdx && activeReview.status !== "completed";
+                                    return (
+                                      <div key={step} className="flex items-center gap-1">
+                                        {i > 0 && <div className={`w-4 h-px ${isComplete ? "bg-green-400" : "bg-border"}`} />}
+                                        <div className={`flex items-center gap-1 px-2 py-1 rounded-full font-medium ${
+                                          isComplete ? "bg-green-100 text-green-700" :
+                                          isCurrent ? "bg-primary/10 text-primary ring-1 ring-primary/30" :
+                                          "bg-muted text-muted-foreground"
+                                        }`}>
+                                          {isComplete && <Check className="w-3 h-3" />}
+                                          {stepLabels[i]}
+                                        </div>
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+
+                                {isAdminUser && activeReview.status === "pending_appraisal" && (
+                                  <div className="space-y-2">
+                                    <p className="text-xs text-muted-foreground">Link a completed appraisal to proceed:</p>
+                                    {completedAppraisals.length > 0 ? (
+                                      <div className="space-y-1">
+                                        {completedAppraisals.map((a: any) => (
+                                          <button key={a.id} onClick={() => handleLinkAppraisal(a.id)}
+                                            className="w-full text-left px-3 py-2 rounded-lg border border-border hover:bg-muted/50 transition-colors text-xs flex items-center justify-between">
+                                            <span>Appraisal #{a.id} — Score: {a.overallScore ?? "N/A"}</span>
+                                            <span className="text-green-600 font-medium flex items-center gap-1"><Check className="w-3 h-3" /> Link</span>
+                                          </button>
+                                        ))}
+                                      </div>
+                                    ) : (
+                                      <p className="text-xs text-amber-600 flex items-center gap-1">
+                                        <AlertCircle className="w-3.5 h-3.5" />
+                                        No completed appraisals found. Create and complete an appraisal for this employee first.
+                                      </p>
+                                    )}
+                                    {linkedAppraisal && (
+                                      <div className="text-xs text-muted-foreground">
+                                        Linked: Appraisal #{linkedAppraisal.id} ({linkedAppraisal.status})
+                                      </div>
+                                    )}
+                                  </div>
+                                )}
+
+                                {isAdminUser && activeReview.status === "pending_document" && (
+                                  <div className="space-y-2">
+                                    <p className="text-xs text-muted-foreground">Upload a review document to proceed:</p>
+                                    <label className="flex items-center gap-2 px-3 py-2 rounded-lg border border-dashed border-border hover:border-primary/50 hover:bg-muted/30 cursor-pointer transition-colors text-xs">
+                                      <Upload className="w-4 h-4 text-muted-foreground" />
+                                      <span className="text-muted-foreground">{uploadingReviewDoc ? "Uploading…" : "Choose file (PDF, DOC, images — max 10MB)"}</span>
+                                      <input type="file" className="hidden" accept=".pdf,.doc,.docx,.png,.jpg,.jpeg"
+                                        onChange={e => { const f = e.target.files?.[0]; if (f) handleUploadReviewDoc(f); e.target.value = ""; }}
+                                        disabled={uploadingReviewDoc}
+                                      />
+                                    </label>
+                                  </div>
+                                )}
+
+                                {activeReview.reviewDocumentPath && (
+                                  <div className="flex items-center gap-2 text-xs">
+                                    <Paperclip className="w-3.5 h-3.5 text-muted-foreground" />
+                                    <a href={activeReview.reviewDocumentPath} target="_blank" rel="noopener noreferrer"
+                                      className="text-primary hover:underline font-medium">
+                                      {activeReview.reviewDocumentName || "Review Document"}
+                                    </a>
+                                    <Check className="w-3 h-3 text-green-600" />
+                                  </div>
+                                )}
+
+                                {isAdminUser && activeReview.status === "pending_approval" && (
+                                  <div className="flex gap-2 pt-1">
+                                    <button onClick={handleApprove}
+                                      className="px-3 py-1.5 rounded-lg bg-green-600 text-white text-xs font-medium hover:bg-green-700 transition-colors flex items-center gap-1.5">
+                                      <CheckCircle2 className="w-3.5 h-3.5" /> Approve & Confirm
+                                    </button>
+                                    <button onClick={handleReject}
+                                      className="px-3 py-1.5 rounded-lg text-red-600 border border-red-200 text-xs font-medium hover:bg-red-50 transition-colors flex items-center gap-1.5">
+                                      <XCircle className="w-3.5 h-3.5" /> Reject
+                                    </button>
+                                  </div>
+                                )}
+
+                                {activeReview.status === "rejected" && activeReview.rejectedReason && (
+                                  <p className="text-xs text-red-600 bg-red-50 rounded-lg px-3 py-2">
+                                    Rejection reason: {activeReview.rejectedReason}
+                                  </p>
+                                )}
                               </div>
                             )}
                           </div>
