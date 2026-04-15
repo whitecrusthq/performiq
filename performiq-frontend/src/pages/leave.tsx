@@ -41,6 +41,22 @@ function calcDays(start: string, end: string) {
   return Math.ceil((e.getTime() - s.getTime()) / 86400000) + 1;
 }
 
+function getCycleDaysRemaining(p: LeavePolicy): number {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  if (p.cycleMode === "days") {
+    return p.cycleDays || 365;
+  }
+  const year = today.getFullYear();
+  let cycleEnd = new Date(year, p.cycleEndMonth - 1, p.cycleEndDay);
+  cycleEnd.setHours(23, 59, 59, 999);
+  if (cycleEnd < today) {
+    cycleEnd = new Date(year + 1, p.cycleEndMonth - 1, p.cycleEndDay);
+  }
+  const diff = Math.ceil((cycleEnd.getTime() - today.getTime()) / 86400000);
+  return Math.max(0, diff);
+}
+
 function fmt(d: string) {
   if (!d) return "";
   return new Date(d).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" });
@@ -664,7 +680,11 @@ export default function Leave() {
             </Card>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {policies.map(p => (
+              {policies.map(p => {
+                const daysLeft = getCycleDaysRemaining(p);
+                const bal = balances.find(b => b.leaveType === p.leaveType);
+                const usedPct = bal && bal.allocated > 0 ? Math.round((bal.used / bal.allocated) * 100) : 0;
+                return (
                 <Card key={p.id} className="p-5 flex flex-col gap-3">
                   <div className="flex items-start justify-between">
                     <h4 className="font-semibold text-foreground">{leaveLabel(p.leaveType)}</h4>
@@ -685,7 +705,37 @@ export default function Leave() {
                       </button>
                     </div>
                   </div>
+
+                  {bal && (
+                    <div className="rounded-xl bg-muted/50 p-3 space-y-2">
+                      <div className="flex items-end justify-between">
+                        <div>
+                          <p className="text-xs text-muted-foreground">Remaining</p>
+                          <p className={`text-2xl font-bold ${bal.remaining <= 2 ? "text-red-600" : bal.remaining <= 5 ? "text-amber-600" : "text-green-600"}`}>
+                            {bal.remaining} <span className="text-sm font-normal text-muted-foreground">/ {bal.allocated} days</span>
+                          </p>
+                        </div>
+                        <div className="text-right">
+                          <p className="text-xs text-muted-foreground">Used</p>
+                          <p className="text-lg font-semibold text-foreground">{bal.used}</p>
+                        </div>
+                      </div>
+                      <div className="w-full bg-secondary rounded-full h-2 overflow-hidden">
+                        <div
+                          className={`h-2 rounded-full transition-all ${usedPct > 80 ? "bg-red-500" : usedPct > 50 ? "bg-amber-500" : "bg-green-500"}`}
+                          style={{ width: `${Math.min(usedPct, 100)}%` }}
+                        />
+                      </div>
+                    </div>
+                  )}
+
                   <div className="space-y-2 text-sm">
+                    <div className="flex justify-between items-center">
+                      <span className="text-muted-foreground">Cycle Countdown</span>
+                      <span className={`font-bold ${daysLeft <= 30 ? "text-red-600" : daysLeft <= 90 ? "text-amber-600" : "text-foreground"}`}>
+                        {daysLeft} days left
+                      </span>
+                    </div>
                     <div className="flex justify-between">
                       <span className="text-muted-foreground">Days Allocated</span>
                       <span className="font-bold text-foreground">{p.daysAllocated} days</span>
@@ -715,7 +765,8 @@ export default function Leave() {
                     )}
                   </div>
                 </Card>
-              ))}
+                );
+              })}
             </div>
           )}
         </div>
