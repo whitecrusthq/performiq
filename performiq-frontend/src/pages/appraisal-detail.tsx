@@ -267,6 +267,7 @@ export default function AppraisalDetail() {
                 <span className="text-xl font-bold text-primary flex items-center gap-1">
                   {Number(appraisal.overallScore).toFixed(1)} <Star className="w-5 h-5 fill-primary text-primary" />
                 </span>
+                <span className="text-sm font-semibold text-muted-foreground">({(Number(appraisal.overallScore) / 5 * 100).toFixed(0)}%)</span>
               </div>
             )}
           </div>
@@ -816,7 +817,7 @@ export default function AppraisalDetail() {
                           )}
                         </div>
                       ) : null}
-                      <div className="text-3xl font-bold text-foreground mb-2">{scoreVal != null ? `${Number(scoreVal).toFixed(1)}/5` : '-'}</div>
+                      <div className="text-3xl font-bold text-foreground mb-2">{scoreVal != null ? <>{Number(scoreVal).toFixed(1)}/5 <span className="text-lg text-muted-foreground font-semibold">({(Number(scoreVal) / 5 * 100).toFixed(0)}%)</span></> : '-'}</div>
                       <p className="text-sm text-muted-foreground italic">{noteVal || waitingMsg || 'No comments provided.'}</p>
                     </div>
                   );
@@ -911,6 +912,7 @@ export default function AppraisalDetail() {
                             <div className="shrink-0 text-right">
                               <span className="text-base font-bold text-primary">{Number(s.score).toFixed(1)}</span>
                               <span className="text-xs text-muted-foreground">/5</span>
+                              <span className="text-xs text-muted-foreground ml-1">({(Number(s.score) / 5 * 100).toFixed(0)}%)</span>
                             </div>
                           </div>
                         );
@@ -924,6 +926,7 @@ export default function AppraisalDetail() {
                           <span className="text-sm text-muted-foreground">Average score:</span>
                           <span className="text-xl font-bold text-primary">{avg.toFixed(2)}</span>
                           <span className="text-sm text-muted-foreground">/5</span>
+                          <span className="text-sm font-semibold text-muted-foreground">({(avg / 5 * 100).toFixed(0)}%)</span>
                         </div>
                       );
                     })()}
@@ -994,8 +997,8 @@ export default function AppraisalDetail() {
               <div key={s.id} className="bg-background rounded-xl p-4 border border-border text-sm">
                 <p className="font-semibold mb-2">{s.criterion?.name}</p>
                 <div className="flex justify-between text-muted-foreground">
-                  <span>Self: <strong className="text-foreground">{s.selfScore ?? '—'}</strong></span>
-                  <span>Manager: <strong className="text-foreground">{s.managerScore ?? '—'}</strong></span>
+                  <span>Self: <strong className="text-foreground">{s.selfScore ?? '—'}</strong>{s.selfScore != null && <span className="text-xs ml-1">({(Number(s.selfScore) / 5 * 100).toFixed(0)}%)</span>}</span>
+                  <span>Manager: <strong className="text-foreground">{s.managerScore ?? '—'}</strong>{s.managerScore != null && <span className="text-xs ml-1">({(Number(s.managerScore) / 5 * 100).toFixed(0)}%)</span>}</span>
                 </div>
               </div>
             ))}
