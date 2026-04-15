@@ -609,7 +609,7 @@ export default function Leave() {
           {/* Leave Types Section */}
           <div className="flex items-center justify-between">
             <h3 className="text-lg font-bold text-foreground">Leave Types</h3>
-            <Button onClick={() => { setLeaveTypeForm({ name: "", label: "" }); setEditingLeaveType(null); setIsLeaveTypeDialogOpen(true); }}>
+            <Button onClick={() => { setLeaveTypeForm({ name: "", label: "" }); setEditingLeaveType(null); setMutationError(null); setIsLeaveTypeDialogOpen(true); }}>
               <Plus className="w-4 h-4 mr-2" /> Add Leave Type
             </Button>
           </div>
@@ -625,7 +625,7 @@ export default function Leave() {
                 </div>
                 <div className="flex gap-1">
                   <button
-                    onClick={() => { setEditingLeaveType(lt); setLeaveTypeForm({ name: lt.name, label: lt.label }); setIsLeaveTypeDialogOpen(true); }}
+                    onClick={() => { setEditingLeaveType(lt); setLeaveTypeForm({ name: lt.name, label: lt.label }); setMutationError(null); setIsLeaveTypeDialogOpen(true); }}
                     className="p-1.5 rounded-lg hover:bg-muted text-muted-foreground" title="Edit"
                   >
                     <Pencil className="w-4 h-4" />
