@@ -7,7 +7,7 @@ const router = Router();
 
 async function enrichTransfer(t: typeof transferRequestsTable.$inferSelect) {
   const userIds = [t.employeeId, t.requestedById, ...(t.approvedById ? [t.approvedById] : [])];
-  const users = await db.select({ id: usersTable.id, name: usersTable.name, email: usersTable.email, department: usersTable.department, jobTitle: usersTable.jobTitle })
+  const users = await db.select({ id: usersTable.id, name: usersTable.name, email: usersTable.email, department: usersTable.department, jobTitle: usersTable.jobTitle, managerId: usersTable.managerId })
     .from(usersTable).where(inArray(usersTable.id, userIds));
   const userMap: Record<number, any> = {};
   users.forEach(u => { userMap[u.id] = u; });
@@ -83,15 +83,24 @@ router.post("/transfers", requireAuth, requireRole("admin", "manager"), async (r
   }
 });
 
-router.put("/transfers/:id", requireAuth, requireRole("admin"), async (req: AuthRequest, res) => {
+router.put("/transfers/:id", requireAuth, requireRole("admin", "manager"), async (req: AuthRequest, res) => {
   try {
     const [row] = await db.select().from(transferRequestsTable).where(eq(transferRequestsTable.id, Number(req.params.id)));
     if (!row) { res.status(404).json({ error: "Not found" }); return; }
 
     const { status, approvalNotes } = req.body;
+    const { role, id: userId } = req.user!;
+    const isAdminRole = role === "admin" || role === "super_admin";
 
     if (status === "approved" || status === "rejected") {
       if (row.status !== "pending") { res.status(400).json({ error: "Only pending transfers can be reviewed" }); return; }
+
+      if (!isAdminRole) {
+        const [employee] = await db.select({ managerId: usersTable.managerId }).from(usersTable).where(eq(usersTable.id, row.employeeId));
+        if (!employee || employee.managerId !== userId) {
+          res.status(403).json({ error: "Only the employee's direct manager or an admin can approve/reject transfers" }); return;
+        }
+      }
 
       const [updated] = await db.update(transferRequestsTable).set({
         status,
@@ -113,6 +122,9 @@ router.put("/transfers/:id", requireAuth, requireRole("admin"), async (req: Auth
 
     if (status === "cancelled") {
       if (row.status !== "pending") { res.status(400).json({ error: "Only pending transfers can be cancelled" }); return; }
+      if (!isAdminRole && row.requestedById !== userId) {
+        res.status(403).json({ error: "Only the requester or an admin can cancel a transfer" }); return;
+      }
       const [updated] = await db.update(transferRequestsTable).set({
         status: "cancelled",
         updatedAt: new Date(),

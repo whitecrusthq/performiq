@@ -45,7 +45,7 @@ interface TransferRequest {
   approvalNotes: string | null;
   approvedAt: string | null;
   createdAt: string;
-  employee?: { id: number; name: string; department?: string | null; jobTitle?: string | null } | null;
+  employee?: { id: number; name: string; department?: string | null; jobTitle?: string | null; managerId?: number | null } | null;
   requestedBy?: { id: number; name: string } | null;
   approvedBy?: { id: number; name: string } | null;
   fromSite?: Site | null;
@@ -304,32 +304,38 @@ export default function Transfers() {
                     </div>
                   )}
 
-                  {t.status === "pending" && (
-                    <div className="flex gap-2 pt-2">
-                      {isAdmin && (
-                        <>
+                  {t.status === "pending" && (() => {
+                    const canApprove = isAdmin || (user?.id === t.employee?.managerId);
+                    const canCancel = isAdmin || t.requestedById === user?.id;
+                    return (
+                      <div className="flex gap-2 pt-2">
+                        {canApprove && (
+                          <>
+                            <button
+                              onClick={() => { setReviewDialog({ transfer: t, action: "approved" }); setReviewNotes(""); }}
+                              className="px-4 py-2 rounded-lg bg-green-600 text-white text-sm font-medium hover:bg-green-700 transition-colors flex items-center gap-1.5"
+                            >
+                              <CheckCircle2 className="w-4 h-4" /> Approve
+                            </button>
+                            <button
+                              onClick={() => { setReviewDialog({ transfer: t, action: "rejected" }); setReviewNotes(""); }}
+                              className="px-4 py-2 rounded-lg bg-red-600 text-white text-sm font-medium hover:bg-red-700 transition-colors flex items-center gap-1.5"
+                            >
+                              <XCircle className="w-4 h-4" /> Reject
+                            </button>
+                          </>
+                        )}
+                        {canCancel && (
                           <button
-                            onClick={() => { setReviewDialog({ transfer: t, action: "approved" }); setReviewNotes(""); }}
-                            className="px-4 py-2 rounded-lg bg-green-600 text-white text-sm font-medium hover:bg-green-700 transition-colors flex items-center gap-1.5"
+                            onClick={() => handleCancel(t.id)}
+                            className="px-4 py-2 rounded-lg bg-secondary text-secondary-foreground text-sm font-medium hover:bg-secondary/80 transition-colors flex items-center gap-1.5"
                           >
-                            <CheckCircle2 className="w-4 h-4" /> Approve
+                            <Ban className="w-4 h-4" /> Cancel
                           </button>
-                          <button
-                            onClick={() => { setReviewDialog({ transfer: t, action: "rejected" }); setReviewNotes(""); }}
-                            className="px-4 py-2 rounded-lg bg-red-600 text-white text-sm font-medium hover:bg-red-700 transition-colors flex items-center gap-1.5"
-                          >
-                            <XCircle className="w-4 h-4" /> Reject
-                          </button>
-                        </>
-                      )}
-                      <button
-                        onClick={() => handleCancel(t.id)}
-                        className="px-4 py-2 rounded-lg bg-secondary text-secondary-foreground text-sm font-medium hover:bg-secondary/80 transition-colors flex items-center gap-1.5"
-                      >
-                        <Ban className="w-4 h-4" /> Cancel
-                      </button>
-                    </div>
-                  )}
+                        )}
+                      </div>
+                    );
+                  })()}
                 </div>
               )}
             </Card>
