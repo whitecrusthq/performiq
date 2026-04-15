@@ -181,11 +181,41 @@ function StaffPanel({ staffId, canEdit, onClose, onUpdated }: {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState<any>({});
   const isAdminUser = currentUser?.role === "admin" || currentUser?.role === "super_admin";
+  const [uploadingPhoto, setUploadingPhoto] = useState(false);
 
   const { data: staff, isLoading, refetch } = useQuery({
     queryKey: ["staff-detail", staffId],
     queryFn: () => apiFetchJson(`/api/users/${staffId}`),
   });
+
+  const handlePhotoUpload = async (file: File) => {
+    if (!file.type.startsWith("image/")) {
+      toast({ title: "Invalid file", description: "Please select an image file", variant: "destructive" });
+      return;
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      toast({ title: "File too large", description: "Maximum file size is 5MB", variant: "destructive" });
+      return;
+    }
+    setUploadingPhoto(true);
+    try {
+      const urlRes = await apiFetchJson("/api/storage/uploads/request-url", { method: "POST" });
+      await fetch(urlRes.uploadURL, { method: "PUT", headers: { "Content-Type": file.type }, body: file });
+      const objectId = urlRes.objectPath.split("/").pop();
+      const photoUrl = `/api/storage/objects/${objectId}`;
+      await apiFetchJson(`/api/users/${staffId}/profile-photo`, {
+        method: "PUT",
+        body: JSON.stringify({ profilePhoto: photoUrl }),
+      });
+      refetch();
+      onUpdated({ ...staff, profilePhoto: photoUrl });
+      toast({ title: "Profile photo updated" });
+    } catch (e: any) {
+      toast({ title: "Upload failed", description: e.message, variant: "destructive" });
+    } finally {
+      setUploadingPhoto(false);
+    }
+  };
 
   const save = useMutation({
     mutationFn: (patch: any) => apiFetchJson(`/api/users/${staffId}/hr-profile`, {
@@ -367,7 +397,33 @@ function StaffPanel({ staffId, canEdit, onClose, onUpdated }: {
         <div className="bg-gradient-to-r from-primary/10 to-primary/5 border-b border-border px-6 py-5">
           <div className="flex items-start justify-between gap-4">
             <div className="flex items-center gap-4">
-              {staff && <Avatar name={staff.name} photo={staff.profilePhoto} size={52} />}
+              {staff && (
+                <div className="relative group">
+                  <Avatar name={staff.name} photo={staff.profilePhoto} size={52} />
+                  {canEdit && (
+                    <>
+                      <label className="absolute inset-0 flex items-center justify-center bg-black/50 rounded-full opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer">
+                        {uploadingPhoto ? (
+                          <RefreshCw className="w-5 h-5 text-white animate-spin" />
+                        ) : (
+                          <Upload className="w-5 h-5 text-white" />
+                        )}
+                        <input
+                          type="file"
+                          accept="image/*"
+                          className="hidden"
+                          disabled={uploadingPhoto}
+                          onChange={(e) => {
+                            const file = e.target.files?.[0];
+                            if (file) handlePhotoUpload(file);
+                            e.target.value = "";
+                          }}
+                        />
+                      </label>
+                    </>
+                  )}
+                </div>
+              )}
               <div>
                 <h2 className="text-xl font-bold">{staff?.name ?? "—"}</h2>
                 <p className="text-sm text-muted-foreground">{staff?.jobTitle ?? staff?.role ?? "—"}</p>
