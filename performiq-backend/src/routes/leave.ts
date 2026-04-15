@@ -12,25 +12,36 @@ function notify(payload: Parameters<typeof sendLeaveNotification>[0]) {
 
 const router = Router();
 
+function getCycleKey(policy: { cycleStartMonth: number; cycleStartDay: number; cycleEndMonth: number; cycleEndDay: number }) {
+  const today = new Date();
+  const year = today.getFullYear();
+  const cycleStart = new Date(year, policy.cycleStartMonth - 1, policy.cycleStartDay);
+  if (today < cycleStart) {
+    return year - 1;
+  }
+  return year;
+}
+
 function getCurrentCycleYear() {
   return new Date().getFullYear();
 }
 
-async function ensureAllocation(employeeId: number, leaveType: string, cycleYear: number) {
+async function ensureAllocation(employeeId: number, leaveType: string, cycleYear?: number) {
+  const [policy] = await db.select().from(leavePoliciesTable)
+    .where(eq(leavePoliciesTable.leaveType, leaveType as any)).limit(1);
+
+  const effectiveCycle = cycleYear ?? (policy ? getCycleKey(policy) : new Date().getFullYear());
+  const allocated = policy ? policy.daysAllocated : 0;
+  const policyId = policy ? policy.id : null;
+
   const existing = await db.select().from(leaveAllocationsTable)
     .where(and(
       eq(leaveAllocationsTable.employeeId, employeeId),
       eq(leaveAllocationsTable.leaveType, leaveType as any),
-      eq(leaveAllocationsTable.cycleYear, cycleYear)
+      eq(leaveAllocationsTable.cycleYear, effectiveCycle)
     )).limit(1);
 
   if (existing.length > 0) return existing[0];
-
-  const policy = await db.select().from(leavePoliciesTable)
-    .where(eq(leavePoliciesTable.leaveType, leaveType as any)).limit(1);
-
-  const allocated = policy.length > 0 ? policy[0].daysAllocated : 0;
-  const policyId = policy.length > 0 ? policy[0].id : null;
 
   const [alloc] = await db.insert(leaveAllocationsTable).values({
     employeeId,
@@ -38,7 +49,7 @@ async function ensureAllocation(employeeId: number, leaveType: string, cycleYear
     policyId,
     allocated,
     used: 0,
-    cycleYear,
+    cycleYear: effectiveCycle,
   }).returning();
 
   return alloc;
@@ -115,7 +126,7 @@ router.post("/leave-policies", requireAuth, requireRole("admin"), async (req: Au
       }).returning();
     }
 
-    const cycleYear = getCurrentCycleYear();
+    const cycleYear = getCycleKey(policy);
     const employees = await db.select({ id: usersTable.id }).from(usersTable);
     for (const emp of employees) {
       const existingAlloc = await db.select().from(leaveAllocationsTable)
@@ -162,30 +173,45 @@ router.delete("/leave-policies/:id", requireAuth, requireRole("admin"), async (r
 router.get("/leave-balance", requireAuth, async (req: AuthRequest, res) => {
   try {
     const { id: userId } = req.user!;
-    const cycleYear = getCurrentCycleYear();
 
     const policies = await db.select().from(leavePoliciesTable);
-    for (const p of policies) {
-      await ensureAllocation(userId, p.leaveType, cycleYear);
-    }
-
-    const allocations = await db.select().from(leaveAllocationsTable)
-      .where(and(
-        eq(leaveAllocationsTable.employeeId, userId),
-        eq(leaveAllocationsTable.cycleYear, cycleYear)
-      ));
-
     const policyMap = Object.fromEntries(policies.map(p => [p.leaveType, p]));
 
-    const balances = allocations.map(a => ({
+    for (const p of policies) {
+      await ensureAllocation(userId, p.leaveType);
+    }
+
+    const cycleKeys = [...new Set(policies.map(p => getCycleKey(p)))];
+    if (cycleKeys.length === 0) cycleKeys.push(new Date().getFullYear());
+
+    const allAllocations = [];
+    for (const ck of cycleKeys) {
+      const rows = await db.select().from(leaveAllocationsTable)
+        .where(and(
+          eq(leaveAllocationsTable.employeeId, userId),
+          eq(leaveAllocationsTable.cycleYear, ck)
+        ));
+      allAllocations.push(...rows);
+    }
+
+    const seen = new Set<string>();
+    const dedupedAllocations = allAllocations.filter(a => {
+      const key = a.leaveType;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+
+    const balances = dedupedAllocations.map(a => ({
       leaveType: a.leaveType,
       allocated: a.allocated,
       used: a.used,
       remaining: a.allocated - a.used,
       policy: policyMap[a.leaveType] || null,
+      cycleYear: a.cycleYear,
     }));
 
-    res.json({ cycleYear, balances });
+    res.json({ cycleYear: cycleKeys[0], balances });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "Server error" });
@@ -195,7 +221,11 @@ router.get("/leave-balance", requireAuth, async (req: AuthRequest, res) => {
 router.get("/leave-balance/team", requireAuth, async (req: AuthRequest, res) => {
   try {
     const { id: userId, role } = req.user!;
-    const cycleYear = getCurrentCycleYear();
+    const policies = await db.select().from(leavePoliciesTable);
+    const policyMap = Object.fromEntries(policies.map(p => [p.leaveType, p]));
+    const cycleKeys = [...new Set(policies.map(p => getCycleKey(p)))];
+    if (cycleKeys.length === 0) cycleKeys.push(new Date().getFullYear());
+    const cycleYear = cycleKeys[0];
 
     let employeeIds: number[];
     if (role === "admin" || role === "super_admin") {
@@ -212,23 +242,36 @@ router.get("/leave-balance/team", requireAuth, async (req: AuthRequest, res) => 
       res.json({ cycleYear, employees: [] }); return;
     }
 
+    for (const empId of employeeIds) {
+      for (const p of policies) {
+        await ensureAllocation(empId, p.leaveType);
+      }
+    }
+
     const users = await db.select({ id: usersTable.id, name: usersTable.name, department: usersTable.department, jobTitle: usersTable.jobTitle })
       .from(usersTable).where(inArray(usersTable.id, employeeIds));
 
-    const allocations = await db.select().from(leaveAllocationsTable)
-      .where(and(
-        inArray(leaveAllocationsTable.employeeId, employeeIds),
-        eq(leaveAllocationsTable.cycleYear, cycleYear)
-      ));
-
-    const policies = await db.select().from(leavePoliciesTable);
-    const policyMap = Object.fromEntries(policies.map(p => [p.leaveType, p]));
+    const allAllocations = [];
+    for (const ck of cycleKeys) {
+      const rows = await db.select().from(leaveAllocationsTable)
+        .where(and(
+          inArray(leaveAllocationsTable.employeeId, employeeIds),
+          eq(leaveAllocationsTable.cycleYear, ck)
+        ));
+      allAllocations.push(...rows);
+    }
 
     const employeeBalances = users.map(u => {
-      const empAllocs = allocations.filter(a => a.employeeId === u.id);
+      const empAllocs = allAllocations.filter(a => a.employeeId === u.id);
+      const seen = new Set<string>();
+      const deduped = empAllocs.filter(a => {
+        if (seen.has(a.leaveType)) return false;
+        seen.add(a.leaveType);
+        return true;
+      });
       return {
         ...u,
-        balances: empAllocs.map(a => ({
+        balances: deduped.map(a => ({
           leaveType: a.leaveType,
           allocated: a.allocated,
           used: a.used,
@@ -398,19 +441,11 @@ router.put("/leave-requests/:id", requireAuth, async (req: AuthRequest, res) => 
       if (row.status !== "pending") { res.status(400).json({ error: "Only pending requests can be cancelled" }); return; }
 
       if (row.status === "approved") {
-        const cycleYear = getCurrentCycleYear();
-        const alloc = await db.select().from(leaveAllocationsTable)
-          .where(and(
-            eq(leaveAllocationsTable.employeeId, row.employeeId),
-            eq(leaveAllocationsTable.leaveType, row.leaveType),
-            eq(leaveAllocationsTable.cycleYear, cycleYear)
-          )).limit(1);
-        if (alloc.length > 0) {
-          await db.update(leaveAllocationsTable).set({
-            used: Math.max(0, alloc[0].used - row.days),
-            updatedAt: new Date(),
-          }).where(eq(leaveAllocationsTable.id, alloc[0].id));
-        }
+        const alloc = await ensureAllocation(row.employeeId, row.leaveType);
+        await db.update(leaveAllocationsTable).set({
+          used: Math.max(0, alloc.used - row.days),
+          updatedAt: new Date(),
+        }).where(eq(leaveAllocationsTable.id, alloc.id));
       }
 
       const [updated] = await db.update(leaveRequestsTable)
@@ -493,8 +528,7 @@ router.put("/leave-requests/:id", requireAuth, async (req: AuthRequest, res) => 
         .where(eq(leaveRequestsTable.id, row.id)).returning();
 
       if (finalStatus === "approved") {
-        const cycleYear = getCurrentCycleYear();
-        const alloc = await ensureAllocation(row.employeeId, row.leaveType, cycleYear);
+        const alloc = await ensureAllocation(row.employeeId, row.leaveType);
         await db.update(leaveAllocationsTable).set({
           used: alloc.used + row.days,
           updatedAt: new Date(),

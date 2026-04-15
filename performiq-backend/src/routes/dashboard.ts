@@ -5,16 +5,28 @@ import { requireAuth, AuthRequest } from "../middlewares/auth";
 
 const router = Router();
 
+function getCycleKey(policy: { cycleStartMonth: number; cycleStartDay: number; cycleEndMonth: number; cycleEndDay: number }) {
+  const today = new Date();
+  const year = today.getFullYear();
+  const cycleStart = new Date(year, policy.cycleStartMonth - 1, policy.cycleStartDay);
+  if (today < cycleStart) {
+    return year - 1;
+  }
+  return year;
+}
+
 async function getLeaveBalance(userId: number) {
-  const cycleYear = new Date().getFullYear();
   const policies = await db.select().from(leavePoliciesTable);
+  const cycleKeys = [...new Set(policies.map(p => getCycleKey(p)))];
+  if (cycleKeys.length === 0) cycleKeys.push(new Date().getFullYear());
 
   for (const p of policies) {
+    const ck = getCycleKey(p);
     const existing = await db.select().from(leaveAllocationsTable)
       .where(and(
         eq(leaveAllocationsTable.employeeId, userId),
         eq(leaveAllocationsTable.leaveType, p.leaveType),
-        eq(leaveAllocationsTable.cycleYear, cycleYear)
+        eq(leaveAllocationsTable.cycleYear, ck)
       )).limit(1);
     if (existing.length === 0) {
       await db.insert(leaveAllocationsTable).values({
@@ -23,24 +35,35 @@ async function getLeaveBalance(userId: number) {
         policyId: p.id,
         allocated: p.daysAllocated,
         used: 0,
-        cycleYear,
+        cycleYear: ck,
       });
     }
   }
 
-  const allocations = await db.select().from(leaveAllocationsTable)
-    .where(and(
-      eq(leaveAllocationsTable.employeeId, userId),
-      eq(leaveAllocationsTable.cycleYear, cycleYear)
-    ));
+  const allAllocations = [];
+  for (const ck of cycleKeys) {
+    const rows = await db.select().from(leaveAllocationsTable)
+      .where(and(
+        eq(leaveAllocationsTable.employeeId, userId),
+        eq(leaveAllocationsTable.cycleYear, ck)
+      ));
+    allAllocations.push(...rows);
+  }
+
+  const seen = new Set<string>();
+  const dedupedAllocations = allAllocations.filter(a => {
+    if (seen.has(a.leaveType)) return false;
+    seen.add(a.leaveType);
+    return true;
+  });
 
   const [pendingLeave] = await db.select({ count: count() }).from(leaveRequestsTable)
     .where(and(eq(leaveRequestsTable.employeeId, userId), eq(leaveRequestsTable.status, "pending")));
 
   return {
-    cycleYear,
+    cycleYear: cycleKeys[0],
     pendingLeaveRequests: Number(pendingLeave.count),
-    balances: allocations.map(a => ({
+    balances: dedupedAllocations.map(a => ({
       leaveType: a.leaveType,
       allocated: a.allocated,
       used: a.used,
