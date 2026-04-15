@@ -310,7 +310,15 @@ function StaffPanel({ staffId, canEdit, onClose, onUpdated }: {
     setDraft({
       address: staff.address ?? "",
       permanentAddress: staff.permanentAddress ?? "",
+      permanentCity: staff.permanentCity ?? "",
+      permanentState: staff.permanentState ?? "",
+      permanentCountry: staff.permanentCountry ?? "",
+      permanentPostalCode: staff.permanentPostalCode ?? "",
       temporaryAddress: staff.temporaryAddress ?? "",
+      temporaryCity: staff.temporaryCity ?? "",
+      temporaryState: staff.temporaryState ?? "",
+      temporaryCountry: staff.temporaryCountry ?? "",
+      temporaryPostalCode: staff.temporaryPostalCode ?? "",
       city: staff.city ?? "",
       stateProvince: staff.stateProvince ?? "",
       country: staff.country ?? "",
@@ -489,16 +497,29 @@ function StaffPanel({ staffId, canEdit, onClose, onUpdated }: {
                   </div>
                   <div className="border-t border-border/50 pt-4">
                     <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-3 flex items-center gap-1.5">
-                      <MapPin className="w-3.5 h-3.5" /> Address
+                      <MapPin className="w-3.5 h-3.5" /> Permanent Address
                     </h4>
                     <div className="space-y-3">
-                      <Field label="Permanent Address" value={d.permanentAddress} editing={editing} placeholder="Permanent / home address" onChange={set("permanentAddress")} />
-                      <Field label="Temporary Address" value={d.temporaryAddress} editing={editing} placeholder="Current / temporary address (if different)" onChange={set("temporaryAddress")} />
+                      <Field label="Street Address" value={d.permanentAddress} editing={editing} placeholder="Street address" onChange={set("permanentAddress")} />
                       <div className="grid grid-cols-2 gap-3">
-                        <Field label="City" value={d.city} editing={editing} onChange={set("city")} />
-                        <Field label="State / Province" value={d.stateProvince} editing={editing} onChange={set("stateProvince")} />
-                        <Field label="Country" value={d.country} editing={editing} onChange={set("country")} />
-                        <Field label="Postal Code" value={d.postalCode} editing={editing} onChange={set("postalCode")} />
+                        <Field label="City" value={d.permanentCity} editing={editing} onChange={set("permanentCity")} />
+                        <Field label="State / Province" value={d.permanentState} editing={editing} onChange={set("permanentState")} />
+                        <Field label="Country" value={d.permanentCountry} editing={editing} onChange={set("permanentCountry")} />
+                        <Field label="Postal Code" value={d.permanentPostalCode} editing={editing} onChange={set("permanentPostalCode")} />
+                      </div>
+                    </div>
+                  </div>
+                  <div className="border-t border-border/50 pt-4">
+                    <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-3 flex items-center gap-1.5">
+                      <MapPin className="w-3.5 h-3.5" /> Temporary Address
+                    </h4>
+                    <div className="space-y-3">
+                      <Field label="Street Address" value={d.temporaryAddress} editing={editing} placeholder="Current / temporary address (if different)" onChange={set("temporaryAddress")} />
+                      <div className="grid grid-cols-2 gap-3">
+                        <Field label="City" value={d.temporaryCity} editing={editing} onChange={set("temporaryCity")} />
+                        <Field label="State / Province" value={d.temporaryState} editing={editing} onChange={set("temporaryState")} />
+                        <Field label="Country" value={d.temporaryCountry} editing={editing} onChange={set("temporaryCountry")} />
+                        <Field label="Postal Code" value={d.temporaryPostalCode} editing={editing} onChange={set("temporaryPostalCode")} />
                       </div>
                     </div>
                   </div>
