@@ -6,6 +6,7 @@ export const attendanceLogsTable = pgTable("attendance_logs", {
   id: serial("id").primaryKey(),
   userId: integer("user_id").notNull(),
   date: date("date").notNull(),
+  siteId: integer("site_id"),
   clockIn: timestamp("clock_in"),
   clockOut: timestamp("clock_out"),
   durationMinutes: integer("duration_minutes"),

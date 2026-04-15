@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { db, attendanceLogsTable, attendanceLocationPingsTable, usersTable } from "../db/index.js";
+import { db, attendanceLogsTable, attendanceLocationPingsTable, usersTable, sitesTable } from "../db/index.js";
 import { eq, and, desc, inArray } from "drizzle-orm";
 import { requireAuth, AuthRequest } from "../middlewares/auth.js";
 import { sql } from "drizzle-orm";
@@ -34,9 +34,11 @@ router.post("/attendance/clock-in", requireAuth, async (req: AuthRequest, res) =
     if (existing && existing.clockIn && !existing.clockOut) {
       return res.status(400).json({ error: "Already clocked in" });
     }
+    const [emp] = await db.select({ siteId: usersTable.siteId }).from(usersTable).where(eq(usersTable.id, userId)).limit(1);
     const [log] = await db.insert(attendanceLogsTable).values({
       userId,
       date: today,
+      siteId: emp?.siteId ?? null,
       clockIn: new Date(),
       clockInLat: lat != null ? String(lat) : null,
       clockInLng: lng != null ? String(lng) : null,
@@ -111,7 +113,13 @@ router.get("/attendance", requireAuth, async (req: AuthRequest, res) => {
       : [];
     const userMap = Object.fromEntries(users.map(u => [u.id, u]));
 
-    res.json(rows.map(r => ({ ...r, user: userMap[r.userId] ?? null })));
+    const siteIds = [...new Set(rows.map(r => r.siteId).filter(Boolean))] as number[];
+    const sites = siteIds.length > 0
+      ? await db.select().from(sitesTable).where(inArray(sitesTable.id, siteIds))
+      : [];
+    const siteMap = Object.fromEntries(sites.map(s => [s.id, s]));
+
+    res.json(rows.map(r => ({ ...r, user: userMap[r.userId] ?? null, site: r.siteId ? (siteMap[r.siteId] ?? null) : null })));
   } catch (err) {
     res.status(500).json({ error: "Failed to fetch attendance logs" });
   }

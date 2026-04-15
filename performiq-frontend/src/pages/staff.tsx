@@ -7,6 +7,7 @@ import {
   CreditCard, FileText, Edit2, Check, Phone, Mail, MapPin,
   Building2, Hash, Plus, RefreshCw, Trash2, FolderOpen, AlertCircle,
   ShieldAlert, Paperclip, Upload, Eye, ChevronDown, Download, Clock,
+  ArrowRightLeft, CheckCircle2, XCircle, Ban,
 } from "lucide-react";
 import { apiFetch } from "@/lib/utils";
 
@@ -52,7 +53,7 @@ function Avatar({ name, photo, size = 40 }: { name: string; photo?: string | nul
   );
 }
 
-type Tab = "personal" | "employment" | "financial" | "emergency" | "notes" | "documents" | "disciplinary";
+type Tab = "personal" | "employment" | "financial" | "emergency" | "notes" | "documents" | "disciplinary" | "transfers";
 
 const TABS: { id: Tab; label: string; icon: any; adminOnly?: boolean }[] = [
   { id: "personal",     label: "Personal",     icon: User },
@@ -60,6 +61,7 @@ const TABS: { id: Tab; label: string; icon: any; adminOnly?: boolean }[] = [
   { id: "financial",    label: "Financial",     icon: CreditCard },
   { id: "emergency",    label: "Next of Kin",   icon: Heart },
   { id: "documents",    label: "Documents",     icon: FolderOpen },
+  { id: "transfers",    label: "Transfer History", icon: ArrowRightLeft },
   { id: "disciplinary", label: "Disciplinary",  icon: ShieldAlert, adminOnly: true },
   { id: "notes",        label: "Notes",         icon: FileText },
 ];
@@ -226,6 +228,12 @@ function StaffPanel({ staffId, canEdit, onClose, onUpdated }: {
     mutationFn: (docId: number) => apiFetchJson(`/api/users/${staffId}/documents/${docId}`, { method: "DELETE" }),
     onSuccess: () => { refetchDocs(); toast({ title: "Document removed" }); },
     onError: (e: any) => toast({ title: "Error", description: e.message, variant: "destructive" }),
+  });
+
+  const { data: transferHistory = [], isLoading: transfersLoading } = useQuery<any[]>({
+    queryKey: ["staff-transfers", staffId],
+    queryFn: () => apiFetchJson(`/api/transfers/employee/${staffId}`),
+    enabled: tab === "transfers",
   });
 
   const [addingRecord, setAddingRecord] = useState(false);
@@ -992,6 +1000,82 @@ function StaffPanel({ staffId, canEdit, onClose, onUpdated }: {
                   <p className="text-xs text-muted-foreground italic">
                     Disciplinary records are confidential and visible to HR administrators only.
                   </p>
+                </div>
+              )}
+
+              {/* Transfer History Tab */}
+              {tab === "transfers" && (
+                <div className="space-y-5">
+                  <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-widest flex items-center gap-2">
+                    <ArrowRightLeft className="w-3.5 h-3.5" /> Transfer History
+                  </h3>
+                  {transfersLoading ? (
+                    <div className="text-sm text-muted-foreground animate-pulse">Loading transfer history…</div>
+                  ) : transferHistory.length === 0 ? (
+                    <div className="text-center py-8 text-muted-foreground">
+                      <ArrowRightLeft className="w-8 h-8 mx-auto mb-2 opacity-40" />
+                      <p className="text-sm">No transfer records found</p>
+                      <p className="text-xs mt-1">Transfer history will appear here when staff is transferred between sites</p>
+                    </div>
+                  ) : (
+                    <div className="relative">
+                      <div className="absolute left-4 top-0 bottom-0 w-0.5 bg-border" />
+                      <div className="space-y-4">
+                        {transferHistory.map((t: any) => {
+                          const statusCfg: Record<string, { label: string; color: string; icon: React.ReactNode }> = {
+                            pending:   { label: "Pending",   color: "bg-amber-100 text-amber-700",  icon: <Clock className="w-3 h-3" /> },
+                            approved:  { label: "Approved",  color: "bg-green-100 text-green-700",  icon: <CheckCircle2 className="w-3 h-3" /> },
+                            rejected:  { label: "Rejected",  color: "bg-red-100 text-red-700",      icon: <XCircle className="w-3 h-3" /> },
+                            cancelled: { label: "Cancelled", color: "bg-gray-100 text-gray-500",    icon: <Ban className="w-3 h-3" /> },
+                          };
+                          const sc = statusCfg[t.status] ?? statusCfg.pending;
+                          return (
+                            <div key={t.id} className="relative pl-10">
+                              <div className={`absolute left-2.5 top-3 w-3 h-3 rounded-full border-2 border-background ${t.status === 'approved' ? 'bg-green-500' : t.status === 'rejected' ? 'bg-red-500' : t.status === 'cancelled' ? 'bg-gray-400' : 'bg-amber-500'}`} />
+                              <div className="bg-card border border-border rounded-xl p-4">
+                                <div className="flex items-start justify-between mb-2">
+                                  <div>
+                                    <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold ${sc.color}`}>
+                                      {sc.icon}{sc.label}
+                                    </span>
+                                    <p className="text-xs text-muted-foreground mt-1">
+                                      {new Date(t.createdAt).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" })}
+                                      {t.effectiveDate && <span className="ml-2">· Effective: {new Date(t.effectiveDate).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" })}</span>}
+                                    </p>
+                                  </div>
+                                </div>
+                                <div className="grid grid-cols-2 gap-3 text-sm mt-3">
+                                  <div>
+                                    <p className="text-xs text-muted-foreground font-medium">From</p>
+                                    <p className="font-semibold">{t.fromSite?.name ?? "—"}</p>
+                                    {t.fromSite?.region && <p className="text-xs text-muted-foreground">{t.fromSite.region}</p>}
+                                    {t.fromDepartment && <p className="text-xs text-muted-foreground">Dept: {t.fromDepartment}</p>}
+                                  </div>
+                                  <div>
+                                    <p className="text-xs text-muted-foreground font-medium">To</p>
+                                    <p className="font-semibold">{t.toSite?.name ?? "—"}</p>
+                                    {t.toSite?.region && <p className="text-xs text-muted-foreground">{t.toSite.region}</p>}
+                                    {t.toDepartment && <p className="text-xs text-muted-foreground">Dept: {t.toDepartment}</p>}
+                                  </div>
+                                </div>
+                                {t.reason && (
+                                  <p className="text-xs text-muted-foreground mt-2 italic">Reason: {t.reason}</p>
+                                )}
+                                <div className="flex flex-wrap gap-3 text-xs text-muted-foreground mt-2 pt-2 border-t border-border">
+                                  {t.requestedBy && <span>Requested by: <strong>{t.requestedBy.name}</strong></span>}
+                                  {t.approvedBy && <span>· Reviewed by: <strong>{t.approvedBy.name}</strong></span>}
+                                  {t.approvedAt && <span>· {new Date(t.approvedAt).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" })}</span>}
+                                </div>
+                                {t.approvalNotes && (
+                                  <p className="text-xs text-muted-foreground mt-1 italic">Notes: {t.approvalNotes}</p>
+                                )}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
                 </div>
               )}
 

@@ -127,6 +127,34 @@ router.put("/transfers/:id", requireAuth, requireRole("admin"), async (req: Auth
   }
 });
 
+router.get("/transfers/employee/:employeeId", requireAuth, async (req: AuthRequest, res) => {
+  try {
+    const employeeId = Number(req.params.employeeId);
+    if (!employeeId || isNaN(employeeId)) { res.status(400).json({ error: "Invalid employeeId" }); return; }
+    const { role, id: userId } = req.user!;
+
+    if (role === "employee" && userId !== employeeId) {
+      res.status(403).json({ error: "You can only view your own transfer history" }); return;
+    }
+    if (role === "manager") {
+      const team = await db.select({ id: usersTable.id }).from(usersTable).where(eq(usersTable.managerId, userId));
+      const teamIds = new Set([userId, ...team.map(t => t.id)]);
+      if (!teamIds.has(employeeId)) {
+        res.status(403).json({ error: "You can only view transfer history for your team" }); return;
+      }
+    }
+
+    const rows = await db.select().from(transferRequestsTable)
+      .where(eq(transferRequestsTable.employeeId, employeeId))
+      .orderBy(desc(transferRequestsTable.createdAt));
+    const enriched = await Promise.all(rows.map(enrichTransfer));
+    res.json(enriched);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Server error" });
+  }
+});
+
 router.delete("/transfers/:id", requireAuth, requireRole("admin"), async (req: AuthRequest, res) => {
   try {
     await db.delete(transferRequestsTable).where(eq(transferRequestsTable.id, Number(req.params.id)));
