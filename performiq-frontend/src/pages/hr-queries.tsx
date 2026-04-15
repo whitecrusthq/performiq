@@ -148,7 +148,7 @@ function QueryFormDialog({
           <Button variant="outline" onClick={onClose}>Cancel</Button>
           <Button onClick={handleSave} disabled={!title.trim() || !description.trim()}>
             <Send className="w-4 h-4 mr-2" />
-            {isEdit ? "Save Changes" : "Submit Query"}
+            {isEdit ? "Save Changes" : "Submit Ticket"}
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -484,7 +484,7 @@ export default function HrQueries() {
           : "Raise questions or issues directly to the HR department."}
       >
         <Button onClick={() => setSubmitOpen(true)} className="gap-2">
-          <Plus className="w-4 h-4" /> Submit Query
+          <Plus className="w-4 h-4" /> Submit Ticket
         </Button>
       </PageHeader>
 
@@ -584,7 +584,7 @@ export default function HrQueries() {
             {queries.length === 0
               ? isHR
                 ? "No queries have been submitted yet."
-                : "You haven't raised any queries yet. Click 'Submit Query' to get started."
+                : "You haven't raised any queries yet. Click 'Submit Ticket' to get started."
               : "No queries match the current filters."}
           </p>
         </div>
