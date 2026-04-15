@@ -85,13 +85,14 @@ export default function Anniversaries() {
   const topEmployee = longestServing[0];
 
   const milestoneGroups = [
-    { label: "25+ Years", min: 25, color: "from-yellow-500 to-amber-600", icon: <Crown className="w-5 h-5" /> },
-    { label: "20+ Years", min: 20, max: 24, color: "from-purple-500 to-purple-700", icon: <Trophy className="w-5 h-5" /> },
-    { label: "15+ Years", min: 15, max: 19, color: "from-blue-500 to-blue-700", icon: <Award className="w-5 h-5" /> },
-    { label: "10+ Years", min: 10, max: 14, color: "from-green-500 to-green-700", icon: <Medal className="w-5 h-5" /> },
-    { label: "5+ Years", min: 5, max: 9, color: "from-teal-500 to-teal-700", icon: <Star className="w-5 h-5" /> },
+    { label: "30+ Years", min: 31, color: "from-yellow-500 to-amber-600", icon: <Crown className="w-5 h-5" /> },
+    { label: "30 Years", min: 30, max: 30, color: "from-yellow-400 to-amber-500", icon: <Crown className="w-5 h-5" /> },
+    { label: "25 Years", min: 25, max: 29, color: "from-purple-500 to-purple-700", icon: <Trophy className="w-5 h-5" /> },
+    { label: "20 Years", min: 20, max: 24, color: "from-blue-600 to-blue-800", icon: <Trophy className="w-5 h-5" /> },
+    { label: "15 Years", min: 15, max: 19, color: "from-blue-500 to-blue-700", icon: <Award className="w-5 h-5" /> },
+    { label: "10 Years", min: 10, max: 14, color: "from-green-500 to-green-700", icon: <Medal className="w-5 h-5" /> },
+    { label: "5 Years", min: 5, max: 9, color: "from-teal-500 to-teal-700", icon: <Star className="w-5 h-5" /> },
     { label: "1–4 Years", min: 1, max: 4, color: "from-slate-400 to-slate-600", icon: <Calendar className="w-5 h-5" /> },
-    { label: "< 1 Year", min: 0, max: 0, color: "from-gray-300 to-gray-500", icon: <Users className="w-5 h-5" /> },
   ];
 
   const avgYears = filtered.length > 0 ? (filtered.reduce((sum, s) => sum + s.yearsOfService, 0) / filtered.length).toFixed(1) : "0";
