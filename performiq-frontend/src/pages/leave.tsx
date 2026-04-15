@@ -109,6 +109,7 @@ export default function Leave() {
   const [isLeaveTypeDialogOpen, setIsLeaveTypeDialogOpen] = useState(false);
   const [leaveTypeForm, setLeaveTypeForm] = useState({ name: "", label: "" });
   const [editingLeaveType, setEditingLeaveType] = useState<LeaveTypeOption | null>(null);
+  const [ltSubmitting, setLtSubmitting] = useState(false);
 
   const isManager = user && ["super_admin", "admin", "manager"].includes(user.role);
   const isAdmin = user?.role === "admin" || user?.role === "super_admin";
@@ -178,7 +179,7 @@ export default function Leave() {
   const handleSaveLeaveType = async (e: React.FormEvent) => {
     e.preventDefault();
     setMutationError(null);
-    setSubmitting(true);
+    setLtSubmitting(true);
     try {
       if (editingLeaveType) {
         const r = await apiFetch(`/api/leave-types/${editingLeaveType.id}`, {
@@ -198,7 +199,7 @@ export default function Leave() {
     } catch (err) {
       setMutationError("Network error");
     }
-    setSubmitting(false);
+    setLtSubmitting(false);
   };
 
   const handleDeleteLeaveType = async (lt: LeaveTypeOption) => {
@@ -979,7 +980,7 @@ export default function Leave() {
               {mutationError && <p className="text-sm text-red-600">{mutationError}</p>}
               <div className="flex gap-3 pt-2">
                 <Button type="button" variant="outline" className="flex-1" onClick={() => setIsLeaveTypeDialogOpen(false)}>Cancel</Button>
-                <Button type="submit" className="flex-1" isLoading={submitting}>{editingLeaveType ? "Update" : "Create"}</Button>
+                <Button type="submit" className="flex-1" isLoading={ltSubmitting}>{editingLeaveType ? "Update" : "Create"}</Button>
               </div>
             </form>
           </div>
