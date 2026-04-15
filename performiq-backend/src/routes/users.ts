@@ -635,8 +635,9 @@ router.post("/users/bulk-import", requireAuth, requireRole("admin", "super_admin
       const r = rows[i];
       const rowNum = i + 1;
       try {
-        if (!r.name || !r.email) {
-          results.push({ row: rowNum, status: "error", name: r.name, email: r.email, error: "Name and email are required" });
+        const fullName = r.name?.trim() || [r.firstName, r.middleName, r.surname].filter(Boolean).map((s: string) => s.trim()).join(" ");
+        if (!fullName || !r.email) {
+          results.push({ row: rowNum, status: "error", name: fullName || r.name, email: r.email, error: "Name (or surname + firstName) and email are required" });
           continue;
         }
 
@@ -660,11 +661,14 @@ router.post("/users/bulk-import", requireAuth, requireRole("admin", "super_admin
         const passwordHash = r.password ? await bcrypt.hash(r.password, 10) : defaultPassword;
 
         await db.insert(usersTable).values({
-          name: r.name.trim(),
+          name: fullName,
           email: r.email.trim().toLowerCase(),
           passwordHash,
           role,
           siteId,
+          surname: r.surname?.trim() || null,
+          firstName: r.firstName?.trim() || null,
+          middleName: r.middleName?.trim() || null,
           department: r.department?.trim() || null,
           jobTitle: r.jobTitle?.trim() || null,
           phone: r.phone?.trim() || null,
@@ -688,7 +692,7 @@ router.post("/users/bulk-import", requireAuth, requireRole("admin", "super_admin
           emergencyContactRelation: r.emergencyContactRelation?.trim() || null,
         });
 
-        results.push({ row: rowNum, status: "success", name: r.name, email: r.email });
+        results.push({ row: rowNum, status: "success", name: fullName, email: r.email });
       } catch (err: any) {
         const msg = err.code === "23505" ? "Email already exists" : (err.message || "Unknown error");
         results.push({ row: rowNum, status: "error", name: r.name, email: r.email, error: msg });

@@ -1389,7 +1389,7 @@ function parseCSV(text: string): Record<string, string>[] {
 }
 
 const IMPORT_TEMPLATE_HEADERS = [
-  "name", "email", "password", "role", "site", "department", "jobTitle",
+  "surname", "firstName", "middleName", "email", "password", "role", "site", "department", "jobTitle",
   "phone", "staffId", "gender", "dateOfBirth", "startDate",
   "address", "city", "stateProvince", "country", "nationality", "nationalId",
   "maritalStatus", "bankName", "bankAccountName", "bankAccountNumber", "bankBranch",
@@ -1398,6 +1398,9 @@ const IMPORT_TEMPLATE_HEADERS = [
 
 const CSV_FIELD_MAP: Record<string, string> = {
   "name": "name", "full name": "name", "employee name": "name",
+  "surname": "surname", "last name": "surname", "lastname": "surname", "family name": "surname",
+  "first name": "firstName", "firstname": "firstName", "given name": "firstName",
+  "middle name": "middleName", "middlename": "middleName", "other name": "middleName", "othername": "middleName", "other names": "middleName",
   "email": "email", "email address": "email",
   "password": "password",
   "role": "role",
@@ -1445,7 +1448,7 @@ function BulkImportModal({ onClose, onComplete }: { onClose: () => void; onCompl
   const [fileName, setFileName] = useState("");
 
   const downloadTemplate = () => {
-    const csv = IMPORT_TEMPLATE_HEADERS.join(",") + "\nJohn Doe,john@example.com,,employee,Head Office,Engineering,Developer,+234000000,EMP001,Male,1990-01-15,2024-01-01,,,,,,,,,,,,,,\n";
+    const csv = IMPORT_TEMPLATE_HEADERS.join(",") + "\nDoe,John,Michael,john@example.com,,employee,Head Office,Engineering,Developer,+234000000,EMP001,Male,1990-01-15,2024-01-01,,,,,,,,,,,,,,\n";
     const blob = new Blob(["\uFEFF" + csv], { type: "text/csv;charset=utf-8;" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
@@ -1491,8 +1494,8 @@ function BulkImportModal({ onClose, onComplete }: { onClose: () => void; onCompl
     }
   };
 
-  const validRows = rows.filter(r => r.name && r.email && r.site);
-  const invalidRows = rows.filter(r => !r.name || !r.email || !r.site);
+  const validRows = rows.filter(r => (r.name || (r.surname && r.firstName)) && r.email && r.site);
+  const invalidRows = rows.filter(r => !(r.name || (r.surname && r.firstName)) || !r.email || !r.site);
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={onClose}>
@@ -1517,7 +1520,7 @@ function BulkImportModal({ onClose, onComplete }: { onClose: () => void; onCompl
                 <div>
                   <h3 className="font-semibold text-lg">Upload CSV File</h3>
                   <p className="text-sm text-muted-foreground mt-1">
-                    Upload a CSV file with employee data. Required columns: <strong>name</strong>, <strong>email</strong>, <strong>site</strong>
+                    Upload a CSV file with employee data. Required columns: <strong>surname</strong>, <strong>firstName</strong>, <strong>email</strong>, <strong>site</strong> (or a single <strong>name</strong> column)
                   </p>
                 </div>
               </div>
@@ -1563,7 +1566,7 @@ function BulkImportModal({ onClose, onComplete }: { onClose: () => void; onCompl
 
               {invalidRows.length > 0 && (
                 <div className="bg-red-50 border border-red-200 rounded-xl p-3 text-xs text-red-700">
-                  <p className="font-semibold flex items-center gap-1"><AlertCircle className="w-3.5 h-3.5" /> {invalidRows.length} row(s) are missing required fields (name, email, or site) and will fail.</p>
+                  <p className="font-semibold flex items-center gap-1"><AlertCircle className="w-3.5 h-3.5" /> {invalidRows.length} row(s) are missing required fields (surname + first name or name, email, or site) and will fail.</p>
                 </div>
               )}
 
@@ -1573,22 +1576,27 @@ function BulkImportModal({ onClose, onComplete }: { onClose: () => void; onCompl
                     <thead className="bg-muted/50 border-b border-border sticky top-0">
                       <tr>
                         <th className="px-3 py-2 text-left font-medium text-muted-foreground">#</th>
-                        <th className="px-3 py-2 text-left font-medium text-muted-foreground">Name</th>
+                        <th className="px-3 py-2 text-left font-medium text-muted-foreground">Surname</th>
+                        <th className="px-3 py-2 text-left font-medium text-muted-foreground">First Name</th>
+                        <th className="px-3 py-2 text-left font-medium text-muted-foreground">Middle Name</th>
                         <th className="px-3 py-2 text-left font-medium text-muted-foreground">Email</th>
                         <th className="px-3 py-2 text-left font-medium text-muted-foreground">Site</th>
                         <th className="px-3 py-2 text-left font-medium text-muted-foreground">Department</th>
-                        <th className="px-3 py-2 text-left font-medium text-muted-foreground">Job Title</th>
                         <th className="px-3 py-2 text-left font-medium text-muted-foreground">Role</th>
                         <th className="px-3 py-2 text-left font-medium text-muted-foreground">Status</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-border">
                       {rows.map((r, i) => {
-                        const valid = r.name && r.email && r.site;
+                        const hasName = r.name || (r.surname && r.firstName);
+                        const valid = hasName && r.email && r.site;
+                        const displayName = r.name || [r.surname, r.firstName, r.middleName].filter(Boolean).join(" ");
                         return (
                           <tr key={i} className={valid ? "" : "bg-red-50/50"}>
                             <td className="px-3 py-2 text-muted-foreground">{i + 1}</td>
-                            <td className="px-3 py-2 font-medium">{r.name || <span className="text-red-500">Missing</span>}</td>
+                            <td className="px-3 py-2 font-medium">{r.surname || (r.name ? <span className="text-muted-foreground italic">—</span> : <span className="text-red-500">Missing</span>)}</td>
+                            <td className="px-3 py-2">{r.firstName || (r.name ? <span className="text-muted-foreground italic">—</span> : <span className="text-red-500">Missing</span>)}</td>
+                            <td className="px-3 py-2">{r.middleName || "—"}</td>
                             <td className="px-3 py-2">{r.email || <span className="text-red-500">Missing</span>}</td>
                             <td className="px-3 py-2">{r.site || <span className="text-red-500">Missing</span>}</td>
                             <td className="px-3 py-2">{r.department || "—"}</td>
