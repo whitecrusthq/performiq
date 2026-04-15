@@ -98,13 +98,9 @@ export default function Dashboard() {
             <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-7 gap-4">
               {(stats as any).leaveBalance.balances.map((b: any) => {
                 const pct = b.allocated > 0 ? Math.round((b.used / b.allocated) * 100) : 0;
-                const labels: Record<string, string> = {
-                  annual: "Annual", sick: "Sick", personal: "Casual",
-                  maternity: "Maternity", paternity: "Paternity", unpaid: "Unpaid", other: "Other",
-                };
                 return (
                   <div key={b.leaveType} className="text-center">
-                    <p className="text-xs font-medium text-muted-foreground mb-2">{labels[b.leaveType] || b.leaveType}</p>
+                    <p className="text-xs font-medium text-muted-foreground mb-2">{b.label || b.leaveType}</p>
                     <div className="relative w-16 h-16 mx-auto mb-2">
                       <svg className="w-16 h-16 -rotate-90" viewBox="0 0 36 36">
                         <circle cx="18" cy="18" r="15" fill="none" stroke="currentColor" strokeWidth="3" className="text-secondary" />

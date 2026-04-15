@@ -1,19 +1,14 @@
 import { useState, useEffect } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { PageHeader, Card, Button, Input, Label } from "@/components/shared";
-import { CalendarDays, Plus, X, CheckCircle2, XCircle, Clock, Ban, ChevronRight, UserPlus, ArrowUp, ArrowDown, Trash2, Settings, BarChart3, Filter, Users } from "lucide-react";
+import { CalendarDays, Plus, X, CheckCircle2, XCircle, Clock, Ban, ChevronRight, UserPlus, ArrowUp, ArrowDown, Trash2, Settings, BarChart3, Filter, Users, Tag, Pencil } from "lucide-react";
 import { BulkActionBar } from "@/components/bulk-action-bar";
 import { useAuth } from "@/hooks/use-auth";
 import { apiFetch } from "@/lib/utils";
 
-const LEAVE_TYPES = ["annual", "sick", "personal", "maternity", "paternity", "unpaid", "other"] as const;
-type LeaveType = typeof LEAVE_TYPES[number];
 type LeaveStatus = "pending" | "approved" | "rejected" | "cancelled";
 
-const LEAVE_LABEL: Record<LeaveType, string> = {
-  annual: "Annual Leave", sick: "Sick Leave", personal: "Casual Leave",
-  maternity: "Maternity Leave", paternity: "Paternity Leave", unpaid: "Unpaid Leave", other: "Other",
-};
+interface LeaveTypeOption { id: number; name: string; label: string; isDefault: boolean }
 
 const STATUS_CONFIG: Record<LeaveStatus, { label: string; color: string; icon: React.ReactNode }> = {
   pending:   { label: "Pending",   color: "bg-amber-100 text-amber-700",   icon: <Clock className="w-3.5 h-3.5" /> },
@@ -61,7 +56,7 @@ interface ApproverStep {
 }
 
 interface LeaveRequest {
-  id: number; leaveType: LeaveType; startDate: string; endDate: string;
+  id: number; leaveType: string; startDate: string; endDate: string;
   days: number; reason?: string | null; status: LeaveStatus;
   reviewNote?: string | null; createdAt: string;
   employee?: { id: number; name: string; department?: string | null } | null;
@@ -73,13 +68,13 @@ interface LeaveRequest {
 interface UserOption { id: number; name: string; role: string; department?: string | null }
 
 interface LeavePolicy {
-  id: number; leaveType: LeaveType; daysAllocated: number;
+  id: number; leaveType: string; daysAllocated: number;
   cycleStartMonth: number; cycleStartDay: number;
   cycleEndMonth: number; cycleEndDay: number;
 }
 
 interface LeaveBalanceItem {
-  leaveType: LeaveType; allocated: number; used: number; remaining: number;
+  leaveType: string; allocated: number; used: number; remaining: number;
   policy?: LeavePolicy | null;
 }
 
@@ -99,22 +94,31 @@ export default function Leave() {
   const [filterEmployee, setFilterEmployee] = useState<string>("all");
   const [mutationError, setMutationError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
-  const [form, setForm] = useState({ leaveType: "annual" as LeaveType, startDate: "", endDate: "", reason: "" });
+  const [form, setForm] = useState({ leaveType: "annual", startDate: "", endDate: "", reason: "" });
   const [approverSteps, setApproverSteps] = useState<string[]>([""]);
   const [activeTab, setActiveTab] = useState<TabType>("requests");
   const [balances, setBalances] = useState<LeaveBalanceItem[]>([]);
   const [policies, setPolicies] = useState<LeavePolicy[]>([]);
-  const [policyForm, setPolicyForm] = useState<Partial<LeavePolicy> & { leaveType: LeaveType }>({
+  const [policyForm, setPolicyForm] = useState<Partial<LeavePolicy> & { leaveType: string }>({
     leaveType: "annual", daysAllocated: 0,
     cycleStartMonth: 1, cycleStartDay: 1, cycleEndMonth: 12, cycleEndDay: 31,
   });
   const [isPolicyDialogOpen, setIsPolicyDialogOpen] = useState(false);
   const [teamBalances, setTeamBalances] = useState<any[]>([]);
+  const [leaveTypes, setLeaveTypes] = useState<LeaveTypeOption[]>([]);
+  const [isLeaveTypeDialogOpen, setIsLeaveTypeDialogOpen] = useState(false);
+  const [leaveTypeForm, setLeaveTypeForm] = useState({ name: "", label: "" });
+  const [editingLeaveType, setEditingLeaveType] = useState<LeaveTypeOption | null>(null);
 
   const isManager = user && ["super_admin", "admin", "manager"].includes(user.role);
   const isAdmin = user?.role === "admin" || user?.role === "super_admin";
 
   const departments = [...new Set(allUsers.map(u => u.department).filter(Boolean))] as string[];
+
+  const leaveLabel = (name: string) => {
+    const found = leaveTypes.find(t => t.name === name);
+    return found ? found.label : name;
+  };
 
   const load = async () => {
     setIsLoading(true);
@@ -163,7 +167,47 @@ export default function Leave() {
     } catch {}
   };
 
-  useEffect(() => { load(); loadUsers(); loadBalances(); loadPolicies(); if (isManager) loadTeamBalances(); }, []);
+  const loadLeaveTypes = async () => {
+    try {
+      const r = await apiFetch("/api/leave-types");
+      const data = await r.json();
+      if (Array.isArray(data)) setLeaveTypes(data);
+    } catch {}
+  };
+
+  const handleSaveLeaveType = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setSubmitting(true);
+    try {
+      if (editingLeaveType) {
+        const r = await apiFetch(`/api/leave-types/${editingLeaveType.id}`, {
+          method: "PUT", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ label: leaveTypeForm.label }),
+        });
+        if (r.ok) { setIsLeaveTypeDialogOpen(false); loadLeaveTypes(); setEditingLeaveType(null); }
+        else { const d = await r.json(); setMutationError(d.error || "Failed to update"); }
+      } else {
+        const r = await apiFetch("/api/leave-types", {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(leaveTypeForm),
+        });
+        if (r.ok) { setIsLeaveTypeDialogOpen(false); loadLeaveTypes(); }
+        else { const d = await r.json(); setMutationError(d.error || "Failed to create"); }
+      }
+    } catch {}
+    setSubmitting(false);
+  };
+
+  const handleDeleteLeaveType = async (lt: LeaveTypeOption) => {
+    if (!confirm(`Delete "${lt.label}"? This cannot be undone.`)) return;
+    try {
+      const r = await apiFetch(`/api/leave-types/${lt.id}`, { method: "DELETE" });
+      if (r.ok) loadLeaveTypes();
+      else { const d = await r.json(); setMutationError(d.error || "Failed to delete"); }
+    } catch {}
+  };
+
+  useEffect(() => { load(); loadUsers(); loadBalances(); loadPolicies(); loadLeaveTypes(); if (isManager) loadTeamBalances(); }, []);
   useEffect(() => { load(); }, [filterDepartment, filterEmployee]);
 
   const days = calcDays(form.startDate, form.endDate);
@@ -316,7 +360,7 @@ export default function Leave() {
             const pct = b.allocated > 0 ? Math.round((b.used / b.allocated) * 100) : 0;
             return (
               <Card key={b.leaveType} className="p-4">
-                <p className="text-xs font-medium text-muted-foreground mb-1">{LEAVE_LABEL[b.leaveType] || b.leaveType}</p>
+                <p className="text-xs font-medium text-muted-foreground mb-1">{leaveLabel(b.leaveType)}</p>
                 <div className="flex items-baseline gap-1.5 mb-2">
                   <span className="text-2xl font-bold text-foreground">{b.remaining}</span>
                   <span className="text-xs text-muted-foreground">/ {b.allocated}</span>
@@ -412,7 +456,7 @@ export default function Leave() {
                             className="w-4 h-4 accent-primary cursor-pointer shrink-0"
                           />
                         )}
-                        <span className="font-semibold text-foreground truncate">{LEAVE_LABEL[req.leaveType] ?? req.leaveType}</span>
+                        <span className="font-semibold text-foreground truncate">{leaveLabel(req.leaveType)}</span>
                       </div>
                       <StatusBadge status={req.status} />
                     </div>
@@ -505,7 +549,7 @@ export default function Leave() {
                       <th className="text-left py-3 px-4 font-semibold text-foreground">Department</th>
                       {policies.map(p => (
                         <th key={p.leaveType} className="text-center py-3 px-3 font-semibold text-foreground">
-                          {LEAVE_LABEL[p.leaveType] || p.leaveType}
+                          {leaveLabel(p.leaveType)}
                         </th>
                       ))}
                     </tr>
@@ -559,6 +603,42 @@ export default function Leave() {
       {/* POLICIES TAB */}
       {activeTab === "policies" && isAdmin && (
         <div className="space-y-6">
+          {/* Leave Types Section */}
+          <div className="flex items-center justify-between">
+            <h3 className="text-lg font-bold text-foreground">Leave Types</h3>
+            <Button onClick={() => { setLeaveTypeForm({ name: "", label: "" }); setEditingLeaveType(null); setIsLeaveTypeDialogOpen(true); }}>
+              <Plus className="w-4 h-4 mr-2" /> Add Leave Type
+            </Button>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+            {leaveTypes.map(lt => (
+              <Card key={lt.id} className="p-4 flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <Tag className="w-4 h-4 text-blue-500" />
+                  <div>
+                    <p className="font-medium text-foreground text-sm">{lt.label}</p>
+                    <p className="text-xs text-muted-foreground">{lt.name}{lt.isDefault ? " · Default" : ""}</p>
+                  </div>
+                </div>
+                <div className="flex gap-1">
+                  <button
+                    onClick={() => { setEditingLeaveType(lt); setLeaveTypeForm({ name: lt.name, label: lt.label }); setIsLeaveTypeDialogOpen(true); }}
+                    className="p-1.5 rounded-lg hover:bg-muted text-muted-foreground" title="Edit"
+                  >
+                    <Pencil className="w-4 h-4" />
+                  </button>
+                  {!lt.isDefault && (
+                    <button onClick={() => handleDeleteLeaveType(lt)} className="p-1.5 rounded-lg hover:bg-red-50 text-red-400" title="Delete">
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  )}
+                </div>
+              </Card>
+            ))}
+          </div>
+
+          <hr className="border-border" />
+
           <div className="flex items-center justify-between">
             <h3 className="text-lg font-bold text-foreground">Leave Cycle Settings</h3>
             <Button onClick={() => {
@@ -580,7 +660,7 @@ export default function Leave() {
               {policies.map(p => (
                 <Card key={p.id} className="p-5 flex flex-col gap-3">
                   <div className="flex items-start justify-between">
-                    <h4 className="font-semibold text-foreground">{LEAVE_LABEL[p.leaveType] || p.leaveType}</h4>
+                    <h4 className="font-semibold text-foreground">{leaveLabel(p.leaveType)}</h4>
                     <div className="flex gap-1">
                       <button
                         onClick={() => { setPolicyForm(p); setIsPolicyDialogOpen(true); }}
@@ -652,10 +732,10 @@ export default function Leave() {
                 <select
                   className="w-full px-4 py-2 border rounded-xl bg-background text-sm"
                   value={form.leaveType}
-                  onChange={e => setForm({ ...form, leaveType: e.target.value as LeaveType })}
+                  onChange={e => setForm({ ...form, leaveType: e.target.value })}
                   required
                 >
-                  {LEAVE_TYPES.map(t => <option key={t} value={t}>{LEAVE_LABEL[t]}</option>)}
+                  {leaveTypes.map(t => <option key={t.name} value={t.name}>{t.label}</option>)}
                 </select>
               </div>
               <div className="grid grid-cols-2 gap-3">
@@ -746,7 +826,7 @@ export default function Leave() {
               <button onClick={() => setReviewDialog(null)}><X className="w-5 h-5" /></button>
             </div>
             <p className="text-sm text-muted-foreground mb-1">
-              {reviewDialog.request.employee?.name} · {LEAVE_LABEL[reviewDialog.request.leaveType]} ·{" "}
+              {reviewDialog.request.employee?.name} · {leaveLabel(reviewDialog.request.leaveType)} ·{" "}
               {fmt(reviewDialog.request.startDate)} – {fmt(reviewDialog.request.endDate)} ({reviewDialog.request.days} days)
             </p>
             {reviewDialog.action === "approved" && (reviewDialog.request.approvers?.filter(a => a.status === 'pending').length ?? 0) > 1 && (
@@ -793,10 +873,10 @@ export default function Leave() {
                 <select
                   className="w-full px-4 py-2 border rounded-xl bg-background text-sm"
                   value={policyForm.leaveType}
-                  onChange={e => setPolicyForm({ ...policyForm, leaveType: e.target.value as LeaveType })}
+                  onChange={e => setPolicyForm({ ...policyForm, leaveType: e.target.value })}
                   required
                 >
-                  {LEAVE_TYPES.map(t => <option key={t} value={t}>{LEAVE_LABEL[t]}</option>)}
+                  {leaveTypes.map(t => <option key={t.name} value={t.name}>{t.label}</option>)}
                 </select>
               </div>
               <div>
@@ -857,6 +937,46 @@ export default function Leave() {
               <div className="flex gap-3 pt-2">
                 <Button type="button" variant="outline" className="flex-1" onClick={() => setIsPolicyDialogOpen(false)}>Cancel</Button>
                 <Button type="submit" className="flex-1" isLoading={submitting}>Save Policy</Button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Leave Type Dialog */}
+      {isLeaveTypeDialogOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={() => setIsLeaveTypeDialogOpen(false)}>
+          <div className="bg-background rounded-2xl shadow-xl w-full max-w-md mx-4" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between p-6 pb-2">
+              <h2 className="text-lg font-bold text-foreground">{editingLeaveType ? "Edit Leave Type" : "New Leave Type"}</h2>
+              <button onClick={() => setIsLeaveTypeDialogOpen(false)}><X className="w-5 h-5" /></button>
+            </div>
+            <form onSubmit={handleSaveLeaveType} className="space-y-4 p-6">
+              {!editingLeaveType && (
+                <div>
+                  <Label>Name (identifier)</Label>
+                  <Input
+                    placeholder="e.g. compassionate"
+                    value={leaveTypeForm.name}
+                    onChange={e => setLeaveTypeForm({ ...leaveTypeForm, name: e.target.value })}
+                    required
+                  />
+                  <p className="text-xs text-muted-foreground mt-1">Lowercase letters and spaces. Will be auto-formatted.</p>
+                </div>
+              )}
+              <div>
+                <Label>Display Label</Label>
+                <Input
+                  placeholder="e.g. Compassionate Leave"
+                  value={leaveTypeForm.label}
+                  onChange={e => setLeaveTypeForm({ ...leaveTypeForm, label: e.target.value })}
+                  required
+                />
+              </div>
+              {mutationError && <p className="text-sm text-red-600">{mutationError}</p>}
+              <div className="flex gap-3 pt-2">
+                <Button type="button" variant="outline" className="flex-1" onClick={() => setIsLeaveTypeDialogOpen(false)}>Cancel</Button>
+                <Button type="submit" className="flex-1" isLoading={submitting}>{editingLeaveType ? "Update" : "Create"}</Button>
               </div>
             </form>
           </div>

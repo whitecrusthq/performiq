@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { db, leaveRequestsTable, leaveApproversTable, leavePoliciesTable, leaveAllocationsTable, usersTable } from "../db/index.js";
+import { db, leaveRequestsTable, leaveApproversTable, leavePoliciesTable, leaveAllocationsTable, leaveTypesTable, usersTable } from "../db/index.js";
 import { eq, or, desc, and, asc, inArray, sql } from "drizzle-orm";
 import { requireAuth, requireRole, AuthRequest } from "../middlewares/auth.js";
 import { sendLeaveNotification } from "../lib/mailgun.js";
@@ -84,6 +84,58 @@ async function enrichLeaveRequest(r: typeof leaveRequestsTable.$inferSelect, use
     currentApproverId: currentApprover?.id ?? null,
   };
 }
+
+router.get("/leave-types", requireAuth, async (_req: AuthRequest, res) => {
+  try {
+    const types = await db.select().from(leaveTypesTable).orderBy(asc(leaveTypesTable.name));
+    res.json(types);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Server error" });
+  }
+});
+
+router.post("/leave-types", requireAuth, requireRole("admin"), async (req: AuthRequest, res) => {
+  try {
+    const { name, label } = req.body;
+    if (!name || !label) { res.status(400).json({ error: "Name and label are required" }); return; }
+    const slug = name.toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_|_$/g, "");
+    if (!slug) { res.status(400).json({ error: "Invalid name" }); return; }
+    const existing = await db.select().from(leaveTypesTable).where(eq(leaveTypesTable.name, slug)).limit(1);
+    if (existing.length > 0) { res.status(400).json({ error: "A leave type with this name already exists" }); return; }
+    const [created] = await db.insert(leaveTypesTable).values({ name: slug, label }).returning();
+    res.json(created);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Server error" });
+  }
+});
+
+router.put("/leave-types/:id", requireAuth, requireRole("admin"), async (req: AuthRequest, res) => {
+  try {
+    const { label } = req.body;
+    if (!label) { res.status(400).json({ error: "Label is required" }); return; }
+    const [updated] = await db.update(leaveTypesTable).set({ label }).where(eq(leaveTypesTable.id, Number(req.params.id))).returning();
+    if (!updated) { res.status(404).json({ error: "Not found" }); return; }
+    res.json(updated);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Server error" });
+  }
+});
+
+router.delete("/leave-types/:id", requireAuth, requireRole("admin"), async (req: AuthRequest, res) => {
+  try {
+    const [row] = await db.select().from(leaveTypesTable).where(eq(leaveTypesTable.id, Number(req.params.id))).limit(1);
+    if (!row) { res.status(404).json({ error: "Not found" }); return; }
+    if (row.isDefault) { res.status(400).json({ error: "Cannot delete a default leave type" }); return; }
+    await db.delete(leaveTypesTable).where(eq(leaveTypesTable.id, row.id));
+    res.json({ message: "Deleted" });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Server error" });
+  }
+});
 
 router.get("/leave-policies", requireAuth, async (_req: AuthRequest, res) => {
   try {

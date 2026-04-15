@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { db, usersTable, cyclesTable, appraisalsTable, goalsTable, leavePoliciesTable, leaveAllocationsTable, leaveRequestsTable } from "../db/index.js";
+import { db, usersTable, cyclesTable, appraisalsTable, goalsTable, leavePoliciesTable, leaveAllocationsTable, leaveRequestsTable, leaveTypesTable } from "../db/index.js";
 import { eq, and, count, inArray } from "drizzle-orm";
 import { requireAuth, AuthRequest } from "../middlewares/auth";
 
@@ -60,11 +60,16 @@ async function getLeaveBalance(userId: number) {
   const [pendingLeave] = await db.select({ count: count() }).from(leaveRequestsTable)
     .where(and(eq(leaveRequestsTable.employeeId, userId), eq(leaveRequestsTable.status, "pending")));
 
+  const leaveTypeRows = await db.select().from(leaveTypesTable);
+  const labelMap: Record<string, string> = {};
+  for (const lt of leaveTypeRows) labelMap[lt.name] = lt.label;
+
   return {
     cycleYear: cycleKeys[0],
     pendingLeaveRequests: Number(pendingLeave.count),
     balances: dedupedAllocations.map(a => ({
       leaveType: a.leaveType,
+      label: labelMap[a.leaveType] || a.leaveType,
       allocated: a.allocated,
       used: a.used,
       remaining: a.allocated - a.used,
