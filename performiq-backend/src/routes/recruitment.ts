@@ -3,7 +3,7 @@ import { db, jobRequisitionsTable, candidatesTable, usersTable, sitesTable, work
 import { eq, desc, and, inArray, sql } from "drizzle-orm";
 import { requireAuth, requireRole, AuthRequest } from "../middlewares/auth.js";
 import bcrypt from "bcryptjs";
-import { sendRecruitmentNotification } from "../lib/mailgun.js";
+import { sendRecruitmentNotification, sendCandidateNotification, type CandidateNotifyEvent } from "../lib/mailgun.js";
 
 const router = Router();
 
@@ -227,6 +227,25 @@ router.put("/recruitment/candidates/:id", requireAuth, requireRole("admin", "man
           }).catch(err => console.error("[recruitment notify] stage_change error:", err));
         }
       }
+
+      const candidateEventMap: Record<string, CandidateNotifyEvent> = {
+        screening: "moved_to_screening",
+        interview: "interview_scheduled",
+        offer: "offer_extended",
+        rejected: "application_rejected",
+      };
+      const candidateEvent = candidateEventMap[stage];
+      if (candidateEvent && job) {
+        sendCandidateNotification({
+          event: candidateEvent,
+          to: existing.email,
+          candidateName: `${existing.firstName} ${existing.surname}`,
+          jobTitle: job.title,
+          department: job.department || undefined,
+          interviewDate: stage === "interview" && interviewDate ? new Date(interviewDate).toLocaleDateString() : undefined,
+          rejectionReason: stage === "rejected" ? rejectionReason : undefined,
+        }).catch(err => console.error("[recruitment notify] candidate email error:", err));
+      }
     }
 
     res.json(row);
@@ -338,13 +357,12 @@ router.post("/recruitment/candidates/:id/hire", requireAuth, requireRole("admin"
       onboardingWorkflow = wf;
     }
 
-    sendRecruitmentNotification({
-      event: "candidate_hired",
+    sendCandidateNotification({
+      event: "hired",
       to: candidate.email,
-      recipientName: `${candidate.firstName} ${candidate.surname}`,
+      candidateName: `${candidate.firstName} ${candidate.surname}`,
       jobTitle: job.title,
       department: job.department || undefined,
-      loginEmail: candidate.email,
       startDate,
     }).catch(err => console.error("[recruitment notify] candidate_hired error:", err));
 

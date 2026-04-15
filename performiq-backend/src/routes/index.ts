@@ -25,6 +25,7 @@ import confirmationRouter from "./confirmation";
 import anniversariesRouter from "./anniversaries";
 import recruitmentRouter from "./recruitment";
 import notificationSettingsRouter from "./notification-settings";
+import careersRouter from "./careers";
 
 const router: IRouter = Router();
 
@@ -54,5 +55,6 @@ router.use(confirmationRouter);
 router.use(anniversariesRouter);
 router.use(recruitmentRouter);
 router.use(notificationSettingsRouter);
+router.use(careersRouter);
 
 export default router;

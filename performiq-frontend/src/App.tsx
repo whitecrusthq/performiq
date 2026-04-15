@@ -33,6 +33,7 @@ import Transfers from "@/pages/transfers";
 import Anniversaries from "@/pages/anniversaries";
 import Recruitment from "@/pages/recruitment";
 import NotificationSettingsPage from "@/pages/notification-settings";
+import Careers from "@/pages/careers";
 
 const queryClient = new QueryClient();
 
@@ -57,6 +58,8 @@ function Router() {
         {user ? <Redirect to="/dashboard" /> : <Redirect to="/login" />}
       </Route>
       <Route path="/login" component={Login} />
+      <Route path="/careers" component={Careers} />
+      <Route path="/careers/track/:token" component={Careers} />
       
       {/* Protected Routes wrapped in Layout */}
       <Route path="/dashboard">

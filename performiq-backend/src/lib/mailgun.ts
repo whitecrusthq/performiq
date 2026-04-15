@@ -195,6 +195,93 @@ export async function sendRecruitmentNotification(payload: RecruitmentNotifyPayl
   });
 }
 
+export type CandidateNotifyEvent =
+  | "application_received"
+  | "moved_to_screening"
+  | "interview_scheduled"
+  | "offer_extended"
+  | "application_rejected"
+  | "hired";
+
+export interface CandidateNotifyPayload {
+  event: CandidateNotifyEvent;
+  to: string;
+  candidateName: string;
+  jobTitle: string;
+  department?: string;
+  companyName?: string;
+  trackingUrl?: string;
+  interviewDate?: string;
+  rejectionReason?: string;
+  startDate?: string;
+}
+
+export async function sendCandidateNotification(payload: CandidateNotifyPayload): Promise<void> {
+  let { mg, domain } = (() => {
+    try { return getClient(); }
+    catch { return { mg: null, domain: "" }; }
+  })();
+  if (!mg) {
+    console.log("[candidate notify] Mailgun not configured, skipping email:", payload.event, "→", payload.to);
+    return;
+  }
+
+  const from = process.env.MAILGUN_FROM ?? `noreply@${domain}`;
+  const company = payload.companyName || "the company";
+
+  const subjects: Record<CandidateNotifyEvent, string> = {
+    application_received: `Application Received — ${payload.jobTitle}`,
+    moved_to_screening: `Application Update — ${payload.jobTitle}`,
+    interview_scheduled: `Interview Invitation — ${payload.jobTitle}`,
+    offer_extended: `Job Offer — ${payload.jobTitle}`,
+    application_rejected: `Application Update — ${payload.jobTitle}`,
+    hired: `Welcome Aboard! — ${payload.jobTitle}`,
+  };
+
+  const intros: Record<CandidateNotifyEvent, string> = {
+    application_received: `Dear <strong>${payload.candidateName}</strong>,<br><br>Thank you for applying for the <strong>${payload.jobTitle}</strong> position${payload.department ? ` in our ${payload.department} department` : ""}. We have received your application and our team will review it carefully.`,
+    moved_to_screening: `Dear <strong>${payload.candidateName}</strong>,<br><br>We are pleased to let you know that your application for <strong>${payload.jobTitle}</strong> has progressed to the screening stage. Our hiring team is currently reviewing your qualifications.`,
+    interview_scheduled: `Dear <strong>${payload.candidateName}</strong>,<br><br>We are delighted to invite you for an interview for the <strong>${payload.jobTitle}</strong> position.${payload.interviewDate ? ` Your interview is scheduled for <strong>${payload.interviewDate}</strong>.` : " We will be in touch with the interview details shortly."}`,
+    offer_extended: `Dear <strong>${payload.candidateName}</strong>,<br><br>We are thrilled to inform you that we would like to extend an offer for the <strong>${payload.jobTitle}</strong> position. Our team will be in touch with the full details of the offer.`,
+    application_rejected: `Dear <strong>${payload.candidateName}</strong>,<br><br>Thank you for your interest in the <strong>${payload.jobTitle}</strong> position and for taking the time to apply. After careful consideration, we have decided to move forward with other candidates at this time.`,
+    hired: `Dear <strong>${payload.candidateName}</strong>,<br><br>Congratulations! We are excited to officially welcome you to the team as <strong>${payload.jobTitle}</strong>${payload.department ? ` in our ${payload.department} department` : ""}.${payload.startDate ? ` Your start date is <strong>${payload.startDate}</strong>.` : ""}`,
+  };
+
+  const closings: Record<CandidateNotifyEvent, string> = {
+    application_received: "We will keep you updated on the progress of your application. You can also track your application status using the link below.",
+    moved_to_screening: "We will be in touch as your application progresses. Thank you for your patience.",
+    interview_scheduled: "Please reply to this email if you need to reschedule. We look forward to speaking with you.",
+    offer_extended: "We hope you are as excited as we are! Please do not hesitate to reach out if you have any questions.",
+    application_rejected: `${payload.rejectionReason || "We encourage you to apply for future openings that match your skills and experience."} We wish you all the best in your career.`,
+    hired: "Your manager will reach out with onboarding details and everything you need to get started. Welcome aboard!",
+  };
+
+  const trackingSection = payload.trackingUrl ? `
+    <div style="margin-top:20px;padding:16px;border:1px solid #e5e7eb;border-radius:8px;text-align:center">
+      <p style="color:#555;font-size:13px;margin-bottom:8px">Track your application status:</p>
+      <a href="${payload.trackingUrl}" style="color:#3b82f6;font-weight:600;font-size:14px;text-decoration:none">View Application Status</a>
+    </div>
+  ` : "";
+
+  const html = `
+    <div style="font-family:sans-serif;max-width:520px;margin:0 auto;padding:24px;color:#1a1a1a">
+      <h2 style="margin-bottom:4px;color:#1a1a1a">${subjects[payload.event]}</h2>
+      <p style="color:#555;margin-bottom:24px;line-height:1.6">${intros[payload.event]}</p>
+      <p style="color:#555;line-height:1.6">${closings[payload.event]}</p>
+      ${trackingSection}
+      <p style="color:#999;font-size:12px;margin-top:24px">This is an automated notification from ${company}.</p>
+    </div>
+  `;
+
+  await mg.messages.create(domain, {
+    from,
+    to: [payload.to],
+    subject: subjects[payload.event],
+    html,
+    text: `${subjects[payload.event]}\n\n${intros[payload.event].replace(/<[^>]*>/g, "")}\n\n${closings[payload.event]}`,
+  });
+}
+
 export async function sendOtpEmail(to: string, otp: string, name: string): Promise<void> {
   const { mg, domain } = getClient();
   const from = process.env.MAILGUN_FROM ?? `noreply@${domain}`;

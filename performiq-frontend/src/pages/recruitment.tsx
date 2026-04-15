@@ -3,7 +3,7 @@ import { PageHeader, Card, Button, Input, Label } from "@/components/shared";
 import {
   Briefcase, Plus, X, ChevronDown, Users, Search, Filter,
   CheckCircle2, Clock, XCircle, UserPlus, ArrowRight, Star,
-  Calendar, MapPin, Building2, Eye, Trash2, Edit2, Send,
+  Calendar, MapPin, Building2, Eye, Trash2, Edit2, Send, Globe,
 } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
 import { apiFetch } from "@/lib/utils";
@@ -41,6 +41,18 @@ interface Candidate {
   phone: string | null;
   resumeText: string | null;
   coverLetter: string | null;
+  resumeUrl: string | null;
+  applicationToken: string | null;
+  source: string | null;
+  address: string | null;
+  city: string | null;
+  experienceYears: number | null;
+  currentEmployer: string | null;
+  currentJobTitle: string | null;
+  linkedin: string | null;
+  expectedSalary: string | null;
+  availableStartDate: string | null;
+  education: string | null;
   stage: string;
   rating: number | null;
   notes: string | null;
@@ -274,11 +286,16 @@ export default function Recruitment() {
   return (
     <div>
       <PageHeader title="Recruitment" description="Manage job requisitions, track candidates, and hire into the onboarding workflow.">
-        {isAdmin && (
-          <Button onClick={() => openJobDialog()}>
-            <Plus className="w-4 h-4 mr-2" /> New Job Requisition
-          </Button>
-        )}
+        <div className="flex items-center gap-2">
+          <a href={`${import.meta.env.BASE_URL.replace(/\/$/, "")}/careers`} target="_blank" rel="noopener noreferrer">
+            <Button variant="outline" size="sm"><Globe className="w-3.5 h-3.5 mr-1" /> Careers Portal</Button>
+          </a>
+          {isAdmin && (
+            <Button onClick={() => openJobDialog()}>
+              <Plus className="w-4 h-4 mr-2" /> New Job Requisition
+            </Button>
+          )}
+        </div>
       </PageHeader>
 
       <div className="grid grid-cols-1 sm:grid-cols-4 gap-4 mb-6">
@@ -429,6 +446,36 @@ export default function Recruitment() {
                 </div>
               ) : (
                 <div className="space-y-3 border-t pt-4">
+                  {candidateDetail.source && candidateDetail.source !== "manual" && (
+                    <div className="flex items-center gap-2">
+                      <span className="text-[10px] px-2 py-0.5 rounded-full bg-blue-100 text-blue-700 font-medium">Applied via Careers Portal</span>
+                    </div>
+                  )}
+                  {candidateDetail.resumeUrl && (
+                    <div>
+                      <p className="text-xs text-muted-foreground mb-1">CV / Resume</p>
+                      <a href={candidateDetail.resumeUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1.5 text-sm text-blue-600 hover:underline bg-blue-50 rounded-lg px-3 py-2">
+                        <Eye className="w-3.5 h-3.5" /> View CV
+                      </a>
+                    </div>
+                  )}
+                  {candidateDetail.coverLetter && <div><p className="text-xs text-muted-foreground mb-1">Cover Letter</p><p className="text-sm bg-muted/50 rounded-lg p-3 whitespace-pre-wrap">{candidateDetail.coverLetter}</p></div>}
+                  {(candidateDetail.currentJobTitle || candidateDetail.currentEmployer || candidateDetail.experienceYears || candidateDetail.education) && (
+                    <div>
+                      <p className="text-xs text-muted-foreground mb-2">Professional Background</p>
+                      <div className="grid grid-cols-2 gap-2 text-sm bg-muted/50 rounded-lg p-3">
+                        {candidateDetail.currentJobTitle && <div><span className="text-muted-foreground text-xs">Current Role:</span><p className="font-medium">{candidateDetail.currentJobTitle}</p></div>}
+                        {candidateDetail.currentEmployer && <div><span className="text-muted-foreground text-xs">Employer:</span><p className="font-medium">{candidateDetail.currentEmployer}</p></div>}
+                        {candidateDetail.experienceYears && <div><span className="text-muted-foreground text-xs">Experience:</span><p className="font-medium">{candidateDetail.experienceYears} year{candidateDetail.experienceYears !== 1 ? "s" : ""}</p></div>}
+                        {candidateDetail.education && <div><span className="text-muted-foreground text-xs">Education:</span><p className="font-medium">{candidateDetail.education}</p></div>}
+                        {candidateDetail.linkedin && <div><span className="text-muted-foreground text-xs">LinkedIn:</span><a href={candidateDetail.linkedin} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline block font-medium">Profile</a></div>}
+                        {candidateDetail.expectedSalary && <div><span className="text-muted-foreground text-xs">Expected Salary:</span><p className="font-medium">{candidateDetail.expectedSalary}</p></div>}
+                      </div>
+                    </div>
+                  )}
+                  {(candidateDetail.address || candidateDetail.city) && (
+                    <div><p className="text-xs text-muted-foreground mb-1">Location</p><p className="text-sm">{[candidateDetail.address, candidateDetail.city].filter(Boolean).join(", ")}</p></div>
+                  )}
                   {candidateDetail.rating && <div><p className="text-xs text-muted-foreground mb-1">Rating</p><StarRating value={candidateDetail.rating} /></div>}
                   {candidateDetail.notes && <div><p className="text-xs text-muted-foreground mb-1">Notes</p><p className="text-sm bg-muted/50 rounded-lg p-3">{candidateDetail.notes}</p></div>}
                   {candidateDetail.interviewNotes && <div><p className="text-xs text-muted-foreground mb-1">Interview Notes</p><p className="text-sm bg-muted/50 rounded-lg p-3">{candidateDetail.interviewNotes}</p></div>}
