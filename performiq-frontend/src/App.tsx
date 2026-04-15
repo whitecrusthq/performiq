@@ -30,6 +30,7 @@ import Profile from "@/pages/profile";
 import Security from "@/pages/security";
 import Appearance from "@/pages/appearance";
 import Transfers from "@/pages/transfers";
+import Anniversaries from "@/pages/anniversaries";
 
 const queryClient = new QueryClient();
 
@@ -118,6 +119,9 @@ function Router() {
       </Route>
       <Route path="/transfers">
         <AppLayout><ProtectedRoute component={Transfers} /></AppLayout>
+      </Route>
+      <Route path="/anniversaries">
+        <AppLayout><ProtectedRoute component={Anniversaries} /></AppLayout>
       </Route>
 
       <Route component={NotFound} />

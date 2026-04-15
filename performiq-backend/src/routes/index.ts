@@ -22,6 +22,7 @@ import storageRouter from "./storage";
 import disciplinaryRouter from "./disciplinary";
 import transfersRouter from "./transfers";
 import confirmationRouter from "./confirmation";
+import anniversariesRouter from "./anniversaries";
 
 const router: IRouter = Router();
 
@@ -48,5 +49,6 @@ router.use(storageRouter);
 router.use(disciplinaryRouter);
 router.use(transfersRouter);
 router.use(confirmationRouter);
+router.use(anniversariesRouter);
 
 export default router;
