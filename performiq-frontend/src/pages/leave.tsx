@@ -804,8 +804,8 @@ export default function Leave() {
                 <Input
                   type="number"
                   min={0}
-                  value={policyForm.daysAllocated ?? 0}
-                  onChange={e => setPolicyForm({ ...policyForm, daysAllocated: Number(e.target.value) })}
+                  value={policyForm.daysAllocated === undefined ? "" : policyForm.daysAllocated}
+                  onChange={e => setPolicyForm({ ...policyForm, daysAllocated: e.target.value === "" ? undefined as any : Number(e.target.value) })}
                   required
                 />
               </div>
