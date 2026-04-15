@@ -1,7 +1,7 @@
 import { Router } from "express";
 import bcrypt from "bcryptjs";
-import { db, usersTable, customRolesTable, staffDocumentsTable, staffBeneficiariesTable, staffWorkExperienceTable, staffEducationTable, staffReferencesTable } from "../db/index.js";
-import { eq, desc, asc } from "drizzle-orm";
+import { db, usersTable, customRolesTable, staffDocumentsTable, staffBeneficiariesTable, staffWorkExperienceTable, staffEducationTable, staffReferencesTable, sitesTable } from "../db/index.js";
+import { eq, desc, asc, ilike } from "drizzle-orm";
 import { requireAuth, requireRole, AuthRequest } from "../middlewares/auth";
 
 const ELEVATED_ROLES = ["admin", "super_admin"];
@@ -609,6 +609,97 @@ router.put("/users/:id/references", requireAuth, async (req: AuthRequest, res) =
     res.json(rows);
   } catch (err) {
     console.error("PUT /users/:id/references error:", err);
+    res.status(500).json({ error: "Server error" });
+  }
+});
+
+router.post("/users/bulk-import", requireAuth, requireRole("admin", "super_admin"), async (req: AuthRequest, res) => {
+  try {
+    const { users: rows } = req.body;
+    if (!Array.isArray(rows) || rows.length === 0) {
+      res.status(400).json({ error: "users array is required and must not be empty" });
+      return;
+    }
+    if (rows.length > 500) {
+      res.status(400).json({ error: "Maximum 500 users per import" });
+      return;
+    }
+
+    const allSites = await db.select().from(sitesTable);
+    const siteMap = new Map(allSites.map(s => [s.name.toLowerCase().trim(), s.id]));
+
+    const results: { row: number; status: string; name?: string; email?: string; error?: string }[] = [];
+    const defaultPassword = await bcrypt.hash("changeme123", 10);
+
+    for (let i = 0; i < rows.length; i++) {
+      const r = rows[i];
+      const rowNum = i + 1;
+      try {
+        if (!r.name || !r.email) {
+          results.push({ row: rowNum, status: "error", name: r.name, email: r.email, error: "Name and email are required" });
+          continue;
+        }
+
+        let siteId: number | null = null;
+        if (r.siteId) {
+          siteId = Number(r.siteId);
+        } else if (r.site) {
+          siteId = siteMap.get(r.site.toLowerCase().trim()) ?? null;
+        }
+        if (!siteId) {
+          results.push({ row: rowNum, status: "error", name: r.name, email: r.email, error: `Site "${r.site || r.siteId}" not found. Please create the site first or use a valid site name.` });
+          continue;
+        }
+
+        const role = r.role && ["employee", "manager", "admin", "super_admin"].includes(r.role) ? r.role : "employee";
+        if (!canAssignRole(req.user!.role, role)) {
+          results.push({ row: rowNum, status: "error", name: r.name, email: r.email, error: "Insufficient permissions to assign this role" });
+          continue;
+        }
+
+        const passwordHash = r.password ? await bcrypt.hash(r.password, 10) : defaultPassword;
+
+        await db.insert(usersTable).values({
+          name: r.name.trim(),
+          email: r.email.trim().toLowerCase(),
+          passwordHash,
+          role,
+          siteId,
+          department: r.department?.trim() || null,
+          jobTitle: r.jobTitle?.trim() || null,
+          phone: r.phone?.trim() || null,
+          staffId: r.staffId?.trim() || null,
+          gender: r.gender?.trim() || null,
+          dateOfBirth: r.dateOfBirth || null,
+          startDate: r.startDate || null,
+          address: r.address?.trim() || null,
+          city: r.city?.trim() || null,
+          stateProvince: r.stateProvince?.trim() || null,
+          country: r.country?.trim() || null,
+          nationality: r.nationality?.trim() || null,
+          nationalId: r.nationalId?.trim() || null,
+          maritalStatus: r.maritalStatus?.trim() || null,
+          bankName: r.bankName?.trim() || null,
+          bankAccountName: r.bankAccountName?.trim() || null,
+          bankAccountNumber: r.bankAccountNumber?.trim() || null,
+          bankBranch: r.bankBranch?.trim() || null,
+          emergencyContactName: r.emergencyContactName?.trim() || null,
+          emergencyContactPhone: r.emergencyContactPhone?.trim() || null,
+          emergencyContactRelation: r.emergencyContactRelation?.trim() || null,
+        });
+
+        results.push({ row: rowNum, status: "success", name: r.name, email: r.email });
+      } catch (err: any) {
+        const msg = err.code === "23505" ? "Email already exists" : (err.message || "Unknown error");
+        results.push({ row: rowNum, status: "error", name: r.name, email: r.email, error: msg });
+      }
+    }
+
+    const succeeded = results.filter(r => r.status === "success").length;
+    const failed = results.filter(r => r.status === "error").length;
+    res.json({ total: rows.length, succeeded, failed, results });
+  } catch (err) {
+    console.error("POST /users/bulk-import error:", err);
     res.status(500).json({ error: "Server error" });
   }
 });

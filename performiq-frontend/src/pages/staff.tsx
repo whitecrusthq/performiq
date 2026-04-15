@@ -7,7 +7,7 @@ import {
   CreditCard, FileText, Edit2, Check, Phone, Mail, MapPin,
   Building2, Hash, Plus, RefreshCw, Trash2, FolderOpen, AlertCircle,
   ShieldAlert, Paperclip, Upload, Eye, ChevronDown, Download, Clock,
-  ArrowRightLeft, CheckCircle2, XCircle, Ban,
+  ArrowRightLeft, CheckCircle2, XCircle, Ban, FileUp, Loader2,
 } from "lucide-react";
 import { apiFetch } from "@/lib/utils";
 
@@ -1355,6 +1355,336 @@ function StaffPanel({ staffId, canEdit, onClose, onUpdated }: {
   );
 }
 
+// ── CSV Parser ────────────────────────────────────────────────────────────────
+function parseCSV(text: string): Record<string, string>[] {
+  const lines = text.split(/\r?\n/).filter(l => l.trim());
+  if (lines.length < 2) return [];
+  const headerLine = lines[0];
+  const headers: string[] = [];
+  let current = "";
+  let inQuotes = false;
+  for (let i = 0; i < headerLine.length; i++) {
+    const ch = headerLine[i];
+    if (ch === '"') { inQuotes = !inQuotes; }
+    else if (ch === ',' && !inQuotes) { headers.push(current.trim()); current = ""; }
+    else { current += ch; }
+  }
+  headers.push(current.trim());
+
+  return lines.slice(1).map(line => {
+    const vals: string[] = [];
+    let cur = "";
+    let q = false;
+    for (let i = 0; i < line.length; i++) {
+      const ch = line[i];
+      if (ch === '"') { q = !q; }
+      else if (ch === ',' && !q) { vals.push(cur.trim()); cur = ""; }
+      else { cur += ch; }
+    }
+    vals.push(cur.trim());
+    const obj: Record<string, string> = {};
+    headers.forEach((h, i) => { if (vals[i]) obj[h] = vals[i]; });
+    return obj;
+  });
+}
+
+const IMPORT_TEMPLATE_HEADERS = [
+  "name", "email", "password", "role", "site", "department", "jobTitle",
+  "phone", "staffId", "gender", "dateOfBirth", "startDate",
+  "address", "city", "stateProvince", "country", "nationality", "nationalId",
+  "maritalStatus", "bankName", "bankAccountName", "bankAccountNumber", "bankBranch",
+  "emergencyContactName", "emergencyContactPhone", "emergencyContactRelation",
+];
+
+const CSV_FIELD_MAP: Record<string, string> = {
+  "name": "name", "full name": "name", "employee name": "name",
+  "email": "email", "email address": "email",
+  "password": "password",
+  "role": "role",
+  "site": "site", "site name": "site", "location": "site",
+  "department": "department", "dept": "department",
+  "job title": "jobTitle", "jobtitle": "jobTitle", "position": "jobTitle", "title": "jobTitle",
+  "phone": "phone", "phone number": "phone", "mobile": "phone",
+  "staff id": "staffId", "staffid": "staffId", "employee id": "staffId",
+  "gender": "gender", "sex": "gender",
+  "date of birth": "dateOfBirth", "dateofbirth": "dateOfBirth", "dob": "dateOfBirth",
+  "start date": "startDate", "startdate": "startDate", "hire date": "startDate",
+  "address": "address",
+  "city": "city",
+  "state": "stateProvince", "stateprovince": "stateProvince", "state/province": "stateProvince",
+  "country": "country",
+  "nationality": "nationality",
+  "national id": "nationalId", "nationalid": "nationalId",
+  "marital status": "maritalStatus", "maritalstatus": "maritalStatus",
+  "bank name": "bankName", "bankname": "bankName",
+  "bank account name": "bankAccountName", "bankaccountname": "bankAccountName",
+  "bank account number": "bankAccountNumber", "bankaccountnumber": "bankAccountNumber",
+  "bank branch": "bankBranch", "bankbranch": "bankBranch",
+  "emergency contact name": "emergencyContactName", "emergencycontactname": "emergencyContactName",
+  "emergency contact phone": "emergencyContactPhone", "emergencycontactphone": "emergencyContactPhone",
+  "emergency contact relation": "emergencyContactRelation", "emergencycontactrelation": "emergencyContactRelation",
+};
+
+function mapCsvRow(raw: Record<string, string>): Record<string, string> {
+  const mapped: Record<string, string> = {};
+  for (const [key, val] of Object.entries(raw)) {
+    const normalized = key.toLowerCase().trim();
+    const field = CSV_FIELD_MAP[normalized] || normalized;
+    if (val) mapped[field] = val;
+  }
+  return mapped;
+}
+
+// ── Bulk Import Modal ─────────────────────────────────────────────────────────
+function BulkImportModal({ onClose, onComplete }: { onClose: () => void; onComplete: () => void }) {
+  const { toast } = useToast();
+  const [step, setStep] = useState<"upload" | "preview" | "results">("upload");
+  const [rows, setRows] = useState<Record<string, string>[]>([]);
+  const [importing, setImporting] = useState(false);
+  const [results, setResults] = useState<any>(null);
+  const [fileName, setFileName] = useState("");
+
+  const downloadTemplate = () => {
+    const csv = IMPORT_TEMPLATE_HEADERS.join(",") + "\nJohn Doe,john@example.com,,employee,Head Office,Engineering,Developer,+234000000,EMP001,Male,1990-01-15,2024-01-01,,,,,,,,,,,,,,\n";
+    const blob = new Blob(["\uFEFF" + csv], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url; a.download = "staff-import-template.csv"; a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const handleFile = (file: File) => {
+    if (!file.name.endsWith(".csv")) {
+      toast({ title: "Invalid file", description: "Please upload a CSV file", variant: "destructive" });
+      return;
+    }
+    setFileName(file.name);
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const text = e.target?.result as string;
+      const parsed = parseCSV(text);
+      if (parsed.length === 0) {
+        toast({ title: "Empty file", description: "No data rows found in the CSV", variant: "destructive" });
+        return;
+      }
+      const mapped = parsed.map(mapCsvRow);
+      setRows(mapped);
+      setStep("preview");
+    };
+    reader.readAsText(file);
+  };
+
+  const runImport = async () => {
+    setImporting(true);
+    try {
+      const res = await apiFetchJson("/api/users/bulk-import", {
+        method: "POST",
+        body: JSON.stringify({ users: rows }),
+      });
+      setResults(res);
+      setStep("results");
+      if (res.succeeded > 0) onComplete();
+    } catch (e: any) {
+      toast({ title: "Import failed", description: e.message, variant: "destructive" });
+    } finally {
+      setImporting(false);
+    }
+  };
+
+  const validRows = rows.filter(r => r.name && r.email && r.site);
+  const invalidRows = rows.filter(r => !r.name || !r.email || !r.site);
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={onClose}>
+      <div className="bg-background rounded-2xl border border-border shadow-2xl w-full max-w-3xl max-h-[85vh] flex flex-col" onClick={e => e.stopPropagation()}>
+        <div className="flex items-center justify-between px-6 py-4 border-b border-border">
+          <div className="flex items-center gap-2">
+            <FileUp className="w-5 h-5 text-primary" />
+            <h2 className="text-lg font-bold">Bulk Import Staff</h2>
+          </div>
+          <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-muted transition-colors">
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+
+        <div className="flex-1 overflow-y-auto p-6">
+          {step === "upload" && (
+            <div className="space-y-6">
+              <div className="text-center space-y-4">
+                <div className="mx-auto w-16 h-16 rounded-2xl bg-primary/10 flex items-center justify-center">
+                  <Upload className="w-8 h-8 text-primary" />
+                </div>
+                <div>
+                  <h3 className="font-semibold text-lg">Upload CSV File</h3>
+                  <p className="text-sm text-muted-foreground mt-1">
+                    Upload a CSV file with employee data. Required columns: <strong>name</strong>, <strong>email</strong>, <strong>site</strong>
+                  </p>
+                </div>
+              </div>
+
+              <label className="flex flex-col items-center gap-3 px-6 py-8 rounded-xl border-2 border-dashed border-border hover:border-primary/50 hover:bg-muted/30 cursor-pointer transition-colors">
+                <Upload className="w-6 h-6 text-muted-foreground" />
+                <span className="text-sm text-muted-foreground">Click to select CSV file or drag and drop</span>
+                <input type="file" className="hidden" accept=".csv"
+                  onChange={e => { const f = e.target.files?.[0]; if (f) handleFile(f); e.target.value = ""; }}
+                />
+              </label>
+
+              <div className="bg-muted/30 rounded-xl p-4 space-y-2">
+                <h4 className="text-sm font-semibold">Need a template?</h4>
+                <p className="text-xs text-muted-foreground">
+                  Download our CSV template with all supported columns pre-filled.
+                  If no password is provided, the default password <code className="bg-muted px-1 rounded">changeme123</code> will be used.
+                </p>
+                <button onClick={downloadTemplate}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-border text-xs font-medium hover:bg-muted transition-colors">
+                  <Download className="w-3.5 h-3.5" /> Download Template
+                </button>
+              </div>
+            </div>
+          )}
+
+          {step === "preview" && (
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h3 className="font-semibold">Preview Import — {fileName}</h3>
+                  <p className="text-sm text-muted-foreground mt-0.5">
+                    {rows.length} row{rows.length !== 1 ? "s" : ""} found —
+                    <span className="text-green-600 font-medium"> {validRows.length} valid</span>
+                    {invalidRows.length > 0 && <span className="text-red-600 font-medium">, {invalidRows.length} missing required fields</span>}
+                  </p>
+                </div>
+                <button onClick={() => { setStep("upload"); setRows([]); }}
+                  className="text-xs text-muted-foreground hover:text-foreground underline">
+                  Choose different file
+                </button>
+              </div>
+
+              {invalidRows.length > 0 && (
+                <div className="bg-red-50 border border-red-200 rounded-xl p-3 text-xs text-red-700">
+                  <p className="font-semibold flex items-center gap-1"><AlertCircle className="w-3.5 h-3.5" /> {invalidRows.length} row(s) are missing required fields (name, email, or site) and will fail.</p>
+                </div>
+              )}
+
+              <div className="rounded-xl border border-border overflow-hidden">
+                <div className="overflow-x-auto max-h-72">
+                  <table className="w-full text-xs">
+                    <thead className="bg-muted/50 border-b border-border sticky top-0">
+                      <tr>
+                        <th className="px-3 py-2 text-left font-medium text-muted-foreground">#</th>
+                        <th className="px-3 py-2 text-left font-medium text-muted-foreground">Name</th>
+                        <th className="px-3 py-2 text-left font-medium text-muted-foreground">Email</th>
+                        <th className="px-3 py-2 text-left font-medium text-muted-foreground">Site</th>
+                        <th className="px-3 py-2 text-left font-medium text-muted-foreground">Department</th>
+                        <th className="px-3 py-2 text-left font-medium text-muted-foreground">Job Title</th>
+                        <th className="px-3 py-2 text-left font-medium text-muted-foreground">Role</th>
+                        <th className="px-3 py-2 text-left font-medium text-muted-foreground">Status</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-border">
+                      {rows.map((r, i) => {
+                        const valid = r.name && r.email && r.site;
+                        return (
+                          <tr key={i} className={valid ? "" : "bg-red-50/50"}>
+                            <td className="px-3 py-2 text-muted-foreground">{i + 1}</td>
+                            <td className="px-3 py-2 font-medium">{r.name || <span className="text-red-500">Missing</span>}</td>
+                            <td className="px-3 py-2">{r.email || <span className="text-red-500">Missing</span>}</td>
+                            <td className="px-3 py-2">{r.site || <span className="text-red-500">Missing</span>}</td>
+                            <td className="px-3 py-2">{r.department || "—"}</td>
+                            <td className="px-3 py-2">{r.jobTitle || "—"}</td>
+                            <td className="px-3 py-2">{r.role || "employee"}</td>
+                            <td className="px-3 py-2">
+                              {valid
+                                ? <span className="text-green-600 flex items-center gap-1"><Check className="w-3 h-3" /> Ready</span>
+                                : <span className="text-red-500 flex items-center gap-1"><AlertCircle className="w-3 h-3" /> Invalid</span>
+                              }
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {step === "results" && results && (
+            <div className="space-y-4">
+              <div className="grid grid-cols-3 gap-3">
+                <div className="bg-muted/30 rounded-xl p-4 text-center">
+                  <p className="text-2xl font-bold">{results.total}</p>
+                  <p className="text-xs text-muted-foreground">Total Rows</p>
+                </div>
+                <div className="bg-green-50 rounded-xl p-4 text-center border border-green-200">
+                  <p className="text-2xl font-bold text-green-700">{results.succeeded}</p>
+                  <p className="text-xs text-green-600">Imported</p>
+                </div>
+                <div className={`rounded-xl p-4 text-center ${results.failed > 0 ? "bg-red-50 border border-red-200" : "bg-muted/30"}`}>
+                  <p className={`text-2xl font-bold ${results.failed > 0 ? "text-red-700" : ""}`}>{results.failed}</p>
+                  <p className={`text-xs ${results.failed > 0 ? "text-red-600" : "text-muted-foreground"}`}>Failed</p>
+                </div>
+              </div>
+
+              {results.failed > 0 && (
+                <div className="rounded-xl border border-border overflow-hidden">
+                  <div className="px-4 py-2 bg-red-50 border-b border-border">
+                    <h4 className="text-xs font-semibold text-red-700">Failed Rows</h4>
+                  </div>
+                  <div className="overflow-y-auto max-h-48">
+                    <table className="w-full text-xs">
+                      <thead className="bg-muted/50 border-b border-border sticky top-0">
+                        <tr>
+                          <th className="px-3 py-2 text-left font-medium">Row</th>
+                          <th className="px-3 py-2 text-left font-medium">Name</th>
+                          <th className="px-3 py-2 text-left font-medium">Email</th>
+                          <th className="px-3 py-2 text-left font-medium">Error</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-border">
+                        {results.results.filter((r: any) => r.status === "error").map((r: any) => (
+                          <tr key={r.row} className="bg-red-50/30">
+                            <td className="px-3 py-2">{r.row}</td>
+                            <td className="px-3 py-2">{r.name || "—"}</td>
+                            <td className="px-3 py-2">{r.email || "—"}</td>
+                            <td className="px-3 py-2 text-red-600">{r.error}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+
+        <div className="flex items-center justify-end gap-3 px-6 py-4 border-t border-border">
+          {step === "preview" && (
+            <button onClick={runImport} disabled={importing || validRows.length === 0}
+              className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 transition-colors disabled:opacity-50">
+              {importing ? <><Loader2 className="w-4 h-4 animate-spin" /> Importing…</> : <><Upload className="w-4 h-4" /> Import {validRows.length} Staff</>}
+            </button>
+          )}
+          {step === "results" && (
+            <button onClick={onClose}
+              className="px-4 py-2 rounded-xl bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 transition-colors">
+              Done
+            </button>
+          )}
+          {step !== "results" && (
+            <button onClick={onClose}
+              className="px-4 py-2 rounded-xl border border-border text-sm font-medium hover:bg-muted transition-colors">
+              Cancel
+            </button>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── Main Staff Page ────────────────────────────────────────────────────────────
 export default function Staff() {
   const { user } = useAuth();
@@ -1362,7 +1692,9 @@ export default function Staff() {
   const [search, setSearch] = useState("");
   const [filterDept, setFilterDept] = useState("");
   const [filterRole, setFilterRole] = useState("");
+  const isAdmin = user?.role === "admin" || user?.role === "super_admin";
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
+  const [showBulkImport, setShowBulkImport] = useState(false);
   const [selectedId, setSelectedId] = useState<number | null>(() => {
     const p = new URLSearchParams(window.location.search);
     const id = p.get("id");
@@ -1447,6 +1779,12 @@ export default function Staff() {
           </p>
         </div>
         <div className="flex items-center gap-3">
+          {isAdmin && (
+            <button onClick={() => setShowBulkImport(true)}
+              className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 transition-colors">
+              <FileUp className="w-4 h-4" /> Import Staff
+            </button>
+          )}
           <button onClick={exportStaffList}
             className="flex items-center gap-1.5 px-3 py-2 rounded-xl border border-border text-sm font-medium hover:bg-muted transition-colors">
             <Download className="w-4 h-4" /> Export List
@@ -1593,6 +1931,13 @@ export default function Staff() {
           canEdit={canEdit || selectedId === user?.id}
           onClose={() => setSelectedId(null)}
           onUpdated={handleUpdated}
+        />
+      )}
+
+      {showBulkImport && (
+        <BulkImportModal
+          onClose={() => setShowBulkImport(false)}
+          onComplete={() => qc.invalidateQueries({ queryKey: ["users"] })}
         />
       )}
     </div>
