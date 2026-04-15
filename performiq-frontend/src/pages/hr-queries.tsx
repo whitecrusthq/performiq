@@ -478,7 +478,7 @@ export default function HrQueries() {
   return (
     <div className="space-y-6">
       <PageHeader
-        title="HR Queries"
+        title="HR Support"
         description={isHR
           ? "Review and respond to queries raised by employees."
           : "Raise questions or issues directly to the HR department."}
