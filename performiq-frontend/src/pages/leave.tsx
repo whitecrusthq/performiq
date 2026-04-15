@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { PageHeader, Card, Button, Input, Label } from "@/components/shared";
-import { CalendarDays, Plus, X, CheckCircle2, XCircle, Clock, Ban, ChevronRight, ChevronDown, UserPlus, ArrowUp, ArrowDown, Trash2, Settings, BarChart3, Filter, Users, Tag, Pencil } from "lucide-react";
+import { CalendarDays, Plus, X, CheckCircle2, XCircle, Clock, Ban, ChevronRight, ChevronDown, UserPlus, ArrowUp, ArrowDown, Trash2, Settings, BarChart3, Filter, Users, Tag, Pencil, UserCheck } from "lucide-react";
 import { BulkActionBar } from "@/components/bulk-action-bar";
 import { useAuth } from "@/hooks/use-auth";
 import { apiFetch } from "@/lib/utils";
@@ -95,7 +95,7 @@ interface LeaveBalanceItem {
   policy?: LeavePolicy | null;
 }
 
-type TabType = "requests" | "balance" | "policies";
+type TabType = "requests" | "returning" | "balance" | "policies";
 
 export default function Leave() {
   const { user } = useAuth();
@@ -351,8 +351,19 @@ export default function Leave() {
     setBulkDeleting(false);
   };
 
-  const tabs: { key: TabType; label: string; icon: React.ReactNode }[] = [
+  const returningRequests = requests.filter(r => {
+    if (r.status !== "approved") return false;
+    const end = new Date(r.endDate);
+    end.setHours(0, 0, 0, 0);
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const diffDays = Math.ceil((end.getTime() - today.getTime()) / 86400000);
+    return diffDays >= 0 && diffDays <= 3;
+  }).sort((a, b) => new Date(a.endDate).getTime() - new Date(b.endDate).getTime());
+
+  const tabs: { key: TabType; label: string; icon: React.ReactNode; badge?: number }[] = [
     { key: "requests", label: "Leave Requests", icon: <CalendarDays className="w-4 h-4" /> },
+    ...(isManager ? [{ key: "returning" as TabType, label: "Returning Soon", icon: <UserCheck className="w-4 h-4" />, badge: returningRequests.length }] : []),
     { key: "balance", label: "Leave Balance", icon: <BarChart3 className="w-4 h-4" /> },
     ...(isAdmin ? [{ key: "policies" as TabType, label: "Leave Policies", icon: <Settings className="w-4 h-4" /> }] : []),
   ];
@@ -374,6 +385,11 @@ export default function Leave() {
             className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${activeTab === t.key ? "bg-blue-600 text-white shadow-sm" : "text-muted-foreground hover:text-foreground"}`}
           >
             {t.icon}{t.label}
+            {t.badge !== undefined && t.badge > 0 && (
+              <span className={`ml-1 min-w-[20px] h-5 flex items-center justify-center rounded-full text-[11px] font-bold ${activeTab === t.key ? "bg-white/20 text-white" : "bg-blue-100 text-blue-700"}`}>
+                {t.badge}
+              </span>
+            )}
           </button>
         ))}
       </div>
@@ -555,6 +571,63 @@ export default function Leave() {
             </>
           )}
         </>
+      )}
+
+      {/* RETURNING SOON TAB */}
+      {activeTab === "returning" && isManager && (
+        <div className="space-y-4">
+          <div className="flex items-center gap-3 mb-2">
+            <h3 className="text-lg font-bold text-foreground flex items-center gap-2">
+              <UserCheck className="w-5 h-5 text-blue-600" /> Staff Returning Soon
+            </h3>
+            <span className="text-sm text-muted-foreground">Employees returning from leave within the next 3 days</span>
+          </div>
+
+          {returningRequests.length === 0 ? (
+            <Card className="p-8 text-center">
+              <UserCheck className="w-10 h-10 text-muted-foreground/40 mx-auto mb-3" />
+              <p className="text-sm font-medium text-muted-foreground">No staff returning in the next 3 days</p>
+              <p className="text-xs text-muted-foreground mt-1">Employees whose approved leave ends within 0–3 days will appear here.</p>
+            </Card>
+          ) : (
+            <div className="space-y-3">
+              {returningRequests.map(r => {
+                const end = new Date(r.endDate);
+                end.setHours(0, 0, 0, 0);
+                const today = new Date();
+                today.setHours(0, 0, 0, 0);
+                const daysUntil = Math.ceil((end.getTime() - today.getTime()) / 86400000);
+                const urgencyColor = daysUntil === 0 ? "bg-green-100 text-green-700 border-green-200" : daysUntil === 1 ? "bg-blue-100 text-blue-700 border-blue-200" : "bg-amber-100 text-amber-700 border-amber-200";
+                const urgencyLabel = daysUntil === 0 ? "Returns Today" : daysUntil === 1 ? "Returns Tomorrow" : `Returns in ${daysUntil} days`;
+
+                return (
+                  <Card key={r.id} className="p-4">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-4">
+                        <div className="w-10 h-10 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center font-bold text-sm">
+                          {(r.employee?.name ?? "?").charAt(0).toUpperCase()}
+                        </div>
+                        <div>
+                          <p className="font-semibold text-sm">{r.employee?.name ?? "Unknown"}</p>
+                          <p className="text-xs text-muted-foreground">{r.employee?.department ?? "—"}</p>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-3">
+                        <div className="text-right">
+                          <p className="text-xs text-muted-foreground">{leaveLabel(r.leaveType)}</p>
+                          <p className="text-xs text-muted-foreground">{fmt(r.startDate)} — {fmt(r.endDate)}</p>
+                        </div>
+                        <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold border ${urgencyColor}`}>
+                          {urgencyLabel}
+                        </span>
+                      </div>
+                    </div>
+                  </Card>
+                );
+              })}
+            </div>
+          )}
+        </div>
       )}
 
       {/* BALANCE TAB */}
