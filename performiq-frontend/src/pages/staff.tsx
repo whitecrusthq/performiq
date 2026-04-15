@@ -1160,6 +1160,7 @@ export default function Staff() {
   const [search, setSearch] = useState("");
   const [filterDept, setFilterDept] = useState("");
   const [filterRole, setFilterRole] = useState("");
+  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
   const [selectedId, setSelectedId] = useState<number | null>(() => {
     const p = new URLSearchParams(window.location.search);
     const id = p.get("id");
@@ -1192,17 +1193,46 @@ export default function Staff() {
     qc.setQueryData(["staff-detail", updated.id], updated);
   }, [qc]);
 
+  const toggleSelect = (id: number, e?: React.MouseEvent) => {
+    if (e) e.stopPropagation();
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
+
+  const toggleSelectAll = () => {
+    if (selectedIds.size === filtered.length) {
+      setSelectedIds(new Set());
+    } else {
+      setSelectedIds(new Set(filtered.map((u: any) => u.id)));
+    }
+  };
+
+  const EXPORT_HEADERS = ["Staff ID", "Name", "Email", "Phone", "Department", "Job Title", "Role", "Site", "Start Date", "Date of Birth", "Gender", "Marital Status", "Religion", "Nationality", "State of Origin", "Address", "City", "State/Province", "Country", "Postal Code", "National ID", "Bank Name", "Bank Account Name", "Bank Account Number", "Bank Branch", "Emergency Contact", "Emergency Phone", "Emergency Relationship"];
+
+  const staffToRow = (u: any) => [
+    u.staffId ?? "", u.name ?? "", u.email ?? "", u.phone ?? "",
+    u.department ?? "", u.jobTitle ?? "", u.role?.replace("_", " ") ?? "",
+    u.site?.name ?? u.siteName ?? "", u.startDate ?? "", u.dateOfBirth ?? "",
+    u.gender ?? "", u.maritalStatus ?? "", u.religion ?? "", u.nationality ?? "",
+    u.stateOfOrigin ?? "", u.address ?? "", u.city ?? "", u.stateProvince ?? "",
+    u.country ?? "", u.postalCode ?? "", u.nationalId ?? "", u.bankName ?? "",
+    u.bankAccountName ?? "", u.bankAccountNumber ?? "", u.bankBranch ?? "",
+    u.emergencyContactName ?? "", u.emergencyContactPhone ?? "", u.emergencyContactRelation ?? "",
+  ];
+
   const exportStaffList = () => {
-    const headers = ["Staff ID", "Name", "Email", "Phone", "Department", "Job Title", "Role", "Site", "Start Date", "Date of Birth", "Gender", "Address", "City", "State/Province", "Country", "National ID", "Bank Name", "Bank Account Name", "Emergency Contact", "Emergency Phone"];
-    const rows = filtered.map((u: any) => [
-      u.staffId ?? "", u.name ?? "", u.email ?? "", u.phone ?? "",
-      u.department ?? "", u.jobTitle ?? "", u.role?.replace("_", " ") ?? "",
-      u.site?.name ?? u.siteName ?? "", u.startDate ?? "", u.dateOfBirth ?? "",
-      u.gender ?? "", u.address ?? "", u.city ?? "", u.stateProvince ?? "",
-      u.country ?? "", u.nationalId ?? "", u.bankName ?? "", u.bankAccountName ?? "",
-      u.emergencyContactName ?? "", u.emergencyContactPhone ?? "",
-    ]);
-    downloadCsv(`staff-list-${new Date().toISOString().slice(0, 10)}.csv`, headers, rows);
+    const rows = filtered.map(staffToRow);
+    downloadCsv(`staff-list-${new Date().toISOString().slice(0, 10)}.csv`, EXPORT_HEADERS, rows);
+  };
+
+  const exportSelected = () => {
+    const selected = filtered.filter((u: any) => selectedIds.has(u.id));
+    if (selected.length === 0) return;
+    const rows = selected.map(staffToRow);
+    downloadCsv(`staff-selected-${new Date().toISOString().slice(0, 10)}.csv`, EXPORT_HEADERS, rows);
   };
 
   return (
@@ -1257,11 +1287,38 @@ export default function Staff() {
         )}
       </div>
 
+      {/* Selection Bar */}
+      {selectedIds.size > 0 && (
+        <div className="flex items-center justify-between gap-4 px-4 py-2.5 rounded-xl bg-primary/10 border border-primary/20 text-sm font-medium">
+          <div className="flex items-center gap-2">
+            <span className="text-primary font-semibold">{selectedIds.size} selected</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <button onClick={exportSelected}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 transition-colors text-xs font-semibold">
+              <Download className="w-3.5 h-3.5" />
+              Export {selectedIds.size} Profile{selectedIds.size !== 1 ? "s" : ""}
+            </button>
+            <button onClick={() => setSelectedIds(new Set())}
+              className="p-1.5 rounded-lg text-muted-foreground hover:bg-muted transition-colors" title="Clear selection">
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Table */}
       <div className="rounded-2xl border border-border bg-card overflow-hidden shadow-sm">
         <table className="w-full text-sm">
           <thead className="bg-muted/50 border-b border-border">
             <tr>
+              <th className="w-10 px-3 py-3">
+                <input type="checkbox"
+                  checked={filtered.length > 0 && selectedIds.size === filtered.length}
+                  onChange={toggleSelectAll}
+                  className="w-4 h-4 rounded border-border accent-primary cursor-pointer"
+                />
+              </th>
               <th className="text-left px-4 py-3 font-medium text-muted-foreground">Employee</th>
               <th className="text-left px-4 py-3 font-medium text-muted-foreground hidden sm:table-cell">Department / Role</th>
               <th className="text-left px-4 py-3 font-medium text-muted-foreground hidden md:table-cell">Contact</th>
@@ -1272,15 +1329,22 @@ export default function Staff() {
           </thead>
           <tbody className="divide-y divide-border">
             {isLoading ? (
-              <tr><td colSpan={6} className="text-center py-10 text-muted-foreground">Loading…</td></tr>
+              <tr><td colSpan={7} className="text-center py-10 text-muted-foreground">Loading…</td></tr>
             ) : filtered.length === 0 ? (
-              <tr><td colSpan={6} className="text-center py-10 text-muted-foreground">No staff match your search</td></tr>
+              <tr><td colSpan={7} className="text-center py-10 text-muted-foreground">No staff match your search</td></tr>
             ) : filtered.map((u: any) => {
               const hasProfile = !!(u.address || u.bankName || u.taxId || u.emergencyContactName || u.dateOfBirth);
               return (
                 <tr key={u.id}
                   onClick={() => setSelectedId(u.id)}
-                  className="hover:bg-muted/30 cursor-pointer transition-colors">
+                  className={`hover:bg-muted/30 cursor-pointer transition-colors ${selectedIds.has(u.id) ? "bg-primary/5" : ""}`}>
+                  <td className="px-3 py-3" onClick={e => e.stopPropagation()}>
+                    <input type="checkbox"
+                      checked={selectedIds.has(u.id)}
+                      onChange={() => toggleSelect(u.id)}
+                      className="w-4 h-4 rounded border-border accent-primary cursor-pointer"
+                    />
+                  </td>
                   <td className="px-4 py-3">
                     <div className="flex items-center gap-3">
                       <Avatar name={u.name} photo={u.profilePhoto} size={36} />
