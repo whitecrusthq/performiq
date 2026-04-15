@@ -132,6 +132,7 @@ export default function Leave() {
   const [balanceFilterType, setBalanceFilterType] = useState<string>("all");
   const [balanceFilterName, setBalanceFilterName] = useState<string>("");
   const [returningDaysFilter, setReturningDaysFilter] = useState<string>("3");
+  const [returningSortOrder, setReturningSortOrder] = useState<"asc" | "desc">("asc");
 
   const isManager = user && ["super_admin", "admin", "manager"].includes(user.role);
   const isAdmin = user?.role === "admin" || user?.role === "super_admin";
@@ -361,7 +362,10 @@ export default function Leave() {
     today.setHours(0, 0, 0, 0);
     const diffDays = Math.ceil((end.getTime() - today.getTime()) / 86400000);
     return diffDays >= 0 && diffDays <= maxDays;
-  }).sort((a, b) => new Date(a.endDate).getTime() - new Date(b.endDate).getTime());
+  }).sort((a, b) => returningSortOrder === "asc"
+    ? new Date(a.endDate).getTime() - new Date(b.endDate).getTime()
+    : new Date(b.endDate).getTime() - new Date(a.endDate).getTime()
+  );
 
   const tabs: { key: TabType; label: string; icon: React.ReactNode; badge?: number }[] = [
     { key: "requests", label: "Leave Requests", icon: <CalendarDays className="w-4 h-4" /> },
@@ -602,6 +606,14 @@ export default function Leave() {
                 <option value="30">Within 30 days</option>
                 <option value="all">All upcoming</option>
               </select>
+              <button
+                onClick={() => setReturningSortOrder(prev => prev === "asc" ? "desc" : "asc")}
+                className="flex items-center gap-1.5 border rounded-lg px-3 py-1.5 text-sm bg-background hover:bg-secondary transition-colors"
+                title={returningSortOrder === "asc" ? "Soonest first" : "Furthest first"}
+              >
+                {returningSortOrder === "asc" ? <ArrowUp className="w-3.5 h-3.5" /> : <ArrowDown className="w-3.5 h-3.5" />}
+                {returningSortOrder === "asc" ? "Soonest first" : "Furthest first"}
+              </button>
             </div>
           </div>
 
