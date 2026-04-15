@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { PageHeader, Card, Button, Input, Label } from "@/components/shared";
-import { CalendarDays, Plus, X, CheckCircle2, XCircle, Clock, Ban, ChevronRight, UserPlus, ArrowUp, ArrowDown, Trash2, Settings, BarChart3, Filter, Users, Tag, Pencil } from "lucide-react";
+import { CalendarDays, Plus, X, CheckCircle2, XCircle, Clock, Ban, ChevronRight, ChevronDown, UserPlus, ArrowUp, ArrowDown, Trash2, Settings, BarChart3, Filter, Users, Tag, Pencil } from "lucide-react";
 import { BulkActionBar } from "@/components/bulk-action-bar";
 import { useAuth } from "@/hooks/use-auth";
 import { apiFetch } from "@/lib/utils";
@@ -128,6 +128,7 @@ export default function Leave() {
   const [leaveTypeForm, setLeaveTypeForm] = useState({ name: "", label: "" });
   const [editingLeaveType, setEditingLeaveType] = useState<LeaveTypeOption | null>(null);
   const [ltSubmitting, setLtSubmitting] = useState(false);
+  const [expandedPolicyTeam, setExpandedPolicyTeam] = useState<Record<number, boolean>>({});
 
   const isManager = user && ["super_admin", "admin", "manager"].includes(user.role);
   const isAdmin = user?.role === "admin" || user?.role === "super_admin";
@@ -764,6 +765,56 @@ export default function Leave() {
                       </div>
                     )}
                   </div>
+
+                  {isManager && teamBalances.length > 0 && (() => {
+                    const teamForType = teamBalances
+                      .map((emp: any) => {
+                        const tb = emp.balances?.find((b: any) => b.leaveType === p.leaveType);
+                        return tb ? { id: emp.id, name: emp.name, department: emp.department, ...tb } : null;
+                      })
+                      .filter(Boolean) as any[];
+                    if (teamForType.length === 0) return null;
+                    const isExpanded = expandedPolicyTeam[p.id] ?? false;
+                    return (
+                      <div className="border-t border-border pt-2">
+                        <button
+                          onClick={() => setExpandedPolicyTeam(prev => ({ ...prev, [p.id]: !prev[p.id] }))}
+                          className="flex items-center gap-2 text-sm font-medium text-primary hover:text-primary/80 w-full"
+                        >
+                          <Users className="w-4 h-4" />
+                          <span>Team Balances ({teamForType.length})</span>
+                          {isExpanded ? <ChevronDown className="w-4 h-4 ml-auto" /> : <ChevronRight className="w-4 h-4 ml-auto" />}
+                        </button>
+                        {isExpanded && (
+                          <div className="mt-2 space-y-1.5 max-h-48 overflow-y-auto">
+                            {teamForType.map((emp: any) => {
+                              const empPct = emp.allocated > 0 ? Math.round((emp.used / emp.allocated) * 100) : 0;
+                              return (
+                                <div key={emp.id} className="flex items-center gap-2 text-xs rounded-lg bg-muted/40 px-3 py-2">
+                                  <div className="flex-1 min-w-0">
+                                    <p className="font-medium text-foreground truncate">{emp.name}</p>
+                                    {emp.department && <p className="text-muted-foreground truncate">{emp.department}</p>}
+                                  </div>
+                                  <div className="flex items-center gap-2 shrink-0">
+                                    <div className="w-16 bg-secondary rounded-full h-1.5 overflow-hidden">
+                                      <div
+                                        className={`h-1.5 rounded-full ${empPct > 80 ? "bg-red-500" : empPct > 50 ? "bg-amber-500" : "bg-green-500"}`}
+                                        style={{ width: `${Math.min(empPct, 100)}%` }}
+                                      />
+                                    </div>
+                                    <span className={`font-bold tabular-nums ${emp.remaining <= 2 ? "text-red-600" : emp.remaining <= 5 ? "text-amber-600" : "text-green-600"}`}>
+                                      {emp.remaining}
+                                    </span>
+                                    <span className="text-muted-foreground">/ {emp.allocated}</span>
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })()}
                 </Card>
                 );
               })}
