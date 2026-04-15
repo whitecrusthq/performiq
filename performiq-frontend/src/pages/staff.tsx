@@ -309,6 +309,8 @@ function StaffPanel({ staffId, canEdit, onClose, onUpdated }: {
     if (!staff) return;
     setDraft({
       address: staff.address ?? "",
+      permanentAddress: staff.permanentAddress ?? "",
+      temporaryAddress: staff.temporaryAddress ?? "",
       city: staff.city ?? "",
       stateProvince: staff.stateProvince ?? "",
       country: staff.country ?? "",
@@ -490,7 +492,8 @@ function StaffPanel({ staffId, canEdit, onClose, onUpdated }: {
                       <MapPin className="w-3.5 h-3.5" /> Address
                     </h4>
                     <div className="space-y-3">
-                      <Field label="Street Address" value={d.address} editing={editing} placeholder="123 Main Street" onChange={set("address")} />
+                      <Field label="Permanent Address" value={d.permanentAddress} editing={editing} placeholder="Permanent / home address" onChange={set("permanentAddress")} />
+                      <Field label="Temporary Address" value={d.temporaryAddress} editing={editing} placeholder="Current / temporary address (if different)" onChange={set("temporaryAddress")} />
                       <div className="grid grid-cols-2 gap-3">
                         <Field label="City" value={d.city} editing={editing} onChange={set("city")} />
                         <Field label="State / Province" value={d.stateProvince} editing={editing} onChange={set("stateProvince")} />
