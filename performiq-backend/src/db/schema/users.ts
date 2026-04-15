@@ -132,6 +132,30 @@ export const staffReferencesTable = pgTable("staff_references", {
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 
+export const disciplinaryRecordsTable = pgTable("disciplinary_records", {
+  id: serial("id").primaryKey(),
+  userId: integer("user_id").notNull().references(() => usersTable.id, { onDelete: "cascade" }),
+  type: text("type").notNull().default("disciplinary"),
+  subject: text("subject").notNull(),
+  description: text("description"),
+  sanctionApplied: text("sanction_applied"),
+  severity: text("severity").notNull().default("minor"),
+  incidentDate: date("incident_date"),
+  createdById: integer("created_by_id"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+export const disciplinaryAttachmentsTable = pgTable("disciplinary_attachments", {
+  id: serial("id").primaryKey(),
+  recordId: integer("record_id").notNull().references(() => disciplinaryRecordsTable.id, { onDelete: "cascade" }),
+  fileName: text("file_name").notNull(),
+  fileType: text("file_type").notNull(),
+  objectPath: text("object_path").notNull(),
+  uploadedById: integer("uploaded_by_id"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
 export type User = typeof usersTable.$inferSelect;
 export type CustomRole = typeof customRolesTable.$inferSelect;
 export type StaffDocument = typeof staffDocumentsTable.$inferSelect;
@@ -139,3 +163,5 @@ export type StaffBeneficiary = typeof staffBeneficiariesTable.$inferSelect;
 export type StaffWorkExperience = typeof staffWorkExperienceTable.$inferSelect;
 export type StaffEducation = typeof staffEducationTable.$inferSelect;
 export type StaffReference = typeof staffReferencesTable.$inferSelect;
+export type DisciplinaryRecord = typeof disciplinaryRecordsTable.$inferSelect;
+export type DisciplinaryAttachment = typeof disciplinaryAttachmentsTable.$inferSelect;

@@ -18,6 +18,8 @@ import onboardingRouter from "./onboarding";
 import hrQueriesRouter from "./hr-queries";
 import securityRouter from "./security";
 import appSettingsRouter from "./app-settings";
+import storageRouter from "./storage";
+import disciplinaryRouter from "./disciplinary";
 
 const router: IRouter = Router();
 
@@ -40,5 +42,7 @@ router.use(onboardingRouter);
 router.use(hrQueriesRouter);
 router.use(securityRouter);
 router.use(appSettingsRouter);
+router.use(storageRouter);
+router.use(disciplinaryRouter);
 
 export default router;
