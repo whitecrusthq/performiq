@@ -46,6 +46,13 @@ export default defineConfig({
     hmr: {
       clientPort: 443,
     },
+    proxy: {
+      [`${basePath}api`]: {
+        target: "http://localhost:8080",
+        changeOrigin: true,
+        rewrite: (p: string) => p.replace(new RegExp(`^${basePath}`), "/"),
+      },
+    },
     fs: {
       strict: true,
       deny: ["**/.*"],
