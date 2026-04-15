@@ -801,12 +801,12 @@ export default function Leave() {
               </div>
               <div>
                 <Label>Days Allocated Per Year</Label>
-                <Input
+                <input
                   type="number"
+                  className="w-full px-4 py-2 border rounded-xl bg-background text-sm"
                   min={0}
-                  value={policyForm.daysAllocated === undefined ? "" : policyForm.daysAllocated}
-                  onChange={e => setPolicyForm({ ...policyForm, daysAllocated: e.target.value === "" ? undefined as any : Number(e.target.value) })}
-                  required
+                  value={policyForm.daysAllocated ?? ""}
+                  onChange={e => setPolicyForm({ ...policyForm, daysAllocated: e.target.value === "" ? 0 : Number(e.target.value) })}
                 />
               </div>
               <div className="grid grid-cols-2 gap-3">
