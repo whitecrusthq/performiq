@@ -29,5 +29,31 @@ export const leaveApproversTable = pgTable("leave_approvers", {
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 
+export const leavePoliciesTable = pgTable("leave_policies", {
+  id: serial("id").primaryKey(),
+  leaveType: leaveTypeEnum("leave_type").notNull(),
+  daysAllocated: integer("days_allocated").notNull().default(0),
+  cycleStartMonth: integer("cycle_start_month").notNull().default(1),
+  cycleStartDay: integer("cycle_start_day").notNull().default(1),
+  cycleEndMonth: integer("cycle_end_month").notNull().default(12),
+  cycleEndDay: integer("cycle_end_day").notNull().default(31),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+export const leaveAllocationsTable = pgTable("leave_allocations", {
+  id: serial("id").primaryKey(),
+  employeeId: integer("employee_id").notNull(),
+  leaveType: leaveTypeEnum("leave_type").notNull(),
+  policyId: integer("policy_id"),
+  allocated: integer("allocated").notNull().default(0),
+  used: integer("used").notNull().default(0),
+  cycleYear: integer("cycle_year").notNull(),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
 export type LeaveRequest = typeof leaveRequestsTable.$inferSelect;
 export type LeaveApprover = typeof leaveApproversTable.$inferSelect;
+export type LeavePolicy = typeof leavePoliciesTable.$inferSelect;
+export type LeaveAllocation = typeof leaveAllocationsTable.$inferSelect;

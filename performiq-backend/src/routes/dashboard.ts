@@ -1,9 +1,53 @@
 import { Router } from "express";
-import { db, usersTable, cyclesTable, appraisalsTable, goalsTable } from "../db/index.js";
+import { db, usersTable, cyclesTable, appraisalsTable, goalsTable, leavePoliciesTable, leaveAllocationsTable, leaveRequestsTable } from "../db/index.js";
 import { eq, and, count, inArray } from "drizzle-orm";
 import { requireAuth, AuthRequest } from "../middlewares/auth";
 
 const router = Router();
+
+async function getLeaveBalance(userId: number) {
+  const cycleYear = new Date().getFullYear();
+  const policies = await db.select().from(leavePoliciesTable);
+
+  for (const p of policies) {
+    const existing = await db.select().from(leaveAllocationsTable)
+      .where(and(
+        eq(leaveAllocationsTable.employeeId, userId),
+        eq(leaveAllocationsTable.leaveType, p.leaveType),
+        eq(leaveAllocationsTable.cycleYear, cycleYear)
+      )).limit(1);
+    if (existing.length === 0) {
+      await db.insert(leaveAllocationsTable).values({
+        employeeId: userId,
+        leaveType: p.leaveType,
+        policyId: p.id,
+        allocated: p.daysAllocated,
+        used: 0,
+        cycleYear,
+      });
+    }
+  }
+
+  const allocations = await db.select().from(leaveAllocationsTable)
+    .where(and(
+      eq(leaveAllocationsTable.employeeId, userId),
+      eq(leaveAllocationsTable.cycleYear, cycleYear)
+    ));
+
+  const [pendingLeave] = await db.select({ count: count() }).from(leaveRequestsTable)
+    .where(and(eq(leaveRequestsTable.employeeId, userId), eq(leaveRequestsTable.status, "pending")));
+
+  return {
+    cycleYear,
+    pendingLeaveRequests: Number(pendingLeave.count),
+    balances: allocations.map(a => ({
+      leaveType: a.leaveType,
+      allocated: a.allocated,
+      used: a.used,
+      remaining: a.allocated - a.used,
+    })),
+  };
+}
 
 router.get("/dashboard", requireAuth, async (req: AuthRequest, res) => {
   try {
@@ -32,6 +76,8 @@ router.get("/dashboard", requireAuth, async (req: AuthRequest, res) => {
         return { ...g, user: u };
       }));
 
+      const leaveBalance = await getLeaveBalance(userId);
+
       res.json({
         role,
         totalEmployees: Number(empCount.count),
@@ -44,6 +90,7 @@ router.get("/dashboard", requireAuth, async (req: AuthRequest, res) => {
         activeGoals: Number(activeGoals.count),
         recentAppraisals: enrichedAppraisals,
         recentGoals: enrichedGoals,
+        leaveBalance,
       });
     } else if (role === "manager") {
       const team = await db.select({ id: usersTable.id }).from(usersTable).where(eq(usersTable.managerId, userId));
@@ -72,6 +119,8 @@ router.get("/dashboard", requireAuth, async (req: AuthRequest, res) => {
         return { ...g, user: u };
       }));
 
+      const leaveBalance = await getLeaveBalance(userId);
+
       res.json({
         role,
         teamSize: teamIds.length,
@@ -81,6 +130,7 @@ router.get("/dashboard", requireAuth, async (req: AuthRequest, res) => {
         activeGoals: Number(activeGoals.count),
         recentAppraisals: enrichedAppraisals,
         recentGoals: enrichedGoals,
+        leaveBalance,
       });
     } else {
       const [myAppraisals] = await db.select({ count: count() }).from(appraisalsTable).where(eq(appraisalsTable.employeeId, userId));
@@ -102,6 +152,8 @@ router.get("/dashboard", requireAuth, async (req: AuthRequest, res) => {
         return { ...g, user: u };
       }));
 
+      const leaveBalance = await getLeaveBalance(userId);
+
       res.json({
         role,
         pendingAppraisals: Number(pendingCount.count),
@@ -111,6 +163,7 @@ router.get("/dashboard", requireAuth, async (req: AuthRequest, res) => {
         totalAppraisals: Number(myAppraisals.count),
         recentAppraisals: enrichedAppraisals,
         recentGoals: enrichedGoals,
+        leaveBalance,
       });
     }
   } catch (err) {

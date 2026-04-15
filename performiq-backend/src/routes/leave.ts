@@ -1,6 +1,6 @@
 import { Router } from "express";
-import { db, leaveRequestsTable, leaveApproversTable, usersTable } from "../db/index.js";
-import { eq, or, desc, and, asc, inArray } from "drizzle-orm";
+import { db, leaveRequestsTable, leaveApproversTable, leavePoliciesTable, leaveAllocationsTable, usersTable } from "../db/index.js";
+import { eq, or, desc, and, asc, inArray, sql } from "drizzle-orm";
 import { requireAuth, requireRole, AuthRequest } from "../middlewares/auth.js";
 import { sendLeaveNotification } from "../lib/mailgun.js";
 
@@ -11,6 +11,38 @@ function notify(payload: Parameters<typeof sendLeaveNotification>[0]) {
 }
 
 const router = Router();
+
+function getCurrentCycleYear() {
+  return new Date().getFullYear();
+}
+
+async function ensureAllocation(employeeId: number, leaveType: string, cycleYear: number) {
+  const existing = await db.select().from(leaveAllocationsTable)
+    .where(and(
+      eq(leaveAllocationsTable.employeeId, employeeId),
+      eq(leaveAllocationsTable.leaveType, leaveType as any),
+      eq(leaveAllocationsTable.cycleYear, cycleYear)
+    )).limit(1);
+
+  if (existing.length > 0) return existing[0];
+
+  const policy = await db.select().from(leavePoliciesTable)
+    .where(eq(leavePoliciesTable.leaveType, leaveType as any)).limit(1);
+
+  const allocated = policy.length > 0 ? policy[0].daysAllocated : 0;
+  const policyId = policy.length > 0 ? policy[0].id : null;
+
+  const [alloc] = await db.insert(leaveAllocationsTable).values({
+    employeeId,
+    leaveType: leaveType as any,
+    policyId,
+    allocated,
+    used: 0,
+    cycleYear,
+  }).returning();
+
+  return alloc;
+}
 
 async function getApproversForRequest(leaveRequestId: number) {
   const rows = await db.select().from(leaveApproversTable)
@@ -42,9 +74,183 @@ async function enrichLeaveRequest(r: typeof leaveRequestsTable.$inferSelect, use
   };
 }
 
+router.get("/leave-policies", requireAuth, async (_req: AuthRequest, res) => {
+  try {
+    const policies = await db.select().from(leavePoliciesTable).orderBy(asc(leavePoliciesTable.leaveType));
+    res.json(policies);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Server error" });
+  }
+});
+
+router.post("/leave-policies", requireAuth, requireRole("admin"), async (req: AuthRequest, res) => {
+  try {
+    const { leaveType, daysAllocated, cycleStartMonth, cycleStartDay, cycleEndMonth, cycleEndDay } = req.body;
+    if (!leaveType || daysAllocated === undefined) {
+      res.status(400).json({ error: "leaveType and daysAllocated are required" }); return;
+    }
+
+    const existing = await db.select().from(leavePoliciesTable)
+      .where(eq(leavePoliciesTable.leaveType, leaveType)).limit(1);
+
+    let policy;
+    if (existing.length > 0) {
+      [policy] = await db.update(leavePoliciesTable).set({
+        daysAllocated: Number(daysAllocated),
+        cycleStartMonth: Number(cycleStartMonth) || 1,
+        cycleStartDay: Number(cycleStartDay) || 1,
+        cycleEndMonth: Number(cycleEndMonth) || 12,
+        cycleEndDay: Number(cycleEndDay) || 31,
+        updatedAt: new Date(),
+      }).where(eq(leavePoliciesTable.id, existing[0].id)).returning();
+    } else {
+      [policy] = await db.insert(leavePoliciesTable).values({
+        leaveType,
+        daysAllocated: Number(daysAllocated),
+        cycleStartMonth: Number(cycleStartMonth) || 1,
+        cycleStartDay: Number(cycleStartDay) || 1,
+        cycleEndMonth: Number(cycleEndMonth) || 12,
+        cycleEndDay: Number(cycleEndDay) || 31,
+      }).returning();
+    }
+
+    const cycleYear = getCurrentCycleYear();
+    const employees = await db.select({ id: usersTable.id }).from(usersTable);
+    for (const emp of employees) {
+      const existingAlloc = await db.select().from(leaveAllocationsTable)
+        .where(and(
+          eq(leaveAllocationsTable.employeeId, emp.id),
+          eq(leaveAllocationsTable.leaveType, leaveType),
+          eq(leaveAllocationsTable.cycleYear, cycleYear)
+        )).limit(1);
+
+      if (existingAlloc.length > 0) {
+        await db.update(leaveAllocationsTable).set({
+          allocated: Number(daysAllocated),
+          policyId: policy.id,
+          updatedAt: new Date(),
+        }).where(eq(leaveAllocationsTable.id, existingAlloc[0].id));
+      } else {
+        await db.insert(leaveAllocationsTable).values({
+          employeeId: emp.id,
+          leaveType,
+          policyId: policy.id,
+          allocated: Number(daysAllocated),
+          used: 0,
+          cycleYear,
+        });
+      }
+    }
+
+    res.json(policy);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Server error" });
+  }
+});
+
+router.delete("/leave-policies/:id", requireAuth, requireRole("admin"), async (req, res) => {
+  try {
+    await db.delete(leavePoliciesTable).where(eq(leavePoliciesTable.id, Number(req.params.id)));
+    res.json({ message: "Deleted" });
+  } catch (err) {
+    res.status(500).json({ error: "Server error" });
+  }
+});
+
+router.get("/leave-balance", requireAuth, async (req: AuthRequest, res) => {
+  try {
+    const { id: userId } = req.user!;
+    const cycleYear = getCurrentCycleYear();
+
+    const policies = await db.select().from(leavePoliciesTable);
+    for (const p of policies) {
+      await ensureAllocation(userId, p.leaveType, cycleYear);
+    }
+
+    const allocations = await db.select().from(leaveAllocationsTable)
+      .where(and(
+        eq(leaveAllocationsTable.employeeId, userId),
+        eq(leaveAllocationsTable.cycleYear, cycleYear)
+      ));
+
+    const policyMap = Object.fromEntries(policies.map(p => [p.leaveType, p]));
+
+    const balances = allocations.map(a => ({
+      leaveType: a.leaveType,
+      allocated: a.allocated,
+      used: a.used,
+      remaining: a.allocated - a.used,
+      policy: policyMap[a.leaveType] || null,
+    }));
+
+    res.json({ cycleYear, balances });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Server error" });
+  }
+});
+
+router.get("/leave-balance/team", requireAuth, async (req: AuthRequest, res) => {
+  try {
+    const { id: userId, role } = req.user!;
+    const cycleYear = getCurrentCycleYear();
+
+    let employeeIds: number[];
+    if (role === "admin" || role === "super_admin") {
+      const allEmployees = await db.select({ id: usersTable.id }).from(usersTable);
+      employeeIds = allEmployees.map(e => e.id);
+    } else if (role === "manager") {
+      const team = await db.select({ id: usersTable.id }).from(usersTable).where(eq(usersTable.managerId, userId));
+      employeeIds = [userId, ...team.map(t => t.id)];
+    } else {
+      employeeIds = [userId];
+    }
+
+    if (employeeIds.length === 0) {
+      res.json({ cycleYear, employees: [] }); return;
+    }
+
+    const users = await db.select({ id: usersTable.id, name: usersTable.name, department: usersTable.department, jobTitle: usersTable.jobTitle })
+      .from(usersTable).where(inArray(usersTable.id, employeeIds));
+
+    const allocations = await db.select().from(leaveAllocationsTable)
+      .where(and(
+        inArray(leaveAllocationsTable.employeeId, employeeIds),
+        eq(leaveAllocationsTable.cycleYear, cycleYear)
+      ));
+
+    const policies = await db.select().from(leavePoliciesTable);
+    const policyMap = Object.fromEntries(policies.map(p => [p.leaveType, p]));
+
+    const employeeBalances = users.map(u => {
+      const empAllocs = allocations.filter(a => a.employeeId === u.id);
+      return {
+        ...u,
+        balances: empAllocs.map(a => ({
+          leaveType: a.leaveType,
+          allocated: a.allocated,
+          used: a.used,
+          remaining: a.allocated - a.used,
+          policy: policyMap[a.leaveType] || null,
+        })),
+      };
+    });
+
+    res.json({ cycleYear, employees: employeeBalances });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Server error" });
+  }
+});
+
 router.get("/leave-requests", requireAuth, async (req: AuthRequest, res) => {
   try {
     const { role, id } = req.user!;
+    const department = req.query.department as string | undefined;
+    const employeeId = req.query.employeeId ? Number(req.query.employeeId) : undefined;
+
     let rows = await db.select().from(leaveRequestsTable).orderBy(desc(leaveRequestsTable.createdAt));
 
     if (role === "employee") {
@@ -52,7 +258,6 @@ router.get("/leave-requests", requireAuth, async (req: AuthRequest, res) => {
     } else if (role === "manager") {
       const subordinates = await db.select({ id: usersTable.id }).from(usersTable).where(eq(usersTable.managerId, id));
       const subIds = new Set([id, ...subordinates.map(s => s.id)]);
-      // Also show requests where this manager is an approver
       const approverRows = await db.select({ leaveRequestId: leaveApproversTable.leaveRequestId })
         .from(leaveApproversTable).where(eq(leaveApproversTable.approverId, id));
       const approverRequestIds = new Set(approverRows.map(a => a.leaveRequestId));
@@ -68,6 +273,17 @@ router.get("/leave-requests", requireAuth, async (req: AuthRequest, res) => {
           .from(usersTable).where(or(...allUserIds.map(uid => eq(usersTable.id, uid))))
       : [];
     const userMap = Object.fromEntries(users.map(u => [u.id, u]));
+
+    if (department) {
+      rows = rows.filter(r => {
+        const emp = userMap[r.employeeId];
+        return emp && emp.department === department;
+      });
+    }
+
+    if (employeeId) {
+      rows = rows.filter(r => r.employeeId === employeeId);
+    }
 
     const enriched = await Promise.all(rows.map(r => enrichLeaveRequest(r, userMap)));
     res.json(enriched);
@@ -94,13 +310,11 @@ router.post("/leave-requests", requireAuth, async (req: AuthRequest, res) => {
       status: "pending",
     }).returning();
 
-    // Build approver chain: use provided approverIds or default to employee's manager
     let orderedApproverIds: number[] = Array.isArray(approverIds) && approverIds.length > 0
       ? approverIds.map(Number).filter(Boolean)
       : [];
 
     if (orderedApproverIds.length === 0) {
-      // Default: auto-assign the employee's direct manager
       const [emp] = await db.select({ managerId: usersTable.managerId }).from(usersTable).where(eq(usersTable.id, req.user!.id)).limit(1);
       if (emp?.managerId) orderedApproverIds = [emp.managerId];
     }
@@ -111,10 +325,9 @@ router.post("/leave-requests", requireAuth, async (req: AuthRequest, res) => {
           leaveRequestId: row.id,
           approverId: aid,
           orderIndex: idx,
-          status: idx === 0 ? 'pending' : 'pending', // all start pending, first is active
+          status: 'pending',
         }))
       ).onConflictDoNothing();
-      // Also update legacy reviewerId to first approver
       await db.update(leaveRequestsTable).set({ reviewerId: orderedApproverIds[0] }).where(eq(leaveRequestsTable.id, row.id));
     }
 
@@ -125,7 +338,6 @@ router.post("/leave-requests", requireAuth, async (req: AuthRequest, res) => {
 
     const enriched = await enrichLeaveRequest(row, userMap);
 
-    // Notify the first approver that a leave request awaits their review
     if (orderedApproverIds.length > 0) {
       const firstApprover = userMap[orderedApproverIds[0]];
       const employee = userMap[req.user!.id];
@@ -156,6 +368,15 @@ router.get("/leave-requests/:id", requireAuth, async (req: AuthRequest, res) => 
     if (!row) { res.status(404).json({ error: "Not found" }); return; }
     const { role, id } = req.user!;
     if (role === "employee" && row.employeeId !== id) { res.status(403).json({ error: "Forbidden" }); return; }
+    if (role === "manager") {
+      const team = await db.select({ id: usersTable.id }).from(usersTable).where(eq(usersTable.managerId, id));
+      const teamIds = new Set(team.map(t => t.id));
+      const approvers = await db.select().from(leaveApproversTable).where(eq(leaveApproversTable.leaveRequestId, row.id));
+      const isInChain = approvers.some(a => a.approverId === id);
+      if (row.employeeId !== id && !teamIds.has(row.employeeId) && !isInChain) {
+        res.status(403).json({ error: "Forbidden" }); return;
+      }
+    }
     const userMap: Record<number, any> = {};
     const users = await db.select().from(usersTable).where(eq(usersTable.id, row.employeeId));
     users.forEach(u => { userMap[u.id] = u; });
@@ -175,6 +396,23 @@ router.put("/leave-requests/:id", requireAuth, async (req: AuthRequest, res) => 
     if (status === "cancelled") {
       if (row.employeeId !== id) { res.status(403).json({ error: "Only the applicant can cancel" }); return; }
       if (row.status !== "pending") { res.status(400).json({ error: "Only pending requests can be cancelled" }); return; }
+
+      if (row.status === "approved") {
+        const cycleYear = getCurrentCycleYear();
+        const alloc = await db.select().from(leaveAllocationsTable)
+          .where(and(
+            eq(leaveAllocationsTable.employeeId, row.employeeId),
+            eq(leaveAllocationsTable.leaveType, row.leaveType),
+            eq(leaveAllocationsTable.cycleYear, cycleYear)
+          )).limit(1);
+        if (alloc.length > 0) {
+          await db.update(leaveAllocationsTable).set({
+            used: Math.max(0, alloc[0].used - row.days),
+            updatedAt: new Date(),
+          }).where(eq(leaveAllocationsTable.id, alloc[0].id));
+        }
+      }
+
       const [updated] = await db.update(leaveRequestsTable)
         .set({ status: "cancelled", updatedAt: new Date() })
         .where(eq(leaveRequestsTable.id, row.id)).returning();
@@ -188,25 +426,21 @@ router.put("/leave-requests/:id", requireAuth, async (req: AuthRequest, res) => 
       if ((ROLE_LEVEL[role] ?? 1) < 2) { res.status(403).json({ error: "Insufficient permissions" }); return; }
       if (row.status !== "pending") { res.status(400).json({ error: "Only pending requests can be reviewed" }); return; }
 
-      // Find the current approver for this request (first pending in chain)
       const approverRows = await db.select().from(leaveApproversTable)
         .where(and(eq(leaveApproversTable.leaveRequestId, row.id), eq(leaveApproversTable.status, 'pending')))
         .orderBy(asc(leaveApproversTable.orderIndex))
         .limit(1);
 
-      // Check authorization: user must be the current pending approver, or admin/super_admin
       const isAdmin = role === "admin" || role === "super_admin";
       const isCurrentApprover = approverRows.length > 0 && approverRows[0].approverId === id;
       if (!isAdmin && !isCurrentApprover) {
         res.status(403).json({ error: "You are not the current approver for this request" }); return;
       }
 
-      // Fetch employee details for notifications
       const [empUser] = await db.select({ id: usersTable.id, name: usersTable.name, email: usersTable.email })
         .from(usersTable).where(eq(usersTable.id, row.employeeId)).limit(1);
 
       if (status === "rejected") {
-        // Rejection finalizes immediately, mark current approver as rejected
         if (approverRows.length > 0) {
           await db.update(leaveApproversTable)
             .set({ status: 'rejected', note: reviewNote || null, reviewedAt: new Date() })
@@ -216,7 +450,6 @@ router.put("/leave-requests/:id", requireAuth, async (req: AuthRequest, res) => 
           .set({ status: "rejected", reviewerId: id, reviewNote: reviewNote || null, updatedAt: new Date() })
           .where(eq(leaveRequestsTable.id, row.id)).returning();
 
-        // Notify employee that their request was rejected
         if (empUser?.email) {
           notify({
             event: "rejected",
@@ -236,14 +469,12 @@ router.put("/leave-requests/:id", requireAuth, async (req: AuthRequest, res) => 
         return;
       }
 
-      // Approved — mark current approver, check if more remain
       if (approverRows.length > 0) {
         await db.update(leaveApproversTable)
           .set({ status: 'approved', note: reviewNote || null, reviewedAt: new Date() })
           .where(eq(leaveApproversTable.id, approverRows[0].id));
       }
 
-      // Check if there are more pending approvers
       const remaining = await db.select().from(leaveApproversTable)
         .where(and(eq(leaveApproversTable.leaveRequestId, row.id), eq(leaveApproversTable.status, 'pending')))
         .orderBy(asc(leaveApproversTable.orderIndex))
@@ -261,10 +492,18 @@ router.put("/leave-requests/:id", requireAuth, async (req: AuthRequest, res) => 
         })
         .where(eq(leaveRequestsTable.id, row.id)).returning();
 
+      if (finalStatus === "approved") {
+        const cycleYear = getCurrentCycleYear();
+        const alloc = await ensureAllocation(row.employeeId, row.leaveType, cycleYear);
+        await db.update(leaveAllocationsTable).set({
+          used: alloc.used + row.days,
+          updatedAt: new Date(),
+        }).where(eq(leaveAllocationsTable.id, alloc.id));
+      }
+
       const employeeName = empUser?.name ?? empUser?.email ?? "An employee";
 
       if (finalStatus === "approved") {
-        // Fully approved — notify the employee
         if (empUser?.email) {
           notify({
             event: "approved",
@@ -279,7 +518,6 @@ router.put("/leave-requests/:id", requireAuth, async (req: AuthRequest, res) => 
           });
         }
       } else if (nextApproverId) {
-        // Still pending — notify the next approver in the chain
         const [nextApprover] = await db.select({ id: usersTable.id, name: usersTable.name, email: usersTable.email })
           .from(usersTable).where(eq(usersTable.id, nextApproverId)).limit(1);
         if (nextApprover?.email) {

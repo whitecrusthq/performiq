@@ -1,7 +1,7 @@
 import { useAuth } from "@/hooks/use-auth";
 import { useGetDashboard } from "../lib";
 import { PageHeader, Card, StatusBadge, EmptyState } from "@/components/shared";
-import { Users, Target, ClipboardList, TrendingUp, Calendar, ShieldCheck } from "lucide-react";
+import { Users, Target, ClipboardList, TrendingUp, Calendar, ShieldCheck, CalendarDays } from "lucide-react";
 import { Link } from "wouter";
 import { format } from "date-fns";
 
@@ -82,6 +82,57 @@ export default function Dashboard() {
           <StatCard title="Team Size" value={stats.teamSize} icon={Users} colorClass="bg-purple-100 text-purple-600" />
         )}
       </div>
+
+      {/* Leave Balance Card */}
+      {(stats as any).leaveBalance?.balances?.length > 0 && (
+        <Card className="overflow-hidden">
+          <div className="p-6 border-b border-border flex items-center justify-between">
+            <h3 className="text-lg font-bold text-foreground flex items-center gap-2">
+              <CalendarDays className="w-5 h-5 text-teal-500" />
+              Leave Balance
+              <span className="text-xs font-normal text-muted-foreground ml-1">({(stats as any).leaveBalance.cycleYear})</span>
+            </h3>
+            <Link href="/leave" className="text-sm font-medium text-primary hover:underline">Manage leave</Link>
+          </div>
+          <div className="p-6">
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-7 gap-4">
+              {(stats as any).leaveBalance.balances.map((b: any) => {
+                const pct = b.allocated > 0 ? Math.round((b.used / b.allocated) * 100) : 0;
+                const labels: Record<string, string> = {
+                  annual: "Annual", sick: "Sick", personal: "Casual",
+                  maternity: "Maternity", paternity: "Paternity", unpaid: "Unpaid", other: "Other",
+                };
+                return (
+                  <div key={b.leaveType} className="text-center">
+                    <p className="text-xs font-medium text-muted-foreground mb-2">{labels[b.leaveType] || b.leaveType}</p>
+                    <div className="relative w-16 h-16 mx-auto mb-2">
+                      <svg className="w-16 h-16 -rotate-90" viewBox="0 0 36 36">
+                        <circle cx="18" cy="18" r="15" fill="none" stroke="currentColor" strokeWidth="3" className="text-secondary" />
+                        <circle
+                          cx="18" cy="18" r="15" fill="none" strokeWidth="3"
+                          strokeDasharray={`${pct * 0.94} 100`}
+                          strokeLinecap="round"
+                          className={pct > 80 ? "text-red-500" : pct > 50 ? "text-amber-500" : "text-green-500"}
+                        />
+                      </svg>
+                      <span className="absolute inset-0 flex items-center justify-center text-sm font-bold">{b.remaining}</span>
+                    </div>
+                    <p className="text-xs text-muted-foreground">{b.used}/{b.allocated} used</p>
+                  </div>
+                );
+              })}
+            </div>
+            {(stats as any).leaveBalance.pendingLeaveRequests > 0 && (
+              <div className="mt-4 pt-4 border-t border-border">
+                <Link href="/leave" className="text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded-xl px-4 py-2 inline-flex items-center gap-2 hover:bg-amber-100 transition-colors">
+                  <CalendarDays className="w-4 h-4" />
+                  {(stats as any).leaveBalance.pendingLeaveRequests} pending leave request{(stats as any).leaveBalance.pendingLeaveRequests !== 1 ? 's' : ''}
+                </Link>
+              </div>
+            )}
+          </div>
+        </Card>
+      )}
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 pt-4">
         {/* Recent Appraisals */}

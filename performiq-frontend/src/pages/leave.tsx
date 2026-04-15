@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { PageHeader, Card, Button, Input, Label } from "@/components/shared";
-import { CalendarDays, Plus, X, CheckCircle2, XCircle, Clock, Ban, ChevronRight, UserPlus, ArrowUp, ArrowDown, Trash2 } from "lucide-react";
+import { CalendarDays, Plus, X, CheckCircle2, XCircle, Clock, Ban, ChevronRight, UserPlus, ArrowUp, ArrowDown, Trash2, Settings, BarChart3, Filter, Users } from "lucide-react";
 import { BulkActionBar } from "@/components/bulk-action-bar";
 import { useAuth } from "@/hooks/use-auth";
 import { apiFetch } from "@/lib/utils";
@@ -27,6 +27,8 @@ const STEP_CONFIG: Record<string, { label: string; color: string }> = {
   approved: { label: "Approved", color: "bg-green-100 text-green-700 border-green-200" },
   rejected: { label: "Rejected", color: "bg-red-100 text-red-700 border-red-200" },
 };
+
+const MONTHS = ["January","February","March","April","May","June","July","August","September","October","November","December"];
 
 function StatusBadge({ status }: { status: LeaveStatus }) {
   const cfg = STATUS_CONFIG[status] ?? STATUS_CONFIG.pending;
@@ -70,6 +72,19 @@ interface LeaveRequest {
 
 interface UserOption { id: number; name: string; role: string; department?: string | null }
 
+interface LeavePolicy {
+  id: number; leaveType: LeaveType; daysAllocated: number;
+  cycleStartMonth: number; cycleStartDay: number;
+  cycleEndMonth: number; cycleEndDay: number;
+}
+
+interface LeaveBalanceItem {
+  leaveType: LeaveType; allocated: number; used: number; remaining: number;
+  policy?: LeavePolicy | null;
+}
+
+type TabType = "requests" | "balance" | "policies";
+
 export default function Leave() {
   const { user } = useAuth();
   const queryClient = useQueryClient();
@@ -80,18 +95,36 @@ export default function Leave() {
   const [reviewDialog, setReviewDialog] = useState<{ request: LeaveRequest; action: "approved" | "rejected" } | null>(null);
   const [reviewNote, setReviewNote] = useState("");
   const [filterStatus, setFilterStatus] = useState<string>("all");
+  const [filterDepartment, setFilterDepartment] = useState<string>("all");
+  const [filterEmployee, setFilterEmployee] = useState<string>("all");
   const [mutationError, setMutationError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [form, setForm] = useState({ leaveType: "annual" as LeaveType, startDate: "", endDate: "", reason: "" });
-  // Sequential approver chain for the form
   const [approverSteps, setApproverSteps] = useState<string[]>([""]);
+  const [activeTab, setActiveTab] = useState<TabType>("requests");
+  const [balances, setBalances] = useState<LeaveBalanceItem[]>([]);
+  const [policies, setPolicies] = useState<LeavePolicy[]>([]);
+  const [policyForm, setPolicyForm] = useState<Partial<LeavePolicy> & { leaveType: LeaveType }>({
+    leaveType: "annual", daysAllocated: 0,
+    cycleStartMonth: 1, cycleStartDay: 1, cycleEndMonth: 12, cycleEndDay: 31,
+  });
+  const [isPolicyDialogOpen, setIsPolicyDialogOpen] = useState(false);
+  const [teamBalances, setTeamBalances] = useState<any[]>([]);
 
   const isManager = user && ["super_admin", "admin", "manager"].includes(user.role);
+  const isAdmin = user?.role === "admin" || user?.role === "super_admin";
+
+  const departments = [...new Set(allUsers.map(u => u.department).filter(Boolean))] as string[];
 
   const load = async () => {
     setIsLoading(true);
     try {
-      const r = await apiFetch("/api/leave-requests");
+      let url = "/api/leave-requests";
+      const params: string[] = [];
+      if (filterDepartment !== "all") params.push(`department=${encodeURIComponent(filterDepartment)}`);
+      if (filterEmployee !== "all") params.push(`employeeId=${filterEmployee}`);
+      if (params.length > 0) url += "?" + params.join("&");
+      const r = await apiFetch(url);
       const data = await r.json();
       if (Array.isArray(data)) setRequests(data);
     } catch {}
@@ -106,11 +139,35 @@ export default function Leave() {
     } catch {}
   };
 
-  useEffect(() => { load(); loadUsers(); }, []);
+  const loadBalances = async () => {
+    try {
+      const r = await apiFetch("/api/leave-balance");
+      const data = await r.json();
+      if (data.balances) setBalances(data.balances);
+    } catch {}
+  };
+
+  const loadPolicies = async () => {
+    try {
+      const r = await apiFetch("/api/leave-policies");
+      const data = await r.json();
+      if (Array.isArray(data)) setPolicies(data);
+    } catch {}
+  };
+
+  const loadTeamBalances = async () => {
+    try {
+      const r = await apiFetch("/api/leave-balance/team");
+      const data = await r.json();
+      if (data.employees) setTeamBalances(data.employees);
+    } catch {}
+  };
+
+  useEffect(() => { load(); loadUsers(); loadBalances(); loadPolicies(); if (isManager) loadTeamBalances(); }, []);
+  useEffect(() => { load(); }, [filterDepartment, filterEmployee]);
 
   const days = calcDays(form.startDate, form.endDate);
 
-  // Approver chain helpers
   const addApproverStep = () => setApproverSteps(prev => [...prev, ""]);
   const removeApproverStep = (idx: number) => setApproverSteps(prev => prev.filter((_, i) => i !== idx));
   const moveApproverStep = (idx: number, dir: -1 | 1) => {
@@ -144,6 +201,7 @@ export default function Leave() {
       setForm({ leaveType: "annual", startDate: "", endDate: "", reason: "" });
       setApproverSteps([""]);
       load();
+      loadBalances();
     } catch { setMutationError("Network error"); }
     setSubmitting(false);
   };
@@ -151,6 +209,7 @@ export default function Leave() {
   const handleCancel = async (id: number) => {
     await apiFetch(`/api/leave-requests/${id}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ status: "cancelled" }) });
     load();
+    loadBalances();
   };
 
   const handleReview = async () => {
@@ -164,11 +223,35 @@ export default function Leave() {
     setReviewNote("");
     setSubmitting(false);
     load();
+    loadBalances();
+    if (isManager) loadTeamBalances();
+  };
+
+  const handleSavePolicy = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setSubmitting(true);
+    try {
+      const r = await apiFetch("/api/leave-policies", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(policyForm),
+      });
+      if (r.ok) {
+        setIsPolicyDialogOpen(false);
+        loadPolicies();
+        loadBalances();
+        if (isManager) loadTeamBalances();
+      }
+    } catch {}
+    setSubmitting(false);
+  };
+
+  const handleDeletePolicy = async (id: number) => {
+    if (!confirm("Delete this leave policy?")) return;
+    await apiFetch(`/api/leave-policies/${id}`, { method: "DELETE" });
+    loadPolicies();
   };
 
   const filtered = filterStatus === "all" ? requests : requests.filter(r => r.status === filterStatus);
-
-  const isAdmin = user?.role === "admin" || user?.role === "super_admin";
 
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
   const [bulkDeleting, setBulkDeleting] = useState(false);
@@ -199,137 +282,341 @@ export default function Leave() {
     setBulkDeleting(false);
   };
 
+  const tabs: { key: TabType; label: string; icon: React.ReactNode }[] = [
+    { key: "requests", label: "Leave Requests", icon: <CalendarDays className="w-4 h-4" /> },
+    { key: "balance", label: "Leave Balance", icon: <BarChart3 className="w-4 h-4" /> },
+    ...(isAdmin ? [{ key: "policies" as TabType, label: "Leave Policies", icon: <Settings className="w-4 h-4" /> }] : []),
+  ];
+
   return (
     <div>
-      <PageHeader title="Leave Requests" description="Apply for leave and track approval status.">
+      <PageHeader title="Leave Management" description="Apply for leave, track balances, and manage leave policies.">
         <Button onClick={() => { setMutationError(null); setForm({ leaveType: "annual", startDate: "", endDate: "", reason: "" }); setApproverSteps([""]); setIsDialogOpen(true); }}>
           <Plus className="w-4 h-4 mr-2" /> Apply for Leave
         </Button>
       </PageHeader>
 
-      {/* Filter bar */}
-      <div className="flex flex-wrap gap-2 mb-6">
-        {["all", "pending", "approved", "rejected", "cancelled"].map(s => (
+      {/* Tabs */}
+      <div className="flex gap-1 mb-6 bg-secondary/50 p-1 rounded-xl w-fit">
+        {tabs.map(t => (
           <button
-            key={s}
-            onClick={() => setFilterStatus(s)}
-            className={`px-4 py-1.5 rounded-full text-sm font-medium transition-colors ${filterStatus === s ? "bg-primary text-primary-foreground" : "bg-secondary text-secondary-foreground hover:bg-secondary/80"}`}
+            key={t.key}
+            onClick={() => setActiveTab(t.key)}
+            className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${activeTab === t.key ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"}`}
           >
-            {s === "all" ? "All" : STATUS_CONFIG[s as LeaveStatus]?.label ?? s}
-            {" "}
-            <span className="opacity-70">
-              ({s === "all" ? requests.length : requests.filter(r => r.status === s).length})
-            </span>
+            {t.icon}{t.label}
           </button>
         ))}
       </div>
 
-      {isLoading ? (
-        <div className="p-8 text-center text-muted-foreground text-sm">Loading...</div>
-      ) : filtered.length === 0 ? (
-        <Card className="p-12 flex flex-col items-center gap-3 text-center">
-          <CalendarDays className="w-10 h-10 text-muted-foreground/40" />
-          <p className="font-medium text-muted-foreground">No leave requests found</p>
-          <p className="text-sm text-muted-foreground">Click "Apply for Leave" to submit your first request.</p>
-        </Card>
-      ) : (
-        <>
-          {isAdmin && <BulkActionBar count={selectedIds.size} onDelete={handleBulkDelete} onClear={() => setSelectedIds(new Set())} deleting={bulkDeleting} />}
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {filtered.map(req => {
-            const isCurrentApprover = req.currentApproverId === user?.id;
-            const canReview = isManager && req.status === "pending" && (isCurrentApprover || user?.role === "admin" || user?.role === "super_admin");
-
+      {/* Balance Cards - always visible at top when on requests or balance tab */}
+      {(activeTab === "requests" || activeTab === "balance") && balances.length > 0 && (
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-7 gap-3 mb-6">
+          {balances.map(b => {
+            const pct = b.allocated > 0 ? Math.round((b.used / b.allocated) * 100) : 0;
             return (
-              <Card key={req.id} className={`p-5 flex flex-col gap-3 ${selectedIds.has(req.id) ? "ring-2 ring-primary/30" : ""}`}>
-                {/* Card header: checkbox + type + status */}
-                <div className="flex items-start justify-between gap-2">
-                  <div className="flex items-center gap-2 min-w-0">
-                    {isAdmin && (
-                      <input
-                        type="checkbox"
-                        checked={selectedIds.has(req.id)}
-                        onChange={() => toggleSelect(req.id)}
-                        className="w-4 h-4 accent-primary cursor-pointer shrink-0"
-                      />
-                    )}
-                    <span className="font-semibold text-foreground truncate">{LEAVE_LABEL[req.leaveType] ?? req.leaveType}</span>
-                  </div>
-                  <StatusBadge status={req.status} />
+              <Card key={b.leaveType} className="p-4">
+                <p className="text-xs font-medium text-muted-foreground mb-1">{LEAVE_LABEL[b.leaveType] || b.leaveType}</p>
+                <div className="flex items-baseline gap-1.5 mb-2">
+                  <span className="text-2xl font-bold text-foreground">{b.remaining}</span>
+                  <span className="text-xs text-muted-foreground">/ {b.allocated}</span>
                 </div>
-
-                {/* Employee (managers/admins) */}
-                {isManager && req.employee && (
-                  <p className="text-sm text-muted-foreground -mt-1">
-                    <span className="font-medium text-foreground">{req.employee.name}</span>
-                    {req.employee.department && <span> · {req.employee.department}</span>}
-                  </p>
-                )}
-
-                {/* Dates */}
-                <p className="text-sm text-muted-foreground flex items-center gap-1">
-                  <CalendarDays className="w-3.5 h-3.5 shrink-0" />
-                  {fmt(req.startDate)} – {fmt(req.endDate)}
-                  <span className="ml-1 font-medium text-foreground">{req.days}d</span>
-                </p>
-
-                {/* Reason */}
-                {req.reason && (
-                  <p className="text-sm text-muted-foreground line-clamp-2">"{req.reason}"</p>
-                )}
-
-                {/* Sequential Approval Chain */}
-                {req.approvers && req.approvers.length > 0 && (
-                  <div className="flex flex-wrap items-center gap-1">
-                    <span className="text-xs text-muted-foreground font-medium w-full mb-0.5">Approval chain:</span>
-                    {req.approvers.map((step, i) => {
-                      const stepCfg = STEP_CONFIG[step.status] ?? STEP_CONFIG.pending;
-                      const isActive = step.status === 'pending' && req.status === 'pending';
-                      return (
-                        <span key={step.id} className="flex items-center gap-1">
-                          {i > 0 && <ChevronRight className="w-3 h-3 text-muted-foreground/50" />}
-                          <span className={`inline-flex items-center gap-1 text-xs font-semibold px-2 py-0.5 rounded-full border ${stepCfg.color} ${isActive ? 'ring-1 ring-amber-400' : ''}`}>
-                            <span className="opacity-60 font-normal">{i + 1}.</span>
-                            {step.approver?.name ?? `Approver ${i + 1}`}
-                            {step.status === 'approved' && <CheckCircle2 className="w-3 h-3" />}
-                            {step.status === 'rejected' && <XCircle className="w-3 h-3" />}
-                            {isActive && <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse" />}
-                          </span>
-                        </span>
-                      );
-                    })}
-                  </div>
-                )}
-
-                {req.reviewNote && !req.approvers?.some(a => a.note) && (
-                  <p className="text-sm text-muted-foreground italic">"{req.reviewNote}"</p>
-                )}
-
-                <p className="text-xs text-muted-foreground mt-auto">Submitted {fmt(req.createdAt)}</p>
-
-                {/* Actions */}
-                {(req.status === "pending" && req.employee?.id === user?.id) || canReview ? (
-                  <div className="flex flex-wrap gap-2 pt-1 border-t border-border">
-                    {req.status === "pending" && req.employee?.id === user?.id && (
-                      <Button variant="outline" size="sm" onClick={() => handleCancel(req.id)}>Cancel</Button>
-                    )}
-                    {canReview && (
-                      <>
-                        <Button size="sm" className="bg-green-600 hover:bg-green-700 text-white" onClick={() => { setReviewNote(""); setReviewDialog({ request: req, action: "approved" }); }}>
-                          <CheckCircle2 className="w-3.5 h-3.5 mr-1" /> Approve
-                        </Button>
-                        <Button size="sm" variant="destructive" onClick={() => { setReviewNote(""); setReviewDialog({ request: req, action: "rejected" }); }}>
-                          <XCircle className="w-3.5 h-3.5 mr-1" /> Reject
-                        </Button>
-                      </>
-                    )}
-                  </div>
-                ) : null}
+                <div className="w-full bg-secondary rounded-full h-1.5 overflow-hidden">
+                  <div
+                    className={`h-1.5 rounded-full transition-all ${pct > 80 ? "bg-red-500" : pct > 50 ? "bg-amber-500" : "bg-green-500"}`}
+                    style={{ width: `${pct}%` }}
+                  />
+                </div>
+                <p className="text-xs text-muted-foreground mt-1">{b.used} used</p>
               </Card>
             );
           })}
+        </div>
+      )}
+
+      {/* REQUESTS TAB */}
+      {activeTab === "requests" && (
+        <>
+          {/* Filters */}
+          {isManager && (
+            <div className="flex flex-wrap gap-3 mb-4">
+              <div className="flex items-center gap-2">
+                <Filter className="w-4 h-4 text-muted-foreground" />
+                <select
+                  className="px-3 py-1.5 rounded-lg border bg-background text-sm"
+                  value={filterDepartment}
+                  onChange={e => setFilterDepartment(e.target.value)}
+                >
+                  <option value="all">All Departments</option>
+                  {departments.map(d => <option key={d} value={d}>{d}</option>)}
+                </select>
+              </div>
+              <div className="flex items-center gap-2">
+                <Users className="w-4 h-4 text-muted-foreground" />
+                <select
+                  className="px-3 py-1.5 rounded-lg border bg-background text-sm"
+                  value={filterEmployee}
+                  onChange={e => setFilterEmployee(e.target.value)}
+                >
+                  <option value="all">All Employees</option>
+                  {allUsers
+                    .filter(u => filterDepartment === "all" || u.department === filterDepartment)
+                    .map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
+                </select>
+              </div>
+            </div>
+          )}
+
+          {/* Status filters */}
+          <div className="flex flex-wrap gap-2 mb-6">
+            {["all", "pending", "approved", "rejected", "cancelled"].map(s => (
+              <button
+                key={s}
+                onClick={() => setFilterStatus(s)}
+                className={`px-4 py-1.5 rounded-full text-sm font-medium transition-colors ${filterStatus === s ? "bg-primary text-primary-foreground" : "bg-secondary text-secondary-foreground hover:bg-secondary/80"}`}
+              >
+                {s === "all" ? "All" : STATUS_CONFIG[s as LeaveStatus]?.label ?? s}
+                {" "}
+                <span className="opacity-70">
+                  ({s === "all" ? requests.length : requests.filter(r => r.status === s).length})
+                </span>
+              </button>
+            ))}
           </div>
+
+          {isLoading ? (
+            <div className="p-8 text-center text-muted-foreground text-sm">Loading...</div>
+          ) : filtered.length === 0 ? (
+            <Card className="p-12 flex flex-col items-center gap-3 text-center">
+              <CalendarDays className="w-10 h-10 text-muted-foreground/40" />
+              <p className="font-medium text-muted-foreground">No leave requests found</p>
+              <p className="text-sm text-muted-foreground">Click "Apply for Leave" to submit your first request.</p>
+            </Card>
+          ) : (
+            <>
+              {isAdmin && <BulkActionBar count={selectedIds.size} onDelete={handleBulkDelete} onClear={() => setSelectedIds(new Set())} deleting={bulkDeleting} />}
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {filtered.map(req => {
+                const isCurrentApprover = req.currentApproverId === user?.id;
+                const canReview = isManager && req.status === "pending" && (isCurrentApprover || user?.role === "admin" || user?.role === "super_admin");
+
+                return (
+                  <Card key={req.id} className={`p-5 flex flex-col gap-3 ${selectedIds.has(req.id) ? "ring-2 ring-primary/30" : ""}`}>
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="flex items-center gap-2 min-w-0">
+                        {isAdmin && (
+                          <input
+                            type="checkbox"
+                            checked={selectedIds.has(req.id)}
+                            onChange={() => toggleSelect(req.id)}
+                            className="w-4 h-4 accent-primary cursor-pointer shrink-0"
+                          />
+                        )}
+                        <span className="font-semibold text-foreground truncate">{LEAVE_LABEL[req.leaveType] ?? req.leaveType}</span>
+                      </div>
+                      <StatusBadge status={req.status} />
+                    </div>
+
+                    {isManager && req.employee && (
+                      <p className="text-sm text-muted-foreground -mt-1">
+                        <span className="font-medium text-foreground">{req.employee.name}</span>
+                        {req.employee.department && <span> · {req.employee.department}</span>}
+                      </p>
+                    )}
+
+                    <p className="text-sm text-muted-foreground flex items-center gap-1">
+                      <CalendarDays className="w-3.5 h-3.5 shrink-0" />
+                      {fmt(req.startDate)} – {fmt(req.endDate)}
+                      <span className="ml-1 font-medium text-foreground">{req.days}d</span>
+                    </p>
+
+                    {req.reason && (
+                      <p className="text-sm text-muted-foreground line-clamp-2">"{req.reason}"</p>
+                    )}
+
+                    {req.approvers && req.approvers.length > 0 && (
+                      <div className="flex flex-wrap items-center gap-1">
+                        <span className="text-xs text-muted-foreground font-medium w-full mb-0.5">Approval chain:</span>
+                        {req.approvers.map((step, i) => {
+                          const stepCfg = STEP_CONFIG[step.status] ?? STEP_CONFIG.pending;
+                          const isActive = step.status === 'pending' && req.status === 'pending';
+                          return (
+                            <span key={step.id} className="flex items-center gap-1">
+                              {i > 0 && <ChevronRight className="w-3 h-3 text-muted-foreground/50" />}
+                              <span className={`inline-flex items-center gap-1 text-xs font-semibold px-2 py-0.5 rounded-full border ${stepCfg.color} ${isActive ? 'ring-1 ring-amber-400' : ''}`}>
+                                <span className="opacity-60 font-normal">{i + 1}.</span>
+                                {step.approver?.name ?? `Approver ${i + 1}`}
+                                {step.status === 'approved' && <CheckCircle2 className="w-3 h-3" />}
+                                {step.status === 'rejected' && <XCircle className="w-3 h-3" />}
+                                {isActive && <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse" />}
+                              </span>
+                            </span>
+                          );
+                        })}
+                      </div>
+                    )}
+
+                    {req.reviewNote && !req.approvers?.some(a => a.note) && (
+                      <p className="text-sm text-muted-foreground italic">"{req.reviewNote}"</p>
+                    )}
+
+                    <p className="text-xs text-muted-foreground mt-auto">Submitted {fmt(req.createdAt)}</p>
+
+                    {(req.status === "pending" && req.employee?.id === user?.id) || canReview ? (
+                      <div className="flex flex-wrap gap-2 pt-1 border-t border-border">
+                        {req.status === "pending" && req.employee?.id === user?.id && (
+                          <Button variant="outline" size="sm" onClick={() => handleCancel(req.id)}>Cancel</Button>
+                        )}
+                        {canReview && (
+                          <>
+                            <Button size="sm" className="bg-green-600 hover:bg-green-700 text-white" onClick={() => { setReviewNote(""); setReviewDialog({ request: req, action: "approved" }); }}>
+                              <CheckCircle2 className="w-3.5 h-3.5 mr-1" /> Approve
+                            </Button>
+                            <Button size="sm" variant="destructive" onClick={() => { setReviewNote(""); setReviewDialog({ request: req, action: "rejected" }); }}>
+                              <XCircle className="w-3.5 h-3.5 mr-1" /> Reject
+                            </Button>
+                          </>
+                        )}
+                      </div>
+                    ) : null}
+                  </Card>
+                );
+              })}
+              </div>
+            </>
+          )}
         </>
+      )}
+
+      {/* BALANCE TAB */}
+      {activeTab === "balance" && (
+        <div className="space-y-6">
+          {isManager && teamBalances.length > 0 && (
+            <>
+              <h3 className="text-lg font-bold text-foreground flex items-center gap-2">
+                <Users className="w-5 h-5 text-primary" />
+                Team Leave Balances
+              </h3>
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b border-border">
+                      <th className="text-left py-3 px-4 font-semibold text-foreground">Employee</th>
+                      <th className="text-left py-3 px-4 font-semibold text-foreground">Department</th>
+                      {policies.map(p => (
+                        <th key={p.leaveType} className="text-center py-3 px-3 font-semibold text-foreground">
+                          {LEAVE_LABEL[p.leaveType] || p.leaveType}
+                        </th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {teamBalances.map((emp: any) => (
+                      <tr key={emp.id} className="border-b border-border/50 hover:bg-muted/30">
+                        <td className="py-3 px-4 font-medium">{emp.name}</td>
+                        <td className="py-3 px-4 text-muted-foreground">{emp.department || "-"}</td>
+                        {policies.map(p => {
+                          const bal = emp.balances?.find((b: any) => b.leaveType === p.leaveType);
+                          if (!bal) return <td key={p.leaveType} className="text-center py-3 px-3 text-muted-foreground">-</td>;
+                          const pct = bal.allocated > 0 ? Math.round((bal.used / bal.allocated) * 100) : 0;
+                          return (
+                            <td key={p.leaveType} className="text-center py-3 px-3">
+                              <div className="inline-flex flex-col items-center gap-1">
+                                <span className={`text-sm font-bold ${pct > 80 ? "text-red-600" : pct > 50 ? "text-amber-600" : "text-green-600"}`}>
+                                  {bal.remaining}
+                                </span>
+                                <span className="text-xs text-muted-foreground">{bal.used}/{bal.allocated}</span>
+                                <div className="w-12 bg-secondary rounded-full h-1 overflow-hidden">
+                                  <div
+                                    className={`h-1 rounded-full ${pct > 80 ? "bg-red-500" : pct > 50 ? "bg-amber-500" : "bg-green-500"}`}
+                                    style={{ width: `${pct}%` }}
+                                  />
+                                </div>
+                              </div>
+                            </td>
+                          );
+                        })}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </>
+          )}
+
+          {balances.length === 0 && (
+            <Card className="p-12 flex flex-col items-center gap-3 text-center">
+              <BarChart3 className="w-10 h-10 text-muted-foreground/40" />
+              <p className="font-medium text-muted-foreground">No leave policies configured</p>
+              <p className="text-sm text-muted-foreground">
+                {isAdmin ? "Go to the Policies tab to set up leave types and allocations." : "Your administrator has not set up leave policies yet."}
+              </p>
+            </Card>
+          )}
+        </div>
+      )}
+
+      {/* POLICIES TAB */}
+      {activeTab === "policies" && isAdmin && (
+        <div className="space-y-6">
+          <div className="flex items-center justify-between">
+            <h3 className="text-lg font-bold text-foreground">Leave Cycle Settings</h3>
+            <Button onClick={() => {
+              setPolicyForm({ leaveType: "annual", daysAllocated: 0, cycleStartMonth: 1, cycleStartDay: 1, cycleEndMonth: 12, cycleEndDay: 31 });
+              setIsPolicyDialogOpen(true);
+            }}>
+              <Plus className="w-4 h-4 mr-2" /> Add Policy
+            </Button>
+          </div>
+
+          {policies.length === 0 ? (
+            <Card className="p-12 flex flex-col items-center gap-3 text-center">
+              <Settings className="w-10 h-10 text-muted-foreground/40" />
+              <p className="font-medium text-muted-foreground">No leave policies configured</p>
+              <p className="text-sm text-muted-foreground">Create policies to define leave types, allocations, and cycle dates.</p>
+            </Card>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {policies.map(p => (
+                <Card key={p.id} className="p-5 flex flex-col gap-3">
+                  <div className="flex items-start justify-between">
+                    <h4 className="font-semibold text-foreground">{LEAVE_LABEL[p.leaveType] || p.leaveType}</h4>
+                    <div className="flex gap-1">
+                      <button
+                        onClick={() => { setPolicyForm(p); setIsPolicyDialogOpen(true); }}
+                        className="p-1.5 rounded-lg hover:bg-muted text-muted-foreground"
+                        title="Edit"
+                      >
+                        <Settings className="w-4 h-4" />
+                      </button>
+                      <button
+                        onClick={() => handleDeletePolicy(p.id)}
+                        className="p-1.5 rounded-lg hover:bg-destructive/10 text-muted-foreground hover:text-destructive"
+                        title="Delete"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
+                  </div>
+                  <div className="space-y-2 text-sm">
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">Days Allocated</span>
+                      <span className="font-bold text-foreground">{p.daysAllocated} days</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">Cycle Start</span>
+                      <span className="font-medium">{p.cycleStartDay} {MONTHS[p.cycleStartMonth - 1]}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">Cycle End</span>
+                      <span className="font-medium">{p.cycleEndDay} {MONTHS[p.cycleEndMonth - 1]}</span>
+                    </div>
+                  </div>
+                </Card>
+              ))}
+            </div>
+          )}
+        </div>
       )}
 
       {/* Apply for Leave Modal */}
@@ -344,6 +631,22 @@ export default function Leave() {
               {mutationError && (
                 <div className="bg-destructive/10 text-destructive border-l-4 border-destructive rounded-r-xl p-3 text-sm">{mutationError}</div>
               )}
+
+              {/* Show balance for selected leave type */}
+              {balances.length > 0 && (() => {
+                const bal = balances.find(b => b.leaveType === form.leaveType);
+                if (!bal) return null;
+                return (
+                  <div className="flex items-center gap-3 p-3 bg-blue-50 border border-blue-200 rounded-xl">
+                    <div className="text-sm">
+                      <span className="text-blue-700 font-medium">Available: </span>
+                      <span className="text-blue-900 font-bold">{bal.remaining} days</span>
+                      <span className="text-blue-600 text-xs ml-2">({bal.used} of {bal.allocated} used)</span>
+                    </div>
+                  </div>
+                );
+              })()}
+
               <div>
                 <Label>Leave Type</Label>
                 <select
@@ -379,7 +682,6 @@ export default function Leave() {
                 />
               </div>
 
-              {/* Sequential Approval Chain */}
               <div>
                 <Label>Approval Chain <span className="text-muted-foreground text-xs font-normal">(sequential — Step 1 approves first)</span></Label>
                 <div className="mt-2 space-y-2">
@@ -447,7 +749,6 @@ export default function Leave() {
               {reviewDialog.request.employee?.name} · {LEAVE_LABEL[reviewDialog.request.leaveType]} ·{" "}
               {fmt(reviewDialog.request.startDate)} – {fmt(reviewDialog.request.endDate)} ({reviewDialog.request.days} days)
             </p>
-            {/* Show remaining chain if approving */}
             {reviewDialog.action === "approved" && (reviewDialog.request.approvers?.filter(a => a.status === 'pending').length ?? 0) > 1 && (
               <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-xl px-3 py-2 mb-3">
                 After your approval, this will move to the next approver in the chain.
@@ -474,6 +775,90 @@ export default function Leave() {
                 {reviewDialog.action === "approved" ? "Confirm Approval" : "Confirm Rejection"}
               </Button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Policy Modal */}
+      {isPolicyDialogOpen && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-background rounded-2xl shadow-2xl w-full max-w-md">
+            <div className="flex items-center justify-between p-6 pb-0">
+              <h2 className="text-xl font-bold">{policyForm.id ? "Edit" : "Add"} Leave Policy</h2>
+              <button onClick={() => setIsPolicyDialogOpen(false)}><X className="w-5 h-5" /></button>
+            </div>
+            <form onSubmit={handleSavePolicy} className="space-y-4 p-6">
+              <div>
+                <Label>Leave Type</Label>
+                <select
+                  className="w-full px-4 py-2 border rounded-xl bg-background text-sm"
+                  value={policyForm.leaveType}
+                  onChange={e => setPolicyForm({ ...policyForm, leaveType: e.target.value as LeaveType })}
+                  required
+                >
+                  {LEAVE_TYPES.map(t => <option key={t} value={t}>{LEAVE_LABEL[t]}</option>)}
+                </select>
+              </div>
+              <div>
+                <Label>Days Allocated Per Year</Label>
+                <Input
+                  type="number"
+                  min={0}
+                  value={policyForm.daysAllocated ?? 0}
+                  onChange={e => setPolicyForm({ ...policyForm, daysAllocated: Number(e.target.value) })}
+                  required
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <Label>Cycle Start Month</Label>
+                  <select
+                    className="w-full px-4 py-2 border rounded-xl bg-background text-sm"
+                    value={policyForm.cycleStartMonth ?? 1}
+                    onChange={e => setPolicyForm({ ...policyForm, cycleStartMonth: Number(e.target.value) })}
+                  >
+                    {MONTHS.map((m, i) => <option key={i} value={i + 1}>{m}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <Label>Cycle Start Day</Label>
+                  <Input
+                    type="number"
+                    min={1}
+                    max={31}
+                    value={policyForm.cycleStartDay ?? 1}
+                    onChange={e => setPolicyForm({ ...policyForm, cycleStartDay: Number(e.target.value) })}
+                  />
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <Label>Cycle End Month</Label>
+                  <select
+                    className="w-full px-4 py-2 border rounded-xl bg-background text-sm"
+                    value={policyForm.cycleEndMonth ?? 12}
+                    onChange={e => setPolicyForm({ ...policyForm, cycleEndMonth: Number(e.target.value) })}
+                  >
+                    {MONTHS.map((m, i) => <option key={i} value={i + 1}>{m}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <Label>Cycle End Day</Label>
+                  <Input
+                    type="number"
+                    min={1}
+                    max={31}
+                    value={policyForm.cycleEndDay ?? 31}
+                    onChange={e => setPolicyForm({ ...policyForm, cycleEndDay: Number(e.target.value) })}
+                  />
+                </div>
+              </div>
+              <p className="text-xs text-muted-foreground">This will automatically allocate the specified days to all employees for the current cycle year.</p>
+              <div className="flex gap-3 pt-2">
+                <Button type="button" variant="outline" className="flex-1" onClick={() => setIsPolicyDialogOpen(false)}>Cancel</Button>
+                <Button type="submit" className="flex-1" isLoading={submitting}>Save Policy</Button>
+              </div>
+            </form>
           </div>
         </div>
       )}

@@ -22,6 +22,13 @@
       "when": 1775701500000,
       "tag": "0002_add_admin_actual_value",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1776230742362,
+      "tag": "0003_goofy_ben_grimm",
+      "breakpoints": true
     }
   ]
 }
