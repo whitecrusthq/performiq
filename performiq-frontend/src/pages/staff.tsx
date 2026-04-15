@@ -470,6 +470,7 @@ function StaffPanel({ staffId, canEdit, onClose, onUpdated }: {
                   ["Religion", s.religion ?? ""], ["State of Origin", s.stateOfOrigin ?? ""],
                   ["Maiden Name", s.maidenName ?? ""], ["Hobbies", s.hobbies ?? ""],
                   ["Spouse Name", s.spouseName ?? ""], ["Spouse Occupation", s.spouseOccupation ?? ""],
+                  ["Wedding Date", s.weddingDate ?? ""],
                   ["No. of Children", s.numberOfChildren != null ? String(s.numberOfChildren) : ""],
                   ["Address", s.address ?? ""], ["Permanent Address", s.permanentAddress ?? ""],
                   ["Temporary Address", s.temporaryAddress ?? ""],
@@ -568,6 +569,7 @@ function StaffPanel({ staffId, canEdit, onClose, onUpdated }: {
                     <SelectField label="Marital Status" value={d.maritalStatus} editing={editing}
                       options={[{ value: "single", label: "Single" }, { value: "married", label: "Married" }, { value: "divorced", label: "Divorced" }, { value: "widowed", label: "Widowed" }, { value: "separated", label: "Separated" }]}
                       onChange={set("maritalStatus")} />
+                    <Field label="Wedding Date" value={d.weddingDate} editing={editing} type="date" onChange={set("weddingDate")} />
                     <Field label="Religion" value={d.religion} editing={editing} placeholder="e.g. Christianity, Islam" onChange={set("religion")} />
                     <Field label="National ID / Passport" value={d.nationalId} editing={editing} placeholder="e.g. A1234567" onChange={set("nationalId")} />
                     <Field label="Start Date" value={d.startDate} editing={editing} type="date" onChange={set("startDate")} />
