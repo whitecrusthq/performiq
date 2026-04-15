@@ -89,6 +89,112 @@ export async function sendLeaveNotification(payload: LeaveNotifyPayload): Promis
   });
 }
 
+export type RecruitmentNotifyEvent =
+  | "new_candidate"
+  | "stage_change"
+  | "candidate_hired"
+  | "job_opened"
+  | "job_closed";
+
+export interface RecruitmentNotifyPayload {
+  event: RecruitmentNotifyEvent;
+  to: string;
+  recipientName: string;
+  candidateName?: string;
+  jobTitle: string;
+  department?: string;
+  stage?: string;
+  previousStage?: string;
+  loginEmail?: string;
+  startDate?: string;
+}
+
+const STAGE_LABEL: Record<string, string> = {
+  applied: "Applied", screening: "Screening", interview: "Interview",
+  offer: "Offer", hired: "Hired", rejected: "Rejected",
+};
+
+export async function sendRecruitmentNotification(payload: RecruitmentNotifyPayload): Promise<void> {
+  let { mg, domain } = (() => {
+    try { return getClient(); }
+    catch { return { mg: null, domain: "" }; }
+  })();
+  if (!mg) {
+    console.log("[recruitment notify] Mailgun not configured, skipping email:", payload.event, "→", payload.to);
+    return;
+  }
+
+  const from = process.env.MAILGUN_FROM ?? `noreply@${domain}`;
+
+  const subjects: Record<RecruitmentNotifyEvent, string> = {
+    new_candidate:   `New Candidate for ${payload.jobTitle} — ${payload.candidateName}`,
+    stage_change:    `Candidate Update: ${payload.candidateName} — ${STAGE_LABEL[payload.stage || ""] || payload.stage}`,
+    candidate_hired: `Welcome to the Team — ${payload.jobTitle}`,
+    job_opened:      `New Job Opening: ${payload.jobTitle}`,
+    job_closed:      `Job Closed: ${payload.jobTitle}`,
+  };
+
+  const intros: Record<RecruitmentNotifyEvent, string> = {
+    new_candidate:   `Hi <strong>${payload.recipientName}</strong>, a new candidate <strong>${payload.candidateName}</strong> has been added to the <strong>${payload.jobTitle}</strong> position.`,
+    stage_change:    `Hi <strong>${payload.recipientName}</strong>, candidate <strong>${payload.candidateName}</strong> for <strong>${payload.jobTitle}</strong> has moved from <strong>${STAGE_LABEL[payload.previousStage || ""] || payload.previousStage}</strong> to <strong>${STAGE_LABEL[payload.stage || ""] || payload.stage}</strong>.`,
+    candidate_hired: `Congratulations <strong>${payload.recipientName}</strong>! We are delighted to welcome you to the team as <strong>${payload.jobTitle}</strong>${payload.department ? ` in the ${payload.department} department` : ""}.`,
+    job_opened:      `A new position for <strong>${payload.jobTitle}</strong>${payload.department ? ` in ${payload.department}` : ""} has been opened.`,
+    job_closed:      `The position <strong>${payload.jobTitle}</strong> has been closed.`,
+  };
+
+  let detailRows = "";
+  if (payload.event === "candidate_hired") {
+    detailRows = `
+      <tr><td style="padding:4px 0;color:#888;width:40%">Position</td><td style="padding:4px 0;font-weight:600">${payload.jobTitle}</td></tr>
+      ${payload.department ? `<tr><td style="padding:4px 0;color:#888">Department</td><td style="padding:4px 0;font-weight:600">${payload.department}</td></tr>` : ""}
+      ${payload.startDate ? `<tr><td style="padding:4px 0;color:#888">Start Date</td><td style="padding:4px 0;font-weight:600">${payload.startDate}</td></tr>` : ""}
+      ${payload.loginEmail ? `<tr><td style="padding:4px 0;color:#888">Login Email</td><td style="padding:4px 0;font-weight:600">${payload.loginEmail}</td></tr>` : ""}
+    `;
+  } else if (payload.event === "stage_change") {
+    detailRows = `
+      <tr><td style="padding:4px 0;color:#888;width:40%">Candidate</td><td style="padding:4px 0;font-weight:600">${payload.candidateName}</td></tr>
+      <tr><td style="padding:4px 0;color:#888">Position</td><td style="padding:4px 0;font-weight:600">${payload.jobTitle}</td></tr>
+      <tr><td style="padding:4px 0;color:#888">New Stage</td><td style="padding:4px 0;font-weight:600">${STAGE_LABEL[payload.stage || ""] || payload.stage}</td></tr>
+    `;
+  } else {
+    detailRows = `
+      <tr><td style="padding:4px 0;color:#888;width:40%">Position</td><td style="padding:4px 0;font-weight:600">${payload.jobTitle}</td></tr>
+      ${payload.department ? `<tr><td style="padding:4px 0;color:#888">Department</td><td style="padding:4px 0;font-weight:600">${payload.department}</td></tr>` : ""}
+      ${payload.candidateName ? `<tr><td style="padding:4px 0;color:#888">Candidate</td><td style="padding:4px 0;font-weight:600">${payload.candidateName}</td></tr>` : ""}
+    `;
+  }
+
+  const html = `
+    <div style="font-family:sans-serif;max-width:520px;margin:0 auto;padding:24px;color:#1a1a1a">
+      <h2 style="margin-bottom:4px;color:#1a1a1a">${subjects[payload.event]}</h2>
+      <p style="color:#555;margin-bottom:24px">${intros[payload.event]}</p>
+      <div style="background:#f4f4f5;border-radius:12px;padding:20px;margin-bottom:20px">
+        <table style="width:100%;border-collapse:collapse;font-size:14px">
+          ${detailRows}
+        </table>
+      </div>
+      ${payload.event === "candidate_hired" ? `<p style="color:#555;font-size:14px">Your manager will share further details about your first day. Please log in using the email above and your temporary password to get started.</p>` : ""}
+      <p style="color:#999;font-size:12px">This is an automated notification from PerformIQ.</p>
+    </div>
+  `;
+
+  const subject = subjects[payload.event];
+  const textParts = [subject];
+  if (payload.candidateName) textParts.push(`Candidate: ${payload.candidateName}`);
+  textParts.push(`Position: ${payload.jobTitle}`);
+  if (payload.department) textParts.push(`Department: ${payload.department}`);
+  if (payload.stage) textParts.push(`Stage: ${STAGE_LABEL[payload.stage] || payload.stage}`);
+  if (payload.startDate) textParts.push(`Start Date: ${payload.startDate}`);
+
+  await mg.messages.create(domain, {
+    from,
+    to: [payload.to],
+    subject,
+    html,
+    text: textParts.join("\n"),
+  });
+}
+
 export async function sendOtpEmail(to: string, otp: string, name: string): Promise<void> {
   const { mg, domain } = getClient();
   const from = process.env.MAILGUN_FROM ?? `noreply@${domain}`;

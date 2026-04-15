@@ -3,6 +3,7 @@ import { db, jobRequisitionsTable, candidatesTable, usersTable, sitesTable, work
 import { eq, desc, and, inArray, sql } from "drizzle-orm";
 import { requireAuth, requireRole, AuthRequest } from "../middlewares/auth.js";
 import bcrypt from "bcryptjs";
+import { sendRecruitmentNotification } from "../lib/mailgun.js";
 
 const router = Router();
 
@@ -75,6 +76,10 @@ router.post("/recruitment/jobs", requireAuth, requireRole("admin"), async (req: 
 router.put("/recruitment/jobs/:id", requireAuth, requireRole("admin"), async (req: AuthRequest, res) => {
   try {
     const { title, department, siteId, description, requirements, employmentType, status, openings, hiringManagerId, closingDate } = req.body;
+
+    const [existingJob] = await db.select().from(jobRequisitionsTable).where(eq(jobRequisitionsTable.id, Number(req.params.id)));
+    const previousStatus = existingJob?.status;
+
     const [row] = await db.update(jobRequisitionsTable).set({
       ...(title !== undefined && { title }),
       ...(department !== undefined && { department: department || null }),
@@ -90,6 +95,24 @@ router.put("/recruitment/jobs/:id", requireAuth, requireRole("admin"), async (re
     }).where(eq(jobRequisitionsTable.id, Number(req.params.id))).returning();
 
     if (!row) { res.status(404).json({ error: "Not found" }); return; }
+
+    if (status && status !== previousStatus && row.hiringManagerId) {
+      const [manager] = await db.select({ name: usersTable.name, email: usersTable.email })
+        .from(usersTable).where(eq(usersTable.id, row.hiringManagerId));
+      if (manager) {
+        const event = (status === "open") ? "job_opened" as const : (status === "closed" || status === "filled") ? "job_closed" as const : null;
+        if (event) {
+          sendRecruitmentNotification({
+            event,
+            to: manager.email,
+            recipientName: manager.name,
+            jobTitle: row.title,
+            department: row.department || undefined,
+          }).catch(err => console.error("[recruitment notify] job status error:", err));
+        }
+      }
+    }
+
     res.json(await enrichJob(row));
   } catch (err) {
     console.error(err);
@@ -124,6 +147,9 @@ router.post("/recruitment/jobs/:jobId/candidates", requireAuth, requireRole("adm
       res.status(400).json({ error: "firstName, surname, and email are required" }); return;
     }
 
+    const [job] = await db.select().from(jobRequisitionsTable).where(eq(jobRequisitionsTable.id, Number(req.params.jobId)));
+    if (!job) { res.status(404).json({ error: "Job not found" }); return; }
+
     const [row] = await db.insert(candidatesTable).values({
       jobId: Number(req.params.jobId),
       firstName,
@@ -136,6 +162,21 @@ router.post("/recruitment/jobs/:jobId/candidates", requireAuth, requireRole("adm
       stage: "applied",
     }).returning();
 
+    if (job.hiringManagerId) {
+      const [manager] = await db.select({ name: usersTable.name, email: usersTable.email })
+        .from(usersTable).where(eq(usersTable.id, job.hiringManagerId));
+      if (manager) {
+        sendRecruitmentNotification({
+          event: "new_candidate",
+          to: manager.email,
+          recipientName: manager.name,
+          candidateName: `${firstName} ${surname}`,
+          jobTitle: job.title,
+          department: job.department || undefined,
+        }).catch(err => console.error("[recruitment notify] new_candidate error:", err));
+      }
+    }
+
     res.status(201).json(row);
   } catch (err) {
     console.error(err);
@@ -146,6 +187,11 @@ router.post("/recruitment/jobs/:jobId/candidates", requireAuth, requireRole("adm
 router.put("/recruitment/candidates/:id", requireAuth, requireRole("admin", "manager"), async (req: AuthRequest, res) => {
   try {
     const { stage, rating, notes, interviewDate, interviewNotes, offerSalary, offerNotes, rejectionReason, firstName, surname, email, phone } = req.body;
+
+    const [existing] = await db.select().from(candidatesTable).where(eq(candidatesTable.id, Number(req.params.id)));
+    if (!existing) { res.status(404).json({ error: "Not found" }); return; }
+
+    const previousStage = existing.stage;
     const updates: any = { updatedAt: new Date() };
     if (stage !== undefined) updates.stage = stage;
     if (rating !== undefined) updates.rating = rating;
@@ -162,7 +208,27 @@ router.put("/recruitment/candidates/:id", requireAuth, requireRole("admin", "man
 
     const [row] = await db.update(candidatesTable).set(updates)
       .where(eq(candidatesTable.id, Number(req.params.id))).returning();
-    if (!row) { res.status(404).json({ error: "Not found" }); return; }
+
+    if (stage !== undefined && stage !== previousStage) {
+      const [job] = await db.select().from(jobRequisitionsTable).where(eq(jobRequisitionsTable.id, existing.jobId));
+      if (job?.hiringManagerId) {
+        const [manager] = await db.select({ name: usersTable.name, email: usersTable.email })
+          .from(usersTable).where(eq(usersTable.id, job.hiringManagerId));
+        if (manager) {
+          sendRecruitmentNotification({
+            event: "stage_change",
+            to: manager.email,
+            recipientName: manager.name,
+            candidateName: `${existing.firstName} ${existing.surname}`,
+            jobTitle: job.title,
+            department: job.department || undefined,
+            stage,
+            previousStage,
+          }).catch(err => console.error("[recruitment notify] stage_change error:", err));
+        }
+      }
+    }
+
     res.json(row);
   } catch (err) {
     console.error(err);
@@ -270,6 +336,33 @@ router.post("/recruitment/candidates/:id/hire", requireAuth, requireRole("admin"
       }
 
       onboardingWorkflow = wf;
+    }
+
+    sendRecruitmentNotification({
+      event: "candidate_hired",
+      to: candidate.email,
+      recipientName: `${candidate.firstName} ${candidate.surname}`,
+      jobTitle: job.title,
+      department: job.department || undefined,
+      loginEmail: candidate.email,
+      startDate,
+    }).catch(err => console.error("[recruitment notify] candidate_hired error:", err));
+
+    if (job.hiringManagerId && job.hiringManagerId !== req.user!.id) {
+      const [manager] = await db.select({ name: usersTable.name, email: usersTable.email })
+        .from(usersTable).where(eq(usersTable.id, job.hiringManagerId));
+      if (manager) {
+        sendRecruitmentNotification({
+          event: "stage_change",
+          to: manager.email,
+          recipientName: manager.name,
+          candidateName: `${candidate.firstName} ${candidate.surname}`,
+          jobTitle: job.title,
+          department: job.department || undefined,
+          stage: "hired",
+          previousStage: candidate.stage,
+        }).catch(err => console.error("[recruitment notify] hire stage_change error:", err));
+      }
     }
 
     res.json({
