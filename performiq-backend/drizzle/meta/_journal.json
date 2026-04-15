@@ -1,0 +1,27 @@
+{
+  "version": "7",
+  "dialect": "postgresql",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "7",
+      "when": 1775611170252,
+      "tag": "0000_warm_marvel_apes",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1775697919000,
+      "tag": "0001_add_target_period_and_budget_value",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1775701500000,
+      "tag": "0002_add_admin_actual_value",
+      "breakpoints": true
+    }
+  ]
+}

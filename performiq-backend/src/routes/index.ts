@@ -1,0 +1,44 @@
+import { Router, type IRouter } from "express";
+import healthRouter from "./health";
+import authRouter from "./auth";
+import usersRouter from "./users";
+import cyclesRouter from "./cycles";
+import criteriaRouter from "./criteria";
+import appraisalsRouter from "./appraisals";
+import goalsRouter from "./goals";
+import dashboardRouter from "./dashboard";
+import customRolesRouter from "./custom-roles";
+import reportsRouter from "./reports";
+import departmentsRouter from "./departments";
+import sitesRouter from "./sites";
+import leaveRouter from "./leave";
+import attendanceRouter from "./attendance";
+import timesheetsRouter from "./timesheets";
+import onboardingRouter from "./onboarding";
+import hrQueriesRouter from "./hr-queries";
+import securityRouter from "./security";
+import appSettingsRouter from "./app-settings";
+
+const router: IRouter = Router();
+
+router.use(healthRouter);
+router.use(authRouter);
+router.use(usersRouter);
+router.use(cyclesRouter);
+router.use(criteriaRouter);
+router.use(appraisalsRouter);
+router.use(goalsRouter);
+router.use(dashboardRouter);
+router.use(customRolesRouter);
+router.use(reportsRouter);
+router.use(departmentsRouter);
+router.use(sitesRouter);
+router.use(leaveRouter);
+router.use(attendanceRouter);
+router.use(timesheetsRouter);
+router.use(onboardingRouter);
+router.use(hrQueriesRouter);
+router.use(securityRouter);
+router.use(appSettingsRouter);
+
+export default router;
