@@ -315,6 +315,8 @@ function StaffPanel({ staffId, canEdit, onClose, onUpdated }: {
       postalCode: staff.postalCode ?? "",
       dateOfBirth: staff.dateOfBirth ?? "",
       gender: staff.gender ?? "",
+      maritalStatus: staff.maritalStatus ?? "",
+      religion: staff.religion ?? "",
       nationalId: staff.nationalId ?? "",
       startDate: staff.startDate ?? "",
       emergencyContactName: staff.emergencyContactName ?? "",
@@ -475,6 +477,10 @@ function StaffPanel({ staffId, canEdit, onClose, onUpdated }: {
                     <SelectField label="Gender" value={d.gender} editing={editing}
                       options={[{ value: "male", label: "Male" }, { value: "female", label: "Female" }, { value: "other", label: "Other" }, { value: "prefer_not_to_say", label: "Prefer not to say" }]}
                       onChange={set("gender")} />
+                    <SelectField label="Marital Status" value={d.maritalStatus} editing={editing}
+                      options={[{ value: "single", label: "Single" }, { value: "married", label: "Married" }, { value: "divorced", label: "Divorced" }, { value: "widowed", label: "Widowed" }, { value: "separated", label: "Separated" }]}
+                      onChange={set("maritalStatus")} />
+                    <Field label="Religion" value={d.religion} editing={editing} placeholder="e.g. Christianity, Islam" onChange={set("religion")} />
                     <Field label="National ID / Passport" value={d.nationalId} editing={editing} placeholder="e.g. A1234567" onChange={set("nationalId")} />
                     <Field label="Start Date" value={d.startDate} editing={editing} type="date" onChange={set("startDate")} />
                   </div>
