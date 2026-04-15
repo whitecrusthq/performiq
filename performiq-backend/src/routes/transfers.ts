@@ -58,7 +58,7 @@ router.get("/transfers/:id", requireAuth, async (req: AuthRequest, res) => {
 
 router.post("/transfers", requireAuth, requireRole("admin", "manager"), async (req: AuthRequest, res) => {
   try {
-    const { employeeId, fromSiteId, toSiteId, fromDepartment, toDepartment, reason, effectiveDate } = req.body;
+    const { employeeId, fromSiteId, toSiteId, fromDepartment, toDepartment, reason, effectiveDate, endDate } = req.body;
     if (!employeeId || !toSiteId || !reason || !effectiveDate) {
       res.status(400).json({ error: "employeeId, toSiteId, reason, and effectiveDate are required" }); return;
     }
@@ -71,6 +71,7 @@ router.post("/transfers", requireAuth, requireRole("admin", "manager"), async (r
       toDepartment: toDepartment || null,
       reason,
       effectiveDate,
+      endDate: endDate || null,
       requestedById: req.user!.id,
       status: "pending",
     }).returning();

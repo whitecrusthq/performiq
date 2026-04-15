@@ -13,6 +13,7 @@ export const transferRequestsTable = pgTable("transfer_requests", {
   toDepartment: text("to_department"),
   reason: text("reason").notNull(),
   effectiveDate: text("effective_date").notNull(),
+  endDate: text("end_date"),
   status: transferStatusEnum("status").notNull().default("pending"),
   requestedById: integer("requested_by_id").notNull().references(() => usersTable.id),
   approvedById: integer("approved_by_id").references(() => usersTable.id),

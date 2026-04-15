@@ -38,6 +38,7 @@ interface TransferRequest {
   toDepartment: string | null;
   reason: string;
   effectiveDate: string;
+  endDate: string | null;
   status: TransferStatus;
   requestedById: number;
   approvedById: number | null;
@@ -72,6 +73,7 @@ export default function Transfers() {
     toDepartment: "",
     reason: "",
     effectiveDate: "",
+    endDate: "",
   });
 
   const isAdmin = user?.role === "admin" || user?.role === "super_admin";
@@ -137,12 +139,13 @@ export default function Transfers() {
           toDepartment: form.toDepartment || null,
           reason: form.reason,
           effectiveDate: form.effectiveDate,
+          endDate: form.endDate || null,
         }),
       });
       const data = await r.json();
       if (!r.ok) { setMutationError(data.error || "Failed to submit"); setSubmitting(false); return; }
       setIsDialogOpen(false);
-      setForm({ employeeId: "", fromSiteId: "", toSiteId: "", fromDepartment: "", toDepartment: "", reason: "", effectiveDate: "" });
+      setForm({ employeeId: "", fromSiteId: "", toSiteId: "", fromDepartment: "", toDepartment: "", reason: "", effectiveDate: "", endDate: "" });
       load();
     } catch { setMutationError("Network error"); }
     setSubmitting(false);
@@ -177,7 +180,7 @@ export default function Transfers() {
   return (
     <div>
       <PageHeader title="Staff Transfers" description="Request and manage staff transfers between sites, branches, and regions.">
-        <Button onClick={() => { setMutationError(null); setForm({ employeeId: "", fromSiteId: "", toSiteId: "", fromDepartment: "", toDepartment: "", reason: "", effectiveDate: "" }); setIsDialogOpen(true); }}>
+        <Button onClick={() => { setMutationError(null); setForm({ employeeId: "", fromSiteId: "", toSiteId: "", fromDepartment: "", toDepartment: "", reason: "", effectiveDate: "", endDate: "" }); setIsDialogOpen(true); }}>
           <Plus className="w-4 h-4 mr-2" /> New Transfer
         </Button>
       </PageHeader>
@@ -230,7 +233,8 @@ export default function Transfers() {
                   </p>
                 </div>
                 <div className="flex items-center gap-3 shrink-0">
-                  <span className="text-xs text-muted-foreground hidden sm:inline">{fmt(t.effectiveDate)}</span>
+                  <span className="text-xs text-muted-foreground hidden sm:inline">{fmt(t.effectiveDate)}{t.endDate ? ` — ${fmt(t.endDate)}` : ""}</span>
+                  {t.endDate && <span className="text-[10px] bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded-full font-medium hidden sm:inline">Temporary</span>}
                   <StatusBadge status={t.status} />
                   <ChevronDown className={`w-4 h-4 text-muted-foreground transition-transform ${expandedId === t.id ? "rotate-180" : ""}`} />
                 </div>
@@ -270,6 +274,12 @@ export default function Transfers() {
                       <p className="text-xs text-muted-foreground uppercase tracking-wide mb-0.5">Effective Date</p>
                       <p className="font-medium">{fmt(t.effectiveDate)}</p>
                     </div>
+                    {t.endDate && (
+                      <div>
+                        <p className="text-xs text-muted-foreground uppercase tracking-wide mb-0.5">End Date</p>
+                        <p className="font-medium">{fmt(t.endDate)} <span className="text-xs text-amber-600 font-normal">(Temporary)</span></p>
+                      </div>
+                    )}
                     <div>
                       <p className="text-xs text-muted-foreground uppercase tracking-wide mb-0.5">Requested By</p>
                       <p className="font-medium">{t.requestedBy?.name ?? "—"}</p>
@@ -404,15 +414,28 @@ export default function Transfers() {
               </div>
             </div>
 
-            <div>
-              <Label className="text-sm font-medium">Effective Date *</Label>
-              <Input
-                type="date"
-                value={form.effectiveDate}
-                onChange={(e: React.ChangeEvent<HTMLInputElement>) => setForm(prev => ({ ...prev, effectiveDate: e.target.value }))}
-                required
-                className="mt-1"
-              />
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <Label className="text-sm font-medium">Effective Date *</Label>
+                <Input
+                  type="date"
+                  value={form.effectiveDate}
+                  onChange={(e: React.ChangeEvent<HTMLInputElement>) => setForm(prev => ({ ...prev, effectiveDate: e.target.value }))}
+                  required
+                  className="mt-1"
+                />
+              </div>
+              <div>
+                <Label className="text-sm font-medium">End Date <span className="text-muted-foreground font-normal">(optional)</span></Label>
+                <Input
+                  type="date"
+                  value={form.endDate}
+                  onChange={(e: React.ChangeEvent<HTMLInputElement>) => setForm(prev => ({ ...prev, endDate: e.target.value }))}
+                  className="mt-1"
+                  min={form.effectiveDate || undefined}
+                />
+                <p className="text-xs text-muted-foreground mt-1">Set for temporary / cover-up duties</p>
+              </div>
             </div>
 
             <div>
