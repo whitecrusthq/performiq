@@ -129,6 +129,8 @@ export default function Leave() {
   const [editingLeaveType, setEditingLeaveType] = useState<LeaveTypeOption | null>(null);
   const [ltSubmitting, setLtSubmitting] = useState(false);
   const [expandedPolicyTeam, setExpandedPolicyTeam] = useState<Record<number, boolean>>({});
+  const [balanceFilterType, setBalanceFilterType] = useState<string>("all");
+  const [balanceFilterName, setBalanceFilterName] = useState<string>("");
 
   const isManager = user && ["super_admin", "admin", "manager"].includes(user.role);
   const isAdmin = user?.role === "admin" || user?.role === "super_admin";
@@ -558,19 +560,60 @@ export default function Leave() {
       {/* BALANCE TAB */}
       {activeTab === "balance" && (
         <div className="space-y-6">
-          {isManager && teamBalances.length > 0 && (
+          {isManager && teamBalances.length > 0 && (() => {
+            const filteredPolicies = balanceFilterType === "all" ? policies : policies.filter(p => p.leaveType === balanceFilterType);
+            const filteredTeam = balanceFilterName
+              ? teamBalances.filter((emp: any) => emp.name?.toLowerCase().includes(balanceFilterName.toLowerCase()))
+              : teamBalances;
+            return (
             <>
               <h3 className="text-lg font-bold text-foreground flex items-center gap-2">
                 <Users className="w-5 h-5 text-primary" />
                 Team Leave Balances
               </h3>
+
+              <div className="flex flex-wrap gap-3">
+                <div className="relative flex-1 min-w-[180px]">
+                  <Filter className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none" />
+                  <input
+                    type="text"
+                    placeholder="Search by name..."
+                    className="w-full pl-9 pr-4 py-2 border rounded-xl bg-background text-sm"
+                    value={balanceFilterName}
+                    onChange={e => setBalanceFilterName(e.target.value)}
+                  />
+                </div>
+                <select
+                  className="px-4 py-2 border rounded-xl bg-background text-sm min-w-[160px]"
+                  value={balanceFilterType}
+                  onChange={e => setBalanceFilterType(e.target.value)}
+                >
+                  <option value="all">All Leave Types</option>
+                  {policies.map(p => <option key={p.leaveType} value={p.leaveType}>{leaveLabel(p.leaveType)}</option>)}
+                </select>
+                {(balanceFilterName || balanceFilterType !== "all") && (
+                  <button
+                    className="px-3 py-2 text-sm text-muted-foreground hover:text-foreground border rounded-xl hover:bg-muted"
+                    onClick={() => { setBalanceFilterName(""); setBalanceFilterType("all"); }}
+                  >
+                    Clear
+                  </button>
+                )}
+              </div>
+
+              {filteredTeam.length === 0 ? (
+                <Card className="p-8 flex flex-col items-center gap-2 text-center">
+                  <Users className="w-8 h-8 text-muted-foreground/40" />
+                  <p className="text-sm text-muted-foreground">No employees match your search.</p>
+                </Card>
+              ) : (
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
                   <thead>
                     <tr className="border-b border-border">
                       <th className="text-left py-3 px-4 font-semibold text-foreground">Employee</th>
                       <th className="text-left py-3 px-4 font-semibold text-foreground">Department</th>
-                      {policies.map(p => (
+                      {filteredPolicies.map(p => (
                         <th key={p.leaveType} className="text-center py-3 px-3 font-semibold text-foreground">
                           {leaveLabel(p.leaveType)}
                         </th>
@@ -578,11 +621,11 @@ export default function Leave() {
                     </tr>
                   </thead>
                   <tbody>
-                    {teamBalances.map((emp: any) => (
+                    {filteredTeam.map((emp: any) => (
                       <tr key={emp.id} className="border-b border-border/50 hover:bg-muted/30">
                         <td className="py-3 px-4 font-medium">{emp.name}</td>
                         <td className="py-3 px-4 text-muted-foreground">{emp.department || "-"}</td>
-                        {policies.map(p => {
+                        {filteredPolicies.map(p => {
                           const bal = emp.balances?.find((b: any) => b.leaveType === p.leaveType);
                           if (!bal) return <td key={p.leaveType} className="text-center py-3 px-3 text-muted-foreground">-</td>;
                           const pct = bal.allocated > 0 ? Math.round((bal.used / bal.allocated) * 100) : 0;
@@ -608,8 +651,10 @@ export default function Leave() {
                   </tbody>
                 </table>
               </div>
+              )}
             </>
-          )}
+            );
+          })()}
 
           {balances.length === 0 && (
             <Card className="p-12 flex flex-col items-center gap-3 text-center">
