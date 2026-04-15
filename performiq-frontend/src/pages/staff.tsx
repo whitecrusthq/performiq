@@ -58,7 +58,7 @@ const TABS: { id: Tab; label: string; icon: any; adminOnly?: boolean }[] = [
   { id: "personal",     label: "Personal",     icon: User },
   { id: "employment",   label: "Employment",   icon: Briefcase },
   { id: "financial",    label: "Financial",     icon: CreditCard },
-  { id: "emergency",    label: "Emergency",     icon: Heart },
+  { id: "emergency",    label: "Next of Kin",   icon: Heart },
   { id: "documents",    label: "Documents",     icon: FolderOpen },
   { id: "disciplinary", label: "Disciplinary",  icon: ShieldAlert, adminOnly: true },
   { id: "notes",        label: "Notes",         icon: FileText },
@@ -322,6 +322,7 @@ function StaffPanel({ staffId, canEdit, onClose, onUpdated }: {
       emergencyContactName: staff.emergencyContactName ?? "",
       emergencyContactPhone: staff.emergencyContactPhone ?? "",
       emergencyContactRelation: staff.emergencyContactRelation ?? "",
+      emergencyContactAddress: staff.emergencyContactAddress ?? "",
       bankName: staff.bankName ?? "",
       bankBranch: staff.bankBranch ?? "",
       bankAccountNumber: staff.bankAccountNumber ?? "",
@@ -637,18 +638,19 @@ function StaffPanel({ staffId, canEdit, onClose, onUpdated }: {
                 </div>
               )}
 
-              {/* Emergency Tab */}
+              {/* Next of Kin Tab */}
               {tab === "emergency" && (
                 <div className="space-y-5">
                   <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-widest flex items-center gap-2">
-                    <Heart className="w-3.5 h-3.5" /> Emergency Contact
+                    <Heart className="w-3.5 h-3.5" /> Next of Kin / Emergency Contact
                   </h3>
                   <div className="grid grid-cols-1 gap-4">
-                    <Field label="Contact Name" value={d.emergencyContactName} editing={editing} placeholder="Full name" onChange={set("emergencyContactName")} />
+                    <Field label="Full Name" value={d.emergencyContactName} editing={editing} placeholder="Full name" onChange={set("emergencyContactName")} />
                     <div className="grid grid-cols-2 gap-3">
                       <Field label="Phone Number" value={d.emergencyContactPhone} editing={editing} type="tel" placeholder="+1 555 000 0000" onChange={set("emergencyContactPhone")} />
-                      <Field label="Relationship" value={d.emergencyContactRelation} editing={editing} placeholder="e.g. Spouse, Parent" onChange={set("emergencyContactRelation")} />
+                      <Field label="Relationship" value={d.emergencyContactRelation} editing={editing} placeholder="e.g. Spouse, Parent, Sibling" onChange={set("emergencyContactRelation")} />
                     </div>
+                    <Field label="Address" value={d.emergencyContactAddress} editing={editing} placeholder="Contact address" onChange={set("emergencyContactAddress")} />
                   </div>
                 </div>
               )}
