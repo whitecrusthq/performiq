@@ -13,3 +13,4 @@ export * from "./security-settings";
 export * from "./app-settings";
 export * from "./transfers";
 export * from "./confirmation";
+export * from "./recruitment";

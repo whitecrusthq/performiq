@@ -23,6 +23,7 @@ import disciplinaryRouter from "./disciplinary";
 import transfersRouter from "./transfers";
 import confirmationRouter from "./confirmation";
 import anniversariesRouter from "./anniversaries";
+import recruitmentRouter from "./recruitment";
 
 const router: IRouter = Router();
 
@@ -50,5 +51,6 @@ router.use(disciplinaryRouter);
 router.use(transfersRouter);
 router.use(confirmationRouter);
 router.use(anniversariesRouter);
+router.use(recruitmentRouter);
 
 export default router;

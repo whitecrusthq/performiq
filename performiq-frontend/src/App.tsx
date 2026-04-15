@@ -31,6 +31,7 @@ import Security from "@/pages/security";
 import Appearance from "@/pages/appearance";
 import Transfers from "@/pages/transfers";
 import Anniversaries from "@/pages/anniversaries";
+import Recruitment from "@/pages/recruitment";
 
 const queryClient = new QueryClient();
 
@@ -122,6 +123,9 @@ function Router() {
       </Route>
       <Route path="/anniversaries">
         <AppLayout><ProtectedRoute component={Anniversaries} /></AppLayout>
+      </Route>
+      <Route path="/recruitment">
+        <AppLayout><ProtectedRoute component={Recruitment} /></AppLayout>
       </Route>
 
       <Route component={NotFound} />

@@ -27,6 +27,7 @@ import {
   IdCard,
   ArrowRightLeft,
   Award,
+  Briefcase,
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { User } from "@/lib";
@@ -39,6 +40,7 @@ const NAV_ITEMS: { name: string; path: string; icon: any; roles: string[]; custo
   { name: "Leave",       path: "/leave",        icon: CalendarDays,    roles: ["super_admin", "admin", "manager", "employee"] },
   { name: "Attendance",  path: "/attendance",   icon: Clock,           roles: ["super_admin", "admin", "manager", "employee"] },
   { name: "Timesheets",  path: "/timesheets",   icon: ClipboardCheck,  roles: ["super_admin", "admin", "manager", "employee"] },
+  { name: "Recruitment", path: "/recruitment",  icon: Briefcase,       roles: ["super_admin", "admin", "manager"] },
   { name: "Onboarding",  path: "/onboarding",   icon: UserPlus,        roles: ["super_admin", "admin"], customRoles: ["hr manager"] },
   { name: "Staff",       path: "/staff",         icon: IdCard,          roles: ["super_admin", "admin", "manager"], customRoles: ["hr manager"] },
   { name: "HR Support",  path: "/hr-queries",   icon: MessageSquareWarning, roles: ["super_admin", "admin", "manager", "employee"], customRoles: ["hr manager"] },
