@@ -24,6 +24,7 @@ import transfersRouter from "./transfers";
 import confirmationRouter from "./confirmation";
 import anniversariesRouter from "./anniversaries";
 import recruitmentRouter from "./recruitment";
+import notificationSettingsRouter from "./notification-settings";
 
 const router: IRouter = Router();
 
@@ -52,5 +53,6 @@ router.use(transfersRouter);
 router.use(confirmationRouter);
 router.use(anniversariesRouter);
 router.use(recruitmentRouter);
+router.use(notificationSettingsRouter);
 
 export default router;

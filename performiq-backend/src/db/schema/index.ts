@@ -14,3 +14,4 @@ export * from "./app-settings";
 export * from "./transfers";
 export * from "./confirmation";
 export * from "./recruitment";
+export * from "./notification-settings";

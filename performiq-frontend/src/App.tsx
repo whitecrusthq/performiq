@@ -32,6 +32,7 @@ import Appearance from "@/pages/appearance";
 import Transfers from "@/pages/transfers";
 import Anniversaries from "@/pages/anniversaries";
 import Recruitment from "@/pages/recruitment";
+import NotificationSettingsPage from "@/pages/notification-settings";
 
 const queryClient = new QueryClient();
 
@@ -126,6 +127,9 @@ function Router() {
       </Route>
       <Route path="/recruitment">
         <AppLayout><ProtectedRoute component={Recruitment} /></AppLayout>
+      </Route>
+      <Route path="/notifications">
+        <AppLayout><ProtectedRoute component={NotificationSettingsPage} /></AppLayout>
       </Route>
 
       <Route component={NotFound} />

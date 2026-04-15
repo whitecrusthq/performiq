@@ -28,6 +28,7 @@ import {
   ArrowRightLeft,
   Award,
   Briefcase,
+  Bell,
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { User } from "@/lib";
@@ -54,6 +55,7 @@ const NAV_ITEMS: { name: string; path: string; icon: any; roles: string[]; custo
   { name: "Staff Transfer",  path: "/transfers",    icon: ArrowRightLeft,  roles: ["super_admin", "admin", "manager"], customRoles: ["hr manager"] },
   { name: "Roles",       path: "/roles",        icon: Shield,          roles: ["super_admin", "admin"] },
   { name: "Security",    path: "/security",     icon: ShieldAlert,     roles: ["super_admin", "admin"] },
+  { name: "Notifications", path: "/notifications", icon: Bell,           roles: ["super_admin", "admin"] },
   { name: "Appearance",  path: "/appearance",   icon: Paintbrush,      roles: ["super_admin", "admin"] },
 ];
 
