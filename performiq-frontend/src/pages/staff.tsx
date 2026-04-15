@@ -6,9 +6,27 @@ import {
   Users, Search, ChevronRight, X, User, Briefcase, Heart,
   CreditCard, FileText, Edit2, Check, Phone, Mail, MapPin,
   Building2, Hash, Plus, RefreshCw, Trash2, FolderOpen, AlertCircle,
-  ShieldAlert, Paperclip, Upload, Eye, ChevronDown,
+  ShieldAlert, Paperclip, Upload, Eye, ChevronDown, Download,
 } from "lucide-react";
 import { apiFetch } from "@/lib/utils";
+
+function csvEscape(val: any): string {
+  if (val == null || val === "") return "";
+  const str = String(val);
+  if (str.includes(",") || str.includes('"') || str.includes("\n")) return `"${str.replace(/"/g, '""')}"`;
+  return str;
+}
+
+function downloadCsv(filename: string, headers: string[], rows: string[][]) {
+  const csv = [headers.map(csvEscape).join(","), ...rows.map(r => r.map(csvEscape).join(","))].join("\n");
+  const blob = new Blob(["\uFEFF" + csv], { type: "text/csv;charset=utf-8;" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(url);
+}
 
 async function apiFetchJson(url: string, opts: RequestInit = {}) {
   const r = await apiFetch(url, opts);
@@ -348,6 +366,38 @@ function StaffPanel({ staffId, canEdit, onClose, onUpdated }: {
               </div>
             </div>
             <div className="flex items-center gap-1 shrink-0">
+              <button onClick={() => {
+                if (!staff) return;
+                const s = staff;
+                const headers = ["Field", "Value"];
+                const rows: string[][] = [
+                  ["Name", s.name ?? ""], ["Email", s.email ?? ""], ["Phone", s.phone ?? ""],
+                  ["Staff ID", s.staffId ?? ""], ["Department", s.department ?? ""], ["Job Title", s.jobTitle ?? ""],
+                  ["Role", s.role?.replace("_", " ") ?? ""], ["Site", s.site?.name ?? ""],
+                  ["Date of Birth", s.dateOfBirth ?? ""], ["Gender", s.gender ?? ""],
+                  ["National ID", s.nationalId ?? ""], ["Start Date", s.startDate ?? ""],
+                  ["Marital Status", s.maritalStatus ?? ""], ["Nationality", s.nationality ?? ""],
+                  ["Religion", s.religion ?? ""], ["State of Origin", s.stateOfOrigin ?? ""],
+                  ["Maiden Name", s.maidenName ?? ""], ["Hobbies", s.hobbies ?? ""],
+                  ["Spouse Name", s.spouseName ?? ""], ["Spouse Occupation", s.spouseOccupation ?? ""],
+                  ["No. of Children", s.numberOfChildren != null ? String(s.numberOfChildren) : ""],
+                  ["Address", s.address ?? ""], ["Permanent Address", s.permanentAddress ?? ""],
+                  ["Temporary Address", s.temporaryAddress ?? ""],
+                  ["City", s.city ?? ""], ["State/Province", s.stateProvince ?? ""],
+                  ["Country", s.country ?? ""], ["Postal Code", s.postalCode ?? ""],
+                  ["Bank Name", s.bankName ?? ""], ["Bank Branch", s.bankBranch ?? ""],
+                  ["Account Name", s.bankAccountName ?? ""], ["Account Number", s.bankAccountNumber ?? ""],
+                  ["Tax ID", s.taxId ?? ""], ["Pension ID", s.pensionId ?? ""],
+                  ["PFA Name", s.pfaName ?? ""], ["RSA PIN", s.rsaPin ?? ""], ["HMO", s.hmo ?? ""],
+                  ["Emergency Contact", s.emergencyContactName ?? ""],
+                  ["Emergency Phone", s.emergencyContactPhone ?? ""],
+                  ["Emergency Relation", s.emergencyContactRelation ?? ""],
+                  ["Emergency Address", s.emergencyContactAddress ?? ""],
+                ];
+                downloadCsv(`staff-${(s.name ?? "profile").replace(/\s+/g, "-").toLowerCase()}-${new Date().toISOString().slice(0, 10)}.csv`, headers, rows);
+              }} className="p-1.5 rounded-lg hover:bg-muted/60 text-muted-foreground" title="Export Profile">
+                <Download className="w-4 h-4" />
+              </button>
               <button onClick={() => refetch()} className="p-1.5 rounded-lg hover:bg-muted/60 text-muted-foreground">
                 <RefreshCw className="w-4 h-4" />
               </button>
@@ -907,6 +957,19 @@ export default function Staff() {
     qc.setQueryData(["staff-detail", updated.id], updated);
   }, [qc]);
 
+  const exportStaffList = () => {
+    const headers = ["Staff ID", "Name", "Email", "Phone", "Department", "Job Title", "Role", "Site", "Start Date", "Date of Birth", "Gender", "Address", "City", "State/Province", "Country", "National ID", "Bank Name", "Bank Account Name", "Emergency Contact", "Emergency Phone"];
+    const rows = filtered.map((u: any) => [
+      u.staffId ?? "", u.name ?? "", u.email ?? "", u.phone ?? "",
+      u.department ?? "", u.jobTitle ?? "", u.role?.replace("_", " ") ?? "",
+      u.site?.name ?? u.siteName ?? "", u.startDate ?? "", u.dateOfBirth ?? "",
+      u.gender ?? "", u.address ?? "", u.city ?? "", u.stateProvince ?? "",
+      u.country ?? "", u.nationalId ?? "", u.bankName ?? "", u.bankAccountName ?? "",
+      u.emergencyContactName ?? "", u.emergencyContactPhone ?? "",
+    ]);
+    downloadCsv(`staff-list-${new Date().toISOString().slice(0, 10)}.csv`, headers, rows);
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between gap-4 flex-wrap">
@@ -916,9 +979,15 @@ export default function Staff() {
             Manage employee details, banking, tax, and emergency contacts
           </p>
         </div>
-        <div className="flex items-center gap-2 text-sm text-muted-foreground">
-          <Users className="w-4 h-4" />
-          <span>{(users as any[]).length} staff members</span>
+        <div className="flex items-center gap-3">
+          <button onClick={exportStaffList}
+            className="flex items-center gap-1.5 px-3 py-2 rounded-xl border border-border text-sm font-medium hover:bg-muted transition-colors">
+            <Download className="w-4 h-4" /> Export List
+          </button>
+          <div className="flex items-center gap-2 text-sm text-muted-foreground">
+            <Users className="w-4 h-4" />
+            <span>{(users as any[]).length} staff members</span>
+          </div>
         </div>
       </div>
 
