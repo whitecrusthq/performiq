@@ -43,6 +43,13 @@
       "when": 1776238236711,
       "tag": "0005_pink_greymalkin",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1776238753583,
+      "tag": "0006_chief_clea",
+      "breakpoints": true
     }
   ]
 }

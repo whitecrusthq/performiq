@@ -56,6 +56,8 @@ export const usersTable = pgTable("users", {
   numberOfChildren: integer("number_of_children"),
   // Employment
   startDate: date("start_date"),
+  probationEndDate: date("probation_end_date"),
+  probationStatus: text("probation_status"),
   // Next of kin
   emergencyContactName: text("emergency_contact_name"),
   emergencyContactPhone: text("emergency_contact_phone"),

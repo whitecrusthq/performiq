@@ -6,7 +6,7 @@ import {
   Users, Search, ChevronRight, X, User, Briefcase, Heart,
   CreditCard, FileText, Edit2, Check, Phone, Mail, MapPin,
   Building2, Hash, Plus, RefreshCw, Trash2, FolderOpen, AlertCircle,
-  ShieldAlert, Paperclip, Upload, Eye, ChevronDown, Download,
+  ShieldAlert, Paperclip, Upload, Eye, ChevronDown, Download, Clock,
 } from "lucide-react";
 import { apiFetch } from "@/lib/utils";
 
@@ -393,6 +393,8 @@ function StaffPanel({ staffId, canEdit, onClose, onUpdated }: {
                   ["Emergency Phone", s.emergencyContactPhone ?? ""],
                   ["Emergency Relation", s.emergencyContactRelation ?? ""],
                   ["Emergency Address", s.emergencyContactAddress ?? ""],
+                  ["Probation End Date", s.probationEndDate ?? ""],
+                  ["Probation Status", s.probationStatus ?? ""],
                 ];
                 downloadCsv(`staff-${(s.name ?? "profile").replace(/\s+/g, "-").toLowerCase()}-${new Date().toISOString().slice(0, 10)}.csv`, headers, rows);
               }} className="p-1.5 rounded-lg hover:bg-muted/60 text-muted-foreground" title="Export Profile">
@@ -531,6 +533,67 @@ function StaffPanel({ staffId, canEdit, onClose, onUpdated }: {
                       )}
                     </div>
                   </div>
+                  {staff?.probationEndDate && (
+                    <div className="border-t border-border/50 pt-4">
+                      <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-3 flex items-center gap-1.5">
+                        <Clock className="w-3.5 h-3.5" /> Probation Period
+                      </h4>
+                      {(() => {
+                        const end = new Date(staff.probationEndDate);
+                        const now = new Date();
+                        const daysLeft = Math.ceil((end.getTime() - now.getTime()) / 86400000);
+                        const status = staff.probationStatus ?? "active";
+                        const statusConfig: Record<string, { label: string; color: string }> = {
+                          active:    { label: "On Probation",  color: "bg-amber-100 text-amber-700" },
+                          extended:  { label: "Extended",       color: "bg-orange-100 text-orange-700" },
+                          confirmed: { label: "Confirmed",      color: "bg-green-100 text-green-700" },
+                          failed:    { label: "Failed",         color: "bg-red-100 text-red-700" },
+                        };
+                        const sc = statusConfig[status] ?? statusConfig.active;
+                        return (
+                          <div className="bg-muted/30 rounded-xl p-4 space-y-2">
+                            <div className="flex items-center gap-2">
+                              <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${sc.color}`}>{sc.label}</span>
+                              <span className="text-sm text-muted-foreground">
+                                Ends: {end.toLocaleDateString([], { year: "numeric", month: "short", day: "numeric" })}
+                              </span>
+                            </div>
+                            {(status === "active" || status === "extended") && (
+                              <p className={`text-sm font-medium ${daysLeft <= 0 ? "text-red-600" : daysLeft <= 14 ? "text-amber-600" : "text-foreground"}`}>
+                                {daysLeft <= 0 ? "Probation period has ended — awaiting confirmation" : `${daysLeft} day${daysLeft !== 1 ? "s" : ""} remaining`}
+                              </p>
+                            )}
+                            {isAdminUser && (status === "active" || status === "extended") && (
+                              <div className="flex gap-2 pt-1">
+                                <button onClick={async () => {
+                                  if (!confirm("Confirm this employee has passed probation?")) return;
+                                  await apiFetchJson(`/api/onboarding/probation/${staffId}`, { method: "PUT", body: JSON.stringify({ action: "confirm" }) });
+                                  refetch();
+                                }} className="px-3 py-1.5 rounded-lg bg-green-600 text-white text-xs font-medium hover:bg-green-700 transition-colors">
+                                  Confirm Passed
+                                </button>
+                                <button onClick={async () => {
+                                  const days = prompt("Extend probation by how many days?", "30");
+                                  if (!days) return;
+                                  await apiFetchJson(`/api/onboarding/probation/${staffId}`, { method: "PUT", body: JSON.stringify({ action: "extend", extendDays: days }) });
+                                  refetch();
+                                }} className="px-3 py-1.5 rounded-lg border border-border text-xs font-medium hover:bg-muted transition-colors">
+                                  Extend
+                                </button>
+                                <button onClick={async () => {
+                                  if (!confirm("Mark this employee as having failed probation?")) return;
+                                  await apiFetchJson(`/api/onboarding/probation/${staffId}`, { method: "PUT", body: JSON.stringify({ action: "fail" }) });
+                                  refetch();
+                                }} className="px-3 py-1.5 rounded-lg text-red-600 border border-red-200 text-xs font-medium hover:bg-red-50 transition-colors">
+                                  Fail
+                                </button>
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })()}
+                    </div>
+                  )}
                   <p className="text-xs text-muted-foreground italic">
                     To update name, email, department, job title or access level — use the User Management page.
                   </p>

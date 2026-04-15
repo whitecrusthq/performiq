@@ -55,6 +55,8 @@ const formatUser = (u: typeof usersTable.$inferSelect, customRole?: typeof custo
   numberOfChildren: u.numberOfChildren,
   // Employment
   startDate: u.startDate,
+  probationEndDate: u.probationEndDate,
+  probationStatus: u.probationStatus,
   // Next of kin
   emergencyContactName: u.emergencyContactName,
   emergencyContactPhone: u.emergencyContactPhone,
@@ -215,7 +217,7 @@ router.put("/users/:id/hr-profile", requireAuth, async (req: AuthRequest, res) =
       // Spouse & family
       spouseName, spouseOccupation, numberOfChildren,
       // Employment
-      startDate,
+      startDate, probationEndDate, probationStatus,
       // Next of kin
       emergencyContactName, emergencyContactPhone, emergencyContactRelation, emergencyContactAddress,
       // Financial
@@ -247,6 +249,8 @@ router.put("/users/:id/hr-profile", requireAuth, async (req: AuthRequest, res) =
       spouseOccupation: spouseOccupation ?? null,
       numberOfChildren: numberOfChildren != null ? Number(numberOfChildren) : null,
       startDate: startDate ?? null,
+      probationEndDate: probationEndDate ?? null,
+      probationStatus: probationStatus ?? null,
       emergencyContactName: emergencyContactName ?? null,
       emergencyContactPhone: emergencyContactPhone ?? null,
       emergencyContactRelation: emergencyContactRelation ?? null,

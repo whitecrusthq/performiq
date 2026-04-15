@@ -178,7 +178,7 @@ router.get("/onboarding/workflows", requireAuth, async (req: AuthRequest, res) =
 // POST /api/onboarding/workflows  — start a workflow
 router.post("/onboarding/workflows", requireAuth, requireHRAccess, async (req: AuthRequest, res) => {
   try {
-    const { employeeId, templateId, type, title, notes, targetCompletionDate, tasks = [] } = req.body;
+    const { employeeId, templateId, type, title, notes, targetCompletionDate, tasks = [], probationDays } = req.body;
     if (!employeeId || !type || !title) {
       res.status(400).json({ error: "employeeId, type, and title are required" });
       return;
@@ -193,6 +193,15 @@ router.post("/onboarding/workflows", requireAuth, requireHRAccess, async (req: A
       startedById: req.user!.id,
       targetCompletionDate: targetCompletionDate ? new Date(targetCompletionDate) : null,
     }).returning();
+
+    if (type === "onboarding" && probationDays && parseInt(probationDays) > 0) {
+      const endDate = new Date();
+      endDate.setDate(endDate.getDate() + parseInt(probationDays));
+      await db.update(usersTable).set({
+        probationEndDate: endDate.toISOString().split("T")[0],
+        probationStatus: "active",
+      }).where(eq(usersTable.id, parseInt(employeeId)));
+    }
 
     // If tasks provided explicitly, use those; else copy from template
     let taskSource = tasks;
@@ -450,6 +459,42 @@ router.delete("/onboarding/documents/:docId", requireAuth, requireHRAccess, asyn
     const docId = parseInt(req.params.docId);
     await db.delete(onboardingDocumentsTable).where(eq(onboardingDocumentsTable.id, docId));
     res.json({ message: "Deleted" });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Server error" });
+  }
+});
+
+// ─── Probation ────────────────────────────────────────────────────────────────
+
+router.put("/onboarding/probation/:userId", requireAuth, requireHRAccess, async (req: AuthRequest, res) => {
+  try {
+    const userId = parseInt(req.params.userId);
+    const { action, extendDays } = req.body;
+    if (!["confirm", "extend", "fail"].includes(action)) {
+      res.status(400).json({ error: "action must be confirm, extend, or fail" });
+      return;
+    }
+    const [user] = await db.select().from(usersTable).where(eq(usersTable.id, userId)).limit(1);
+    if (!user) { res.status(404).json({ error: "User not found" }); return; }
+
+    if (action === "confirm") {
+      await db.update(usersTable).set({ probationStatus: "confirmed" }).where(eq(usersTable.id, userId));
+    } else if (action === "fail") {
+      await db.update(usersTable).set({ probationStatus: "failed" }).where(eq(usersTable.id, userId));
+    } else if (action === "extend") {
+      const days = parseInt(extendDays) || 30;
+      const currentEnd = user.probationEndDate ? new Date(user.probationEndDate) : new Date();
+      const newEnd = new Date(Math.max(currentEnd.getTime(), Date.now()));
+      newEnd.setDate(newEnd.getDate() + days);
+      await db.update(usersTable).set({
+        probationEndDate: newEnd.toISOString().split("T")[0],
+        probationStatus: "extended",
+      }).where(eq(usersTable.id, userId));
+    }
+
+    const [updated] = await db.select().from(usersTable).where(eq(usersTable.id, userId)).limit(1);
+    res.json({ probationEndDate: updated.probationEndDate, probationStatus: updated.probationStatus });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "Server error" });

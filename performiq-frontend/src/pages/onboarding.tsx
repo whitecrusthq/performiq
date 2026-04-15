@@ -61,6 +61,8 @@ function StartWorkflowDialog({
   const [customizeTasks, setCustomizeTasks] = useState(false);
   const [tasks, setTasks] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
+  const [enableProbation, setEnableProbation] = useState(false);
+  const [probationDays, setProbationDays] = useState("90");
   const { toast } = useToast();
 
   const filtered = templates.filter(t => t.type === type);
@@ -69,6 +71,7 @@ function StartWorkflowDialog({
     if (!open) return;
     setType("onboarding"); setEmployeeId(""); setTemplateId("");
     setTitle(""); setNotes(""); setTargetDate(""); setCustomizeTasks(false); setTasks([]);
+    setEnableProbation(false); setProbationDays("90");
   }, [open]);
 
   useEffect(() => {
@@ -90,7 +93,7 @@ function StartWorkflowDialog({
     if (!employeeId || !title.trim()) { toast({ title: "Employee and title required", variant: "destructive" }); return; }
     setLoading(true);
     try {
-      const body: any = { employeeId, type, title, notes, targetCompletionDate: targetDate || undefined, templateId: templateId || undefined };
+      const body: any = { employeeId, type, title, notes, targetCompletionDate: targetDate || undefined, templateId: templateId || undefined, probationDays: (type === "onboarding" && enableProbation && probationDays) ? probationDays : undefined };
       if (customizeTasks) {
         body.tasks = tasks.filter(t => t.title.trim()).map(t => ({
           title: t.title, description: t.description, category: t.category,
@@ -176,6 +179,34 @@ function StartWorkflowDialog({
               className="w-full mt-1 px-3 py-2 rounded-xl border border-border bg-background focus:ring-2 focus:ring-primary/20 outline-none resize-none"
               placeholder="Any additional context..." />
           </div>
+
+          {/* Probation Period (onboarding only) */}
+          {type === "onboarding" && (
+            <div className="border border-border rounded-xl p-4 space-y-3">
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input type="checkbox" checked={enableProbation} onChange={e => setEnableProbation(e.target.checked)} className="rounded accent-primary w-4 h-4" />
+                <span className="text-sm font-medium">Enable Probation Period</span>
+              </label>
+              {enableProbation && (
+                <div className="flex items-center gap-3">
+                  <div className="flex-1">
+                    <Label>Duration (days)</Label>
+                    <input type="number" min="1" value={probationDays} onChange={e => setProbationDays(e.target.value)}
+                      className="w-full mt-1 px-3 py-2 rounded-xl border border-border bg-background focus:ring-2 focus:ring-primary/20 outline-none"
+                      placeholder="e.g. 90" />
+                  </div>
+                  <div className="flex-1">
+                    <Label>Ends on</Label>
+                    <p className="mt-1 px-3 py-2 text-sm text-muted-foreground">
+                      {probationDays && parseInt(probationDays) > 0
+                        ? format(new Date(Date.now() + parseInt(probationDays) * 86400000), "MMM d, yyyy")
+                        : "—"}
+                    </p>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
 
           {/* Customise tasks */}
           {templateId && (
@@ -560,6 +591,29 @@ function WorkflowDetail({
                   Target: {format(new Date(workflow.targetCompletionDate), "MMM d, yyyy")}
                 </p>
               )}
+
+              {workflow.type === "onboarding" && workflow.employee?.probationEndDate && (() => {
+                const end = new Date(workflow.employee.probationEndDate);
+                const daysLeft = Math.ceil((end.getTime() - Date.now()) / 86400000);
+                const status = workflow.employee.probationStatus ?? "active";
+                const cfg: Record<string, { label: string; color: string }> = {
+                  active: { label: "On Probation", color: "bg-amber-100 text-amber-700" },
+                  extended: { label: "Extended", color: "bg-orange-100 text-orange-700" },
+                  confirmed: { label: "Confirmed", color: "bg-green-100 text-green-700" },
+                  failed: { label: "Failed", color: "bg-red-100 text-red-700" },
+                };
+                const sc = cfg[status] ?? cfg.active;
+                return (
+                  <div className="mt-2 flex items-center gap-2 flex-wrap">
+                    <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${sc.color}`}>{sc.label}</span>
+                    <span className="text-xs text-muted-foreground">
+                      {(status === "active" || status === "extended")
+                        ? daysLeft <= 0 ? "Ended — awaiting decision" : `${daysLeft}d left (ends ${format(end, "MMM d, yyyy")})`
+                        : `Ended ${format(end, "MMM d, yyyy")}`}
+                    </span>
+                  </div>
+                );
+              })()}
             </>
           )}
         </div>
