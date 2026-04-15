@@ -6,8 +6,27 @@ import {
   Users, Search, ChevronRight, X, User, Briefcase, Heart,
   CreditCard, FileText, Edit2, Check, Phone, Mail, MapPin,
   Building2, Hash, Plus, RefreshCw, Trash2, FolderOpen, AlertCircle,
+  ShieldAlert, Paperclip, Upload, Eye, ChevronDown, Download, Clock,
 } from "lucide-react";
 import { apiFetch } from "@/lib/utils";
+
+function csvEscape(val: any): string {
+  if (val == null || val === "") return "";
+  const str = String(val);
+  if (str.includes(",") || str.includes('"') || str.includes("\n")) return `"${str.replace(/"/g, '""')}"`;
+  return str;
+}
+
+function downloadCsv(filename: string, headers: string[], rows: string[][]) {
+  const csv = [headers.map(csvEscape).join(","), ...rows.map(r => r.map(csvEscape).join(","))].join("\n");
+  const blob = new Blob(["\uFEFF" + csv], { type: "text/csv;charset=utf-8;" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(url);
+}
 
 async function apiFetchJson(url: string, opts: RequestInit = {}) {
   const r = await apiFetch(url, opts);
@@ -33,15 +52,16 @@ function Avatar({ name, photo, size = 40 }: { name: string; photo?: string | nul
   );
 }
 
-type Tab = "personal" | "employment" | "financial" | "emergency" | "notes" | "documents";
+type Tab = "personal" | "employment" | "financial" | "emergency" | "notes" | "documents" | "disciplinary";
 
-const TABS: { id: Tab; label: string; icon: any }[] = [
-  { id: "personal",   label: "Personal",   icon: User },
-  { id: "employment", label: "Employment", icon: Briefcase },
-  { id: "financial",  label: "Financial",  icon: CreditCard },
-  { id: "emergency",  label: "Emergency",  icon: Heart },
-  { id: "documents",  label: "Documents",  icon: FolderOpen },
-  { id: "notes",      label: "Notes",      icon: FileText },
+const TABS: { id: Tab; label: string; icon: any; adminOnly?: boolean }[] = [
+  { id: "personal",     label: "Personal",     icon: User },
+  { id: "employment",   label: "Employment",   icon: Briefcase },
+  { id: "financial",    label: "Financial",     icon: CreditCard },
+  { id: "emergency",    label: "Next of Kin",   icon: Heart },
+  { id: "documents",    label: "Documents",     icon: FolderOpen },
+  { id: "disciplinary", label: "Disciplinary",  icon: ShieldAlert, adminOnly: true },
+  { id: "notes",        label: "Notes",         icon: FileText },
 ];
 
 const DOC_TYPES: { value: string; label: string; color: string }[] = [
@@ -134,13 +154,31 @@ function TextareaField({ label, value, editing, placeholder, onChange }: {
 }
 
 // ── Staff Detail Panel ─────────────────────────────────────────────────────────
+const SEVERITY_CONFIG: Record<string, { label: string; color: string }> = {
+  minor:    { label: "Minor",    color: "bg-yellow-100 text-yellow-700" },
+  moderate: { label: "Moderate", color: "bg-orange-100 text-orange-700" },
+  major:    { label: "Major",    color: "bg-red-100 text-red-700" },
+  critical: { label: "Critical", color: "bg-red-200 text-red-800" },
+};
+
+const RECORD_TYPES: { value: string; label: string }[] = [
+  { value: "disciplinary", label: "Disciplinary Action" },
+  { value: "performance",  label: "Performance Query" },
+  { value: "warning",      label: "Warning" },
+  { value: "suspension",   label: "Suspension" },
+  { value: "misconduct",   label: "Misconduct" },
+  { value: "other",        label: "Other" },
+];
+
 function StaffPanel({ staffId, canEdit, onClose, onUpdated }: {
   staffId: number; canEdit: boolean; onClose: () => void; onUpdated: (u: any) => void;
 }) {
+  const { user: currentUser } = useAuth();
   const { toast } = useToast();
   const [tab, setTab] = useState<Tab>("personal");
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState<any>({});
+  const isAdminUser = currentUser?.role === "admin" || currentUser?.role === "super_admin";
 
   const { data: staff, isLoading, refetch } = useQuery({
     queryKey: ["staff-detail", staffId],
@@ -190,21 +228,103 @@ function StaffPanel({ staffId, canEdit, onClose, onUpdated }: {
     onError: (e: any) => toast({ title: "Error", description: e.message, variant: "destructive" }),
   });
 
+  const [addingRecord, setAddingRecord] = useState(false);
+  const [recordDraft, setRecordDraft] = useState({ type: "disciplinary", subject: "", description: "", sanctionApplied: "", severity: "minor", incidentDate: "" });
+  const [pendingFiles, setPendingFiles] = useState<{ file: File; name: string }[]>([]);
+  const [uploadingRecord, setUploadingRecord] = useState(false);
+  const [expandedRecord, setExpandedRecord] = useState<number | null>(null);
+
+  const { data: disciplinaryRecords = [], refetch: refetchDisciplinary } = useQuery<any[]>({
+    queryKey: ["staff-disciplinary", staffId],
+    queryFn: () => apiFetchJson(`/api/users/${staffId}/disciplinary`),
+    enabled: tab === "disciplinary" && isAdminUser,
+  });
+
+  const handleAddRecord = async () => {
+    if (!recordDraft.subject.trim()) return;
+    setUploadingRecord(true);
+    try {
+      const uploadedAttachments: any[] = [];
+      for (const pf of pendingFiles) {
+        const urlRes = await apiFetchJson("/api/storage/uploads/request-url", { method: "POST" });
+        await fetch(urlRes.uploadURL, {
+          method: "PUT",
+          headers: { "Content-Type": pf.file.type },
+          body: pf.file,
+        });
+        uploadedAttachments.push({
+          fileName: pf.name,
+          fileType: pf.file.type,
+          objectPath: urlRes.objectPath,
+        });
+      }
+      await apiFetchJson(`/api/users/${staffId}/disciplinary`, {
+        method: "POST",
+        body: JSON.stringify({ ...recordDraft, attachments: uploadedAttachments }),
+      });
+      refetchDisciplinary();
+      setAddingRecord(false);
+      setRecordDraft({ type: "disciplinary", subject: "", description: "", sanctionApplied: "", severity: "minor", incidentDate: "" });
+      setPendingFiles([]);
+      toast({ title: "Record added" });
+    } catch (e: any) {
+      toast({ title: "Error", description: e.message, variant: "destructive" });
+    }
+    setUploadingRecord(false);
+  };
+
+  const handleAddAttachment = async (recordId: number, file: File) => {
+    try {
+      const urlRes = await apiFetchJson("/api/storage/uploads/request-url", { method: "POST" });
+      await fetch(urlRes.uploadURL, {
+        method: "PUT",
+        headers: { "Content-Type": file.type },
+        body: file,
+      });
+      await apiFetchJson(`/api/users/${staffId}/disciplinary/${recordId}/attachments`, {
+        method: "POST",
+        body: JSON.stringify({ fileName: file.name, fileType: file.type, objectPath: urlRes.objectPath }),
+      });
+      refetchDisciplinary();
+      toast({ title: "File attached" });
+    } catch (e: any) {
+      toast({ title: "Upload failed", description: e.message, variant: "destructive" });
+    }
+  };
+
+  const deleteRecord = useMutation({
+    mutationFn: (id: number) => apiFetchJson(`/api/users/${staffId}/disciplinary/${id}`, { method: "DELETE" }),
+    onSuccess: () => { refetchDisciplinary(); toast({ title: "Record deleted" }); },
+    onError: (e: any) => toast({ title: "Error", description: e.message, variant: "destructive" }),
+  });
+
+  const deleteAttachment = useMutation({
+    mutationFn: ({ recordId, attachmentId }: { recordId: number; attachmentId: number }) =>
+      apiFetchJson(`/api/users/${staffId}/disciplinary/${recordId}/attachments/${attachmentId}`, { method: "DELETE" }),
+    onSuccess: () => { refetchDisciplinary(); toast({ title: "Attachment removed" }); },
+    onError: (e: any) => toast({ title: "Error", description: e.message, variant: "destructive" }),
+  });
+
   const startEdit = () => {
     if (!staff) return;
     setDraft({
       address: staff.address ?? "",
+      permanentAddress: staff.permanentAddress ?? "",
+      temporaryAddress: staff.temporaryAddress ?? "",
       city: staff.city ?? "",
       stateProvince: staff.stateProvince ?? "",
       country: staff.country ?? "",
       postalCode: staff.postalCode ?? "",
       dateOfBirth: staff.dateOfBirth ?? "",
       gender: staff.gender ?? "",
+      maritalStatus: staff.maritalStatus ?? "",
+      religion: staff.religion ?? "",
       nationalId: staff.nationalId ?? "",
       startDate: staff.startDate ?? "",
       emergencyContactName: staff.emergencyContactName ?? "",
       emergencyContactPhone: staff.emergencyContactPhone ?? "",
       emergencyContactRelation: staff.emergencyContactRelation ?? "",
+      emergencyContactAddress: staff.emergencyContactAddress ?? "",
       bankName: staff.bankName ?? "",
       bankBranch: staff.bankBranch ?? "",
       bankAccountNumber: staff.bankAccountNumber ?? "",
@@ -251,6 +371,40 @@ function StaffPanel({ staffId, canEdit, onClose, onUpdated }: {
               </div>
             </div>
             <div className="flex items-center gap-1 shrink-0">
+              <button onClick={() => {
+                if (!staff) return;
+                const s = staff;
+                const headers = ["Field", "Value"];
+                const rows: string[][] = [
+                  ["Name", s.name ?? ""], ["Email", s.email ?? ""], ["Phone", s.phone ?? ""],
+                  ["Staff ID", s.staffId ?? ""], ["Department", s.department ?? ""], ["Job Title", s.jobTitle ?? ""],
+                  ["Role", s.role?.replace("_", " ") ?? ""], ["Site", s.site?.name ?? ""],
+                  ["Date of Birth", s.dateOfBirth ?? ""], ["Gender", s.gender ?? ""],
+                  ["National ID", s.nationalId ?? ""], ["Start Date", s.startDate ?? ""],
+                  ["Marital Status", s.maritalStatus ?? ""], ["Nationality", s.nationality ?? ""],
+                  ["Religion", s.religion ?? ""], ["State of Origin", s.stateOfOrigin ?? ""],
+                  ["Maiden Name", s.maidenName ?? ""], ["Hobbies", s.hobbies ?? ""],
+                  ["Spouse Name", s.spouseName ?? ""], ["Spouse Occupation", s.spouseOccupation ?? ""],
+                  ["No. of Children", s.numberOfChildren != null ? String(s.numberOfChildren) : ""],
+                  ["Address", s.address ?? ""], ["Permanent Address", s.permanentAddress ?? ""],
+                  ["Temporary Address", s.temporaryAddress ?? ""],
+                  ["City", s.city ?? ""], ["State/Province", s.stateProvince ?? ""],
+                  ["Country", s.country ?? ""], ["Postal Code", s.postalCode ?? ""],
+                  ["Bank Name", s.bankName ?? ""], ["Bank Branch", s.bankBranch ?? ""],
+                  ["Account Name", s.bankAccountName ?? ""], ["Account Number", s.bankAccountNumber ?? ""],
+                  ["Tax ID", s.taxId ?? ""], ["Pension ID", s.pensionId ?? ""],
+                  ["PFA Name", s.pfaName ?? ""], ["RSA PIN", s.rsaPin ?? ""], ["HMO", s.hmo ?? ""],
+                  ["Emergency Contact", s.emergencyContactName ?? ""],
+                  ["Emergency Phone", s.emergencyContactPhone ?? ""],
+                  ["Emergency Relation", s.emergencyContactRelation ?? ""],
+                  ["Emergency Address", s.emergencyContactAddress ?? ""],
+                  ["Probation End Date", s.probationEndDate ?? ""],
+                  ["Probation Status", s.probationStatus ?? ""],
+                ];
+                downloadCsv(`staff-${(s.name ?? "profile").replace(/\s+/g, "-").toLowerCase()}-${new Date().toISOString().slice(0, 10)}.csv`, headers, rows);
+              }} className="p-1.5 rounded-lg hover:bg-muted/60 text-muted-foreground" title="Export Profile">
+                <Download className="w-4 h-4" />
+              </button>
               <button onClick={() => refetch()} className="p-1.5 rounded-lg hover:bg-muted/60 text-muted-foreground">
                 <RefreshCw className="w-4 h-4" />
               </button>
@@ -268,7 +422,7 @@ function StaffPanel({ staffId, canEdit, onClose, onUpdated }: {
 
         {/* Tabs */}
         <div className="flex border-b border-border overflow-x-auto shrink-0">
-          {TABS.map(t => {
+          {TABS.filter(t => !t.adminOnly || isAdminUser).map(t => {
             const Icon = t.icon;
             return (
               <button key={t.id} onClick={() => setTab(t.id)}
@@ -326,6 +480,10 @@ function StaffPanel({ staffId, canEdit, onClose, onUpdated }: {
                     <SelectField label="Gender" value={d.gender} editing={editing}
                       options={[{ value: "male", label: "Male" }, { value: "female", label: "Female" }, { value: "other", label: "Other" }, { value: "prefer_not_to_say", label: "Prefer not to say" }]}
                       onChange={set("gender")} />
+                    <SelectField label="Marital Status" value={d.maritalStatus} editing={editing}
+                      options={[{ value: "single", label: "Single" }, { value: "married", label: "Married" }, { value: "divorced", label: "Divorced" }, { value: "widowed", label: "Widowed" }, { value: "separated", label: "Separated" }]}
+                      onChange={set("maritalStatus")} />
+                    <Field label="Religion" value={d.religion} editing={editing} placeholder="e.g. Christianity, Islam" onChange={set("religion")} />
                     <Field label="National ID / Passport" value={d.nationalId} editing={editing} placeholder="e.g. A1234567" onChange={set("nationalId")} />
                     <Field label="Start Date" value={d.startDate} editing={editing} type="date" onChange={set("startDate")} />
                   </div>
@@ -334,7 +492,8 @@ function StaffPanel({ staffId, canEdit, onClose, onUpdated }: {
                       <MapPin className="w-3.5 h-3.5" /> Address
                     </h4>
                     <div className="space-y-3">
-                      <Field label="Street Address" value={d.address} editing={editing} placeholder="123 Main Street" onChange={set("address")} />
+                      <Field label="Permanent Address" value={d.permanentAddress} editing={editing} placeholder="Permanent / home address" onChange={set("permanentAddress")} />
+                      <Field label="Temporary Address" value={d.temporaryAddress} editing={editing} placeholder="Current / temporary address (if different)" onChange={set("temporaryAddress")} />
                       <div className="grid grid-cols-2 gap-3">
                         <Field label="City" value={d.city} editing={editing} onChange={set("city")} />
                         <Field label="State / Province" value={d.stateProvince} editing={editing} onChange={set("stateProvince")} />
@@ -384,6 +543,67 @@ function StaffPanel({ staffId, canEdit, onClose, onUpdated }: {
                       )}
                     </div>
                   </div>
+                  {staff?.probationEndDate && (
+                    <div className="border-t border-border/50 pt-4">
+                      <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-3 flex items-center gap-1.5">
+                        <Clock className="w-3.5 h-3.5" /> Probation Period
+                      </h4>
+                      {(() => {
+                        const end = new Date(staff.probationEndDate);
+                        const now = new Date();
+                        const daysLeft = Math.ceil((end.getTime() - now.getTime()) / 86400000);
+                        const status = staff.probationStatus ?? "active";
+                        const statusConfig: Record<string, { label: string; color: string }> = {
+                          active:    { label: "On Probation",  color: "bg-amber-100 text-amber-700" },
+                          extended:  { label: "Extended",       color: "bg-orange-100 text-orange-700" },
+                          confirmed: { label: "Confirmed",      color: "bg-green-100 text-green-700" },
+                          failed:    { label: "Failed",         color: "bg-red-100 text-red-700" },
+                        };
+                        const sc = statusConfig[status] ?? statusConfig.active;
+                        return (
+                          <div className="bg-muted/30 rounded-xl p-4 space-y-2">
+                            <div className="flex items-center gap-2">
+                              <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${sc.color}`}>{sc.label}</span>
+                              <span className="text-sm text-muted-foreground">
+                                Ends: {end.toLocaleDateString([], { year: "numeric", month: "short", day: "numeric" })}
+                              </span>
+                            </div>
+                            {(status === "active" || status === "extended") && (
+                              <p className={`text-sm font-medium ${daysLeft <= 0 ? "text-red-600" : daysLeft <= 14 ? "text-amber-600" : "text-foreground"}`}>
+                                {daysLeft <= 0 ? "Probation period has ended — awaiting confirmation" : `${daysLeft} day${daysLeft !== 1 ? "s" : ""} remaining`}
+                              </p>
+                            )}
+                            {isAdminUser && (status === "active" || status === "extended") && (
+                              <div className="flex gap-2 pt-1">
+                                <button onClick={async () => {
+                                  if (!confirm("Confirm this employee has passed probation?")) return;
+                                  await apiFetchJson(`/api/onboarding/probation/${staffId}`, { method: "PUT", body: JSON.stringify({ action: "confirm" }) });
+                                  refetch();
+                                }} className="px-3 py-1.5 rounded-lg bg-green-600 text-white text-xs font-medium hover:bg-green-700 transition-colors">
+                                  Confirm Passed
+                                </button>
+                                <button onClick={async () => {
+                                  const days = prompt("Extend probation by how many days?", "30");
+                                  if (!days) return;
+                                  await apiFetchJson(`/api/onboarding/probation/${staffId}`, { method: "PUT", body: JSON.stringify({ action: "extend", extendDays: days }) });
+                                  refetch();
+                                }} className="px-3 py-1.5 rounded-lg border border-border text-xs font-medium hover:bg-muted transition-colors">
+                                  Extend
+                                </button>
+                                <button onClick={async () => {
+                                  if (!confirm("Mark this employee as having failed probation?")) return;
+                                  await apiFetchJson(`/api/onboarding/probation/${staffId}`, { method: "PUT", body: JSON.stringify({ action: "fail" }) });
+                                  refetch();
+                                }} className="px-3 py-1.5 rounded-lg text-red-600 border border-red-200 text-xs font-medium hover:bg-red-50 transition-colors">
+                                  Fail
+                                </button>
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })()}
+                    </div>
+                  )}
                   <p className="text-xs text-muted-foreground italic">
                     To update name, email, department, job title or access level — use the User Management page.
                   </p>
@@ -421,18 +641,19 @@ function StaffPanel({ staffId, canEdit, onClose, onUpdated }: {
                 </div>
               )}
 
-              {/* Emergency Tab */}
+              {/* Next of Kin Tab */}
               {tab === "emergency" && (
                 <div className="space-y-5">
                   <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-widest flex items-center gap-2">
-                    <Heart className="w-3.5 h-3.5" /> Emergency Contact
+                    <Heart className="w-3.5 h-3.5" /> Next of Kin / Emergency Contact
                   </h3>
                   <div className="grid grid-cols-1 gap-4">
-                    <Field label="Contact Name" value={d.emergencyContactName} editing={editing} placeholder="Full name" onChange={set("emergencyContactName")} />
+                    <Field label="Full Name" value={d.emergencyContactName} editing={editing} placeholder="Full name" onChange={set("emergencyContactName")} />
                     <div className="grid grid-cols-2 gap-3">
                       <Field label="Phone Number" value={d.emergencyContactPhone} editing={editing} type="tel" placeholder="+1 555 000 0000" onChange={set("emergencyContactPhone")} />
-                      <Field label="Relationship" value={d.emergencyContactRelation} editing={editing} placeholder="e.g. Spouse, Parent" onChange={set("emergencyContactRelation")} />
+                      <Field label="Relationship" value={d.emergencyContactRelation} editing={editing} placeholder="e.g. Spouse, Parent, Sibling" onChange={set("emergencyContactRelation")} />
                     </div>
+                    <Field label="Address" value={d.emergencyContactAddress} editing={editing} placeholder="Contact address" onChange={set("emergencyContactAddress")} />
                   </div>
                 </div>
               )}
@@ -558,6 +779,201 @@ function StaffPanel({ staffId, canEdit, onClose, onUpdated }: {
                 </div>
               )}
 
+              {/* Disciplinary Tab */}
+              {tab === "disciplinary" && isAdminUser && (
+                <div className="space-y-5">
+                  <div className="flex items-center justify-between">
+                    <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-widest flex items-center gap-2">
+                      <ShieldAlert className="w-3.5 h-3.5" /> Disciplinary & Performance Records
+                    </h3>
+                    {!addingRecord && (
+                      <button onClick={() => setAddingRecord(true)}
+                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-primary text-primary-foreground text-xs font-medium hover:bg-primary/90 transition-colors">
+                        <Plus className="w-3.5 h-3.5" /> Add Record
+                      </button>
+                    )}
+                  </div>
+
+                  {addingRecord && (
+                    <div className="border border-border rounded-xl p-4 space-y-3 bg-muted/20">
+                      <div className="grid grid-cols-2 gap-3">
+                        <div>
+                          <label className="block text-xs font-semibold text-muted-foreground mb-1 uppercase">Type</label>
+                          <select value={recordDraft.type} onChange={e => setRecordDraft(p => ({ ...p, type: e.target.value }))}
+                            className="w-full px-3 py-2 rounded-xl border border-border bg-background text-sm">
+                            {RECORD_TYPES.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
+                          </select>
+                        </div>
+                        <div>
+                          <label className="block text-xs font-semibold text-muted-foreground mb-1 uppercase">Severity</label>
+                          <select value={recordDraft.severity} onChange={e => setRecordDraft(p => ({ ...p, severity: e.target.value }))}
+                            className="w-full px-3 py-2 rounded-xl border border-border bg-background text-sm">
+                            {Object.entries(SEVERITY_CONFIG).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
+                          </select>
+                        </div>
+                      </div>
+                      <div>
+                        <label className="block text-xs font-semibold text-muted-foreground mb-1 uppercase">Subject *</label>
+                        <input value={recordDraft.subject} onChange={e => setRecordDraft(p => ({ ...p, subject: e.target.value }))}
+                          placeholder="Brief summary of the issue" className="w-full px-3 py-2 rounded-xl border border-border bg-background text-sm" />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-semibold text-muted-foreground mb-1 uppercase">Description</label>
+                        <textarea value={recordDraft.description} onChange={e => setRecordDraft(p => ({ ...p, description: e.target.value }))}
+                          placeholder="Full details of the incident or query..." rows={3}
+                          className="w-full px-3 py-2 rounded-xl border border-border bg-background text-sm resize-none" />
+                      </div>
+                      <div className="grid grid-cols-2 gap-3">
+                        <div>
+                          <label className="block text-xs font-semibold text-muted-foreground mb-1 uppercase">Sanction Applied</label>
+                          <input value={recordDraft.sanctionApplied} onChange={e => setRecordDraft(p => ({ ...p, sanctionApplied: e.target.value }))}
+                            placeholder="e.g. Written warning, Suspension..."
+                            className="w-full px-3 py-2 rounded-xl border border-border bg-background text-sm" />
+                        </div>
+                        <div>
+                          <label className="block text-xs font-semibold text-muted-foreground mb-1 uppercase">Incident Date</label>
+                          <input type="date" value={recordDraft.incidentDate} onChange={e => setRecordDraft(p => ({ ...p, incidentDate: e.target.value }))}
+                            className="w-full px-3 py-2 rounded-xl border border-border bg-background text-sm" />
+                        </div>
+                      </div>
+
+                      <div>
+                        <label className="block text-xs font-semibold text-muted-foreground mb-1 uppercase">Attachments</label>
+                        <div className="flex flex-wrap gap-2 mb-2">
+                          {pendingFiles.map((pf, i) => (
+                            <span key={i} className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-muted text-xs">
+                              <Paperclip className="w-3 h-3" /> {pf.name}
+                              <button onClick={() => setPendingFiles(prev => prev.filter((_, j) => j !== i))} className="text-muted-foreground hover:text-destructive">
+                                <X className="w-3 h-3" />
+                              </button>
+                            </span>
+                          ))}
+                        </div>
+                        <label className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-dashed border-border text-xs font-medium text-muted-foreground hover:text-foreground hover:border-primary/50 cursor-pointer transition-colors">
+                          <Upload className="w-3.5 h-3.5" /> Choose Files
+                          <input type="file" multiple className="hidden" onChange={e => {
+                            const files = Array.from(e.target.files || []);
+                            setPendingFiles(prev => [...prev, ...files.map(f => ({ file: f, name: f.name }))]);
+                            e.target.value = "";
+                          }} />
+                        </label>
+                        <p className="text-xs text-muted-foreground mt-1">Screenshots, documents, evidence files</p>
+                      </div>
+
+                      <div className="flex gap-2 justify-end pt-1">
+                        <button onClick={() => { setAddingRecord(false); setPendingFiles([]); setRecordDraft({ type: "disciplinary", subject: "", description: "", sanctionApplied: "", severity: "minor", incidentDate: "" }); }}
+                          className="px-3 py-1.5 rounded-xl border border-border text-xs font-medium hover:bg-muted transition-colors">
+                          Cancel
+                        </button>
+                        <button onClick={handleAddRecord}
+                          disabled={!recordDraft.subject.trim() || uploadingRecord}
+                          className="px-3 py-1.5 rounded-xl bg-primary text-primary-foreground text-xs font-medium hover:bg-primary/90 disabled:opacity-50 transition-colors flex items-center gap-1">
+                          <Check className="w-3.5 h-3.5" />
+                          {uploadingRecord ? "Saving…" : "Save Record"}
+                        </button>
+                      </div>
+                    </div>
+                  )}
+
+                  {(disciplinaryRecords as any[]).length === 0 && !addingRecord ? (
+                    <div className="text-center py-10 text-muted-foreground">
+                      <ShieldAlert className="w-8 h-8 mx-auto mb-2 opacity-30" />
+                      <p className="text-sm">No disciplinary records</p>
+                      <p className="text-xs mt-1">Add disciplinary actions, performance queries, and sanctions</p>
+                    </div>
+                  ) : (
+                    <div className="space-y-3">
+                      {(disciplinaryRecords as any[]).map((rec: any) => {
+                        const sevCfg = SEVERITY_CONFIG[rec.severity] ?? SEVERITY_CONFIG.minor;
+                        const typeCfg = RECORD_TYPES.find(t => t.value === rec.type);
+                        const isExpanded = expandedRecord === rec.id;
+                        return (
+                          <div key={rec.id} className="border border-border rounded-xl overflow-hidden">
+                            <button onClick={() => setExpandedRecord(isExpanded ? null : rec.id)}
+                              className="w-full flex items-start gap-3 p-4 text-left hover:bg-muted/20 transition-colors">
+                              <ShieldAlert className={`w-4 h-4 mt-0.5 shrink-0 ${rec.severity === "critical" || rec.severity === "major" ? "text-red-500" : "text-amber-500"}`} />
+                              <div className="flex-1 min-w-0">
+                                <div className="flex items-center gap-2 flex-wrap">
+                                  <p className="font-semibold text-sm">{rec.subject}</p>
+                                  <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${sevCfg.color}`}>{sevCfg.label}</span>
+                                  {typeCfg && <span className="text-xs text-muted-foreground bg-muted px-2 py-0.5 rounded-full">{typeCfg.label}</span>}
+                                </div>
+                                <div className="flex items-center gap-3 mt-1 text-xs text-muted-foreground flex-wrap">
+                                  {rec.incidentDate && <span>Incident: {new Date(rec.incidentDate).toLocaleDateString([], { year: "numeric", month: "short", day: "numeric" })}</span>}
+                                  {rec.createdByName && <span>By: {rec.createdByName}</span>}
+                                  <span>Added: {new Date(rec.createdAt).toLocaleDateString([], { year: "numeric", month: "short", day: "numeric" })}</span>
+                                  {rec.attachments?.length > 0 && <span className="flex items-center gap-1"><Paperclip className="w-3 h-3" /> {rec.attachments.length} file(s)</span>}
+                                </div>
+                              </div>
+                              <ChevronDown className={`w-4 h-4 text-muted-foreground shrink-0 transition-transform ${isExpanded ? "rotate-180" : ""}`} />
+                            </button>
+
+                            {isExpanded && (
+                              <div className="border-t border-border p-4 space-y-3 bg-muted/10">
+                                {rec.description && (
+                                  <div>
+                                    <p className="text-xs font-semibold text-muted-foreground uppercase mb-1">Description</p>
+                                    <p className="text-sm whitespace-pre-wrap">{rec.description}</p>
+                                  </div>
+                                )}
+                                {rec.sanctionApplied && (
+                                  <div>
+                                    <p className="text-xs font-semibold text-muted-foreground uppercase mb-1">Sanction Applied</p>
+                                    <p className="text-sm font-medium text-red-600">{rec.sanctionApplied}</p>
+                                  </div>
+                                )}
+
+                                {rec.attachments?.length > 0 && (
+                                  <div>
+                                    <p className="text-xs font-semibold text-muted-foreground uppercase mb-2">Attachments</p>
+                                    <div className="space-y-1.5">
+                                      {rec.attachments.map((att: any) => (
+                                        <div key={att.id} className="flex items-center gap-2 text-xs bg-background border border-border rounded-lg px-3 py-2">
+                                          <Paperclip className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
+                                          <span className="flex-1 truncate">{att.fileName}</span>
+                                          <a href={`/api/storage/objects/${att.objectPath.split("/").pop()}`} target="_blank" rel="noopener noreferrer"
+                                            className="text-primary hover:underline flex items-center gap-1 shrink-0">
+                                            <Eye className="w-3.5 h-3.5" /> View
+                                          </a>
+                                          <button onClick={() => deleteAttachment.mutate({ recordId: rec.id, attachmentId: att.id })}
+                                            className="text-muted-foreground hover:text-destructive shrink-0">
+                                            <Trash2 className="w-3.5 h-3.5" />
+                                          </button>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  </div>
+                                )}
+
+                                <div className="flex items-center gap-2 pt-1">
+                                  <label className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg border border-dashed border-border text-xs text-muted-foreground hover:text-foreground hover:border-primary/50 cursor-pointer transition-colors">
+                                    <Upload className="w-3 h-3" /> Add File
+                                    <input type="file" className="hidden" onChange={e => {
+                                      const f = e.target.files?.[0];
+                                      if (f) handleAddAttachment(rec.id, f);
+                                      e.target.value = "";
+                                    }} />
+                                  </label>
+                                  <div className="flex-1" />
+                                  <button onClick={() => { if (confirm("Delete this disciplinary record and all attachments?")) deleteRecord.mutate(rec.id); }}
+                                    className="flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs text-destructive hover:bg-destructive/10 transition-colors">
+                                    <Trash2 className="w-3.5 h-3.5" /> Delete Record
+                                  </button>
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+
+                  <p className="text-xs text-muted-foreground italic">
+                    Disciplinary records are confidential and visible to HR administrators only.
+                  </p>
+                </div>
+              )}
+
               {/* Notes Tab */}
               {tab === "notes" && (
                 <div className="space-y-5">
@@ -615,6 +1031,19 @@ export default function Staff() {
     qc.setQueryData(["staff-detail", updated.id], updated);
   }, [qc]);
 
+  const exportStaffList = () => {
+    const headers = ["Staff ID", "Name", "Email", "Phone", "Department", "Job Title", "Role", "Site", "Start Date", "Date of Birth", "Gender", "Address", "City", "State/Province", "Country", "National ID", "Bank Name", "Bank Account Name", "Emergency Contact", "Emergency Phone"];
+    const rows = filtered.map((u: any) => [
+      u.staffId ?? "", u.name ?? "", u.email ?? "", u.phone ?? "",
+      u.department ?? "", u.jobTitle ?? "", u.role?.replace("_", " ") ?? "",
+      u.site?.name ?? u.siteName ?? "", u.startDate ?? "", u.dateOfBirth ?? "",
+      u.gender ?? "", u.address ?? "", u.city ?? "", u.stateProvince ?? "",
+      u.country ?? "", u.nationalId ?? "", u.bankName ?? "", u.bankAccountName ?? "",
+      u.emergencyContactName ?? "", u.emergencyContactPhone ?? "",
+    ]);
+    downloadCsv(`staff-list-${new Date().toISOString().slice(0, 10)}.csv`, headers, rows);
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between gap-4 flex-wrap">
@@ -624,9 +1053,15 @@ export default function Staff() {
             Manage employee details, banking, tax, and emergency contacts
           </p>
         </div>
-        <div className="flex items-center gap-2 text-sm text-muted-foreground">
-          <Users className="w-4 h-4" />
-          <span>{(users as any[]).length} staff members</span>
+        <div className="flex items-center gap-3">
+          <button onClick={exportStaffList}
+            className="flex items-center gap-1.5 px-3 py-2 rounded-xl border border-border text-sm font-medium hover:bg-muted transition-colors">
+            <Download className="w-4 h-4" /> Export List
+          </button>
+          <div className="flex items-center gap-2 text-sm text-muted-foreground">
+            <Users className="w-4 h-4" />
+            <span>{(users as any[]).length} staff members</span>
+          </div>
         </div>
       </div>
 
