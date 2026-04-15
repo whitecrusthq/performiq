@@ -29,6 +29,7 @@ import HrQueries from "@/pages/hr-queries";
 import Profile from "@/pages/profile";
 import Security from "@/pages/security";
 import Appearance from "@/pages/appearance";
+import Transfers from "@/pages/transfers";
 
 const queryClient = new QueryClient();
 
@@ -114,6 +115,9 @@ function Router() {
       </Route>
       <Route path="/appearance">
         <AppLayout><ProtectedRoute component={Appearance} /></AppLayout>
+      </Route>
+      <Route path="/transfers">
+        <AppLayout><ProtectedRoute component={Transfers} /></AppLayout>
       </Route>
 
       <Route component={NotFound} />

@@ -25,6 +25,7 @@ import {
   ShieldAlert,
   Paintbrush,
   IdCard,
+  ArrowRightLeft,
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { User } from "@/lib";
@@ -46,6 +47,7 @@ const NAV_ITEMS: { name: string; path: string; icon: any; roles: string[]; custo
   { name: "Users",       path: "/users",        icon: Users,           roles: ["super_admin", "admin"] },
   { name: "Departments", path: "/departments",  icon: Building2,       roles: ["super_admin", "admin"] },
   { name: "Sites",       path: "/sites",        icon: MapPin,          roles: ["super_admin", "admin"] },
+  { name: "Transfers",  path: "/transfers",    icon: ArrowRightLeft,  roles: ["super_admin", "admin", "manager"], customRoles: ["hr manager"] },
   { name: "Roles",       path: "/roles",        icon: Shield,          roles: ["super_admin", "admin"] },
   { name: "Security",    path: "/security",     icon: ShieldAlert,     roles: ["super_admin", "admin"] },
   { name: "Appearance",  path: "/appearance",   icon: Paintbrush,      roles: ["super_admin", "admin"] },

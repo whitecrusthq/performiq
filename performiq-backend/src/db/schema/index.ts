@@ -11,3 +11,4 @@ export * from "./onboarding";
 export * from "./hr-queries";
 export * from "./security-settings";
 export * from "./app-settings";
+export * from "./transfers";

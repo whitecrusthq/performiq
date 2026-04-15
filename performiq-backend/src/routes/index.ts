@@ -20,6 +20,7 @@ import securityRouter from "./security";
 import appSettingsRouter from "./app-settings";
 import storageRouter from "./storage";
 import disciplinaryRouter from "./disciplinary";
+import transfersRouter from "./transfers";
 
 const router: IRouter = Router();
 
@@ -44,5 +45,6 @@ router.use(securityRouter);
 router.use(appSettingsRouter);
 router.use(storageRouter);
 router.use(disciplinaryRouter);
+router.use(transfersRouter);
 
 export default router;
