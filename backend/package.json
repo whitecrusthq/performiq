@@ -4,14 +4,16 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "export NODE_ENV=development && npm run build && npm run start",
+    "dev": "npm run build && npm run start",
     "build": "node ./build.mjs",
     "start": "node --enable-source-maps ./dist/index.mjs",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "db:generate": "dotenv -e .env -- drizzle-kit generate",
-    "db:migrate": "dotenv -e .env -- drizzle-kit migrate",
-    "db:studio": "dotenv -e .env -- drizzle-kit studio",
-    "db:seed": "npx tsx src/db/seed.ts"
+    "db:migrate": "npx sequelize-cli db:migrate",
+    "db:migrate:undo": "npx sequelize-cli db:migrate:undo",
+    "db:migrate:undo:all": "npx sequelize-cli db:migrate:undo:all",
+    "db:migrate:status": "npx sequelize-cli db:migrate:status",
+    "db:migration:generate": "npx sequelize-cli migration:generate --name",
+    "db:seed": "node --enable-source-maps ./dist/seed-runner.mjs"
   },
   "dependencies": {
     "@google-cloud/storage": "^7.19.0",
