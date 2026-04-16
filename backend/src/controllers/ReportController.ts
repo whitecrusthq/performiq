@@ -1,4 +1,4 @@
-import { User, Appraisal, Cycle, Criterion, AppraisalScore, AttendanceLog, Timesheet } from "../models/index.js";
+import { User, Appraisal, Cycle, Criterion, AppraisalScore, AttendanceLog, Timesheet, Site } from "../models/index.js";
 import { Op } from "sequelize";
 
 const RATING_BANDS = [
@@ -139,15 +139,24 @@ export default class ReportController {
     };
   }
 
-  static async getAttendanceSummary(filters: { from?: string; to?: string; userId?: string }) {
-    const allUsers = await User.findAll({ attributes: ["id", "name", "email", "department"] });
+  static async getAttendanceSummary(filters: { from?: string; to?: string; userId?: string; siteId?: string; department?: string }) {
+    const allUsers = await User.findAll({ attributes: ["id", "name", "email", "department", "siteId"] });
     const userMap = new Map<number, any>(allUsers.map((u: any) => [u.id, u.get({ plain: true })]));
+    const allSites = await Site.findAll({ attributes: ["id", "name"] });
+    const siteMap = new Map<number, string>(allSites.map((s: any) => [s.id, s.get({ plain: true }).name]));
 
     let logs = await AttendanceLog.findAll();
     let logsPlain = logs.map((l: any) => l.get({ plain: true }));
     if (filters.from) logsPlain = logsPlain.filter((l: any) => l.date >= filters.from!);
     if (filters.to) logsPlain = logsPlain.filter((l: any) => l.date <= filters.to!);
     if (filters.userId) logsPlain = logsPlain.filter((l: any) => l.userId === Number(filters.userId));
+    if (filters.siteId) {
+      const sid = Number(filters.siteId);
+      logsPlain = logsPlain.filter((l: any) => userMap.get(l.userId)?.siteId === sid);
+    }
+    if (filters.department) {
+      logsPlain = logsPlain.filter((l: any) => (userMap.get(l.userId)?.department ?? "Unassigned") === filters.department);
+    }
 
     const byUser = new Map<number, { daysPresent: number; totalMinutes: number }>();
     for (const log of logsPlain) {
@@ -166,6 +175,8 @@ export default class ReportController {
         name: user?.name ?? "Unknown",
         email: user?.email ?? "",
         department: user?.department ?? "Unassigned",
+        siteId: user?.siteId ?? null,
+        site: user?.siteId ? (siteMap.get(user.siteId) ?? "Unassigned") : "Unassigned",
         daysPresent: stats.daysPresent,
         totalMinutes: stats.totalMinutes,
         totalHours: Number((stats.totalMinutes / 60).toFixed(1)),
@@ -190,9 +201,11 @@ export default class ReportController {
     };
   }
 
-  static async getTimesheetsSummary(filters: { from?: string; to?: string; status?: string; userId?: string }) {
-    const allUsers = await User.findAll({ attributes: ["id", "name", "email", "department"] });
+  static async getTimesheetsSummary(filters: { from?: string; to?: string; status?: string; userId?: string; siteId?: string; department?: string }) {
+    const allUsers = await User.findAll({ attributes: ["id", "name", "email", "department", "siteId"] });
     const userMap = new Map<number, any>(allUsers.map((u: any) => [u.id, u.get({ plain: true })]));
+    const allSites = await Site.findAll({ attributes: ["id", "name"] });
+    const siteMap = new Map<number, string>(allSites.map((s: any) => [s.id, s.get({ plain: true }).name]));
 
     let sheets = await Timesheet.findAll();
     let sheetsPlain = sheets.map((s: any) => s.get({ plain: true }));
@@ -200,6 +213,13 @@ export default class ReportController {
     if (filters.to) sheetsPlain = sheetsPlain.filter((s: any) => s.weekStart <= filters.to!);
     if (filters.status) sheetsPlain = sheetsPlain.filter((s: any) => s.status === filters.status);
     if (filters.userId) sheetsPlain = sheetsPlain.filter((s: any) => s.userId === Number(filters.userId));
+    if (filters.siteId) {
+      const sid = Number(filters.siteId);
+      sheetsPlain = sheetsPlain.filter((s: any) => userMap.get(s.userId)?.siteId === sid);
+    }
+    if (filters.department) {
+      sheetsPlain = sheetsPlain.filter((s: any) => (userMap.get(s.userId)?.department ?? "Unassigned") === filters.department);
+    }
 
     const rows = sheetsPlain.map((s: any) => {
       const user = userMap.get(s.userId);
@@ -208,6 +228,8 @@ export default class ReportController {
         name: user?.name ?? "Unknown",
         email: user?.email ?? "",
         department: user?.department ?? "Unassigned",
+        siteId: user?.siteId ?? null,
+        site: user?.siteId ? (siteMap.get(user.siteId) ?? "Unassigned") : "Unassigned",
         weekStart: s.weekStart, weekEnd: s.weekEnd,
         totalMinutes: s.totalMinutes,
         totalHours: Number((s.totalMinutes / 60).toFixed(1)),
