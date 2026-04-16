@@ -1,13 +1,8 @@
-import { Router, type IRouter } from "express";
-import { z } from "zod";
+import { Router } from "express";
+import { HealthCheckAction } from "../actions/health/HealthCheckAction.js";
 
-const HealthCheckResponse = z.object({ status: z.string() });
+const router = Router();
 
-const router: IRouter = Router();
-
-router.get("/healthz", (_req, res) => {
-  const data = HealthCheckResponse.parse({ status: "ok" });
-  res.json(data);
-});
+router.get("/healthz", HealthCheckAction.handle);
 
 export default router;
