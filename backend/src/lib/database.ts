@@ -10,7 +10,7 @@ if (!DATABASE_URL) {
 export const sequelize = new Sequelize(DATABASE_URL, {
   dialect: "postgres",
   dialectOptions: {
-    ssl: DATABASE_URL.includes("localhost") || DATABASE_URL.includes("127.0.0.1")
+    ssl: (DATABASE_URL.includes("localhost") || DATABASE_URL.includes("127.0.0.1") || DATABASE_URL.includes("sslmode=disable") || DATABASE_URL.includes("helium"))
       ? false
       : { require: true, rejectUnauthorized: false },
   },
