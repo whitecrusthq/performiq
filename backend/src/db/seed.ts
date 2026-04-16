@@ -10,7 +10,13 @@ const { Pool } = require("pg");
 
 function createPool() {
   if (process.env.DATABASE_URL) {
-    return new Pool({ connectionString: process.env.DATABASE_URL });
+    const databaseUrl = process.env.DATABASE_URL;
+    const isLocalDatabase = databaseUrl.includes("localhost") || databaseUrl.includes("127.0.0.1");
+
+    return new Pool({
+      connectionString: databaseUrl,
+      ssl: isLocalDatabase ? undefined : { require: true, rejectUnauthorized: false },
+    });
   }
 
   const getRequiredDbEnv = (name: string): string => {
@@ -67,9 +73,9 @@ function createPool() {
     database: dbName,
     ssl: dbSslEnabled
       ? {
-          ca: dbSslCa,
-          rejectUnauthorized: Boolean(dbSslCa),
-        }
+        ca: dbSslCa,
+        rejectUnauthorized: Boolean(dbSslCa),
+      }
       : undefined,
   });
 }
