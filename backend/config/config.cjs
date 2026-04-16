@@ -1,26 +1,27 @@
-require('dotenv').config();
+require("dotenv").config();
 
-if (!process.env.DATABASE_URL) {
-  throw new Error('DATABASE_URL must be set. Did you forget to provision a database?');
+const DATABASE_URL = process.env.DATABASE_URL;
+
+if (!DATABASE_URL) {
+  throw new Error("DATABASE_URL environment variable is required");
 }
 
-const common = {
-  use_env_variable: 'DATABASE_URL',
-  dialect: 'postgres',
-  dialectOptions: {
-    ssl: false,
-  },
-  define: {
-    timestamps: false,
-    underscored: true,
-    freezeTableName: true,
-  },
-  migrationStorageTableName: 'SequelizeMeta',
-  seederStorageTableName: 'SequelizeData',
-};
+const ssl =
+  DATABASE_URL.includes("localhost") || DATABASE_URL.includes("127.0.0.1")
+    ? false
+    : { require: true, rejectUnauthorized: false };
 
 module.exports = {
-  development: common,
-  test: common,
-  production: common,
+  development: {
+    url: DATABASE_URL,
+    dialect: "postgres",
+    dialectOptions: { ssl },
+    migrationStorageTableName: "migrations",
+  },
+  production: {
+    url: DATABASE_URL,
+    dialect: "postgres",
+    dialectOptions: { ssl },
+    migrationStorageTableName: "migrations",
+  },
 };
