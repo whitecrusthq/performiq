@@ -33,14 +33,15 @@ app.listen(port, (err) => {
     const frontendDir = path.resolve(__dirname, "../../performiq-frontend");
     const viteBin = path.resolve(frontendDir, "node_modules/.bin/vite");
     const basePath = process.env.BASE_PATH || "/";
-    const vite = spawn(viteBin, ["--host", "0.0.0.0", "--port", "3000", "--strictPort"], {
+    const frontendPort = process.env.FRONTEND_PORT || "5000";
+    const vite = spawn(viteBin, ["--host", "0.0.0.0", "--port", frontendPort, "--strictPort"], {
       cwd: frontendDir,
-      env: { ...process.env, FRONTEND_PORT: "3000", BASE_PATH: basePath },
+      env: { ...process.env, FRONTEND_PORT: frontendPort, BASE_PATH: basePath },
       stdio: "inherit",
     });
     vite.on("exit", (code) => {
       logger.warn({ code }, "PerformIQ Vite dev server exited");
     });
-    logger.info("PerformIQ Vite dev server spawned on port 3000");
+    logger.info({ frontendPort }, "PerformIQ Vite dev server spawned");
   }
 });
