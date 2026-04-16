@@ -5,9 +5,8 @@ An HR and performance management platform for employee appraisals, goal tracking
 ## Project Structure
 
 ```
-performiq-frontend/   - React + Vite frontend
-performiq-backend/    - Express + Drizzle API
-performiq-scripts/    - Utility scripts
+frontend/   - React + Vite frontend
+backend/    - Express + Drizzle API
 ```
 
 ## Tech Stack
@@ -20,7 +19,7 @@ performiq-scripts/    - Utility scripts
 ## Development
 
 ```bash
-cd performiq-backend
+cd backend
 npm install
 npm run dev
 ```
@@ -29,7 +28,7 @@ The backend automatically spawns the Vite frontend dev server in development mod
 
 ## Environment Variables
 
-See `performiq-backend/.env.example` for required variables:
+See `backend/.env.example` for required variables:
 - `DATABASE_URL` - PostgreSQL connection string
 - `PORT` - Backend port (default 3001)
 - `FRONTEND_PORT` - Frontend port (default 5000)

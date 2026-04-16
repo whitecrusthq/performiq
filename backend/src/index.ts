@@ -30,7 +30,7 @@ app.listen(port, (err) => {
   logger.info({ port }, "Server listening");
 
   if (process.env.NODE_ENV === "development") {
-    const frontendDir = path.resolve(__dirname, "../../performiq-frontend");
+    const frontendDir = path.resolve(__dirname, "../../frontend");
     const viteBin = path.resolve(frontendDir, "node_modules/.bin/vite");
     const basePath = process.env.BASE_PATH || "/";
     const frontendPort = process.env.FRONTEND_PORT || "5000";

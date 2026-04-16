@@ -1,6 +1,6 @@
 #!/bin/bash
 
-cd /home/runner/workspace/performiq-backend
+cd /home/runner/workspace/backend
 npm run build 2>&1
 
 export NODE_ENV=development
