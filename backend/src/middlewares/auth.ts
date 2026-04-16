@@ -33,11 +33,12 @@ const ROLE_HIERARCHY: Record<string, number> = {
   employee: 1,
 };
 
-export function requireRole(...roles: string[]) {
+export function requireRole(...roles: Array<string | string[]>) {
+  const flat = roles.flat();
   return (req: AuthRequest, res: Response, next: NextFunction) => {
     if (!req.user) { res.status(403).json({ error: "Forbidden" }); return; }
     const userLevel = ROLE_HIERARCHY[req.user.role] ?? 0;
-    const minRequired = Math.min(...roles.map(r => ROLE_HIERARCHY[r] ?? 99));
+    const minRequired = Math.min(...flat.map(r => ROLE_HIERARCHY[r] ?? 99));
     if (userLevel >= minRequired) { next(); return; }
     res.status(403).json({ error: "Forbidden" });
   };
