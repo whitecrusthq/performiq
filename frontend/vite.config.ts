@@ -2,8 +2,9 @@ import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
 import path from "path";
+import runtimeErrorOverlay from "@replit/vite-plugin-runtime-error-modal";
 
-const port = Number(process.env.PORT || 5173);
+const port = Number(process.env.FRONTEND_PORT) || 3000;
 const basePath = process.env.BASE_PATH || "/";
 
 export default defineConfig({
@@ -11,10 +12,25 @@ export default defineConfig({
   plugins: [
     react(),
     tailwindcss(),
+    runtimeErrorOverlay(),
+    ...(process.env.NODE_ENV !== "production" &&
+      process.env.REPL_ID !== undefined
+      ? [
+        await import("@replit/vite-plugin-cartographer").then((m) =>
+          m.cartographer({
+            root: path.resolve(import.meta.dirname, ".."),
+          }),
+        ),
+        await import("@replit/vite-plugin-dev-banner").then((m) =>
+          m.devBanner(),
+        ),
+      ]
+      : []),
   ],
   resolve: {
     alias: {
       "@": path.resolve(import.meta.dirname, "src"),
+      "@assets": path.resolve(import.meta.dirname, "src/assets"),
     },
     dedupe: ["react", "react-dom"],
   },
@@ -27,10 +43,14 @@ export default defineConfig({
     port,
     host: "0.0.0.0",
     allowedHosts: true,
+    hmr: {
+      clientPort: 443,
+    },
     proxy: {
-      "/crm-api": {
-        target: "http://localhost:3001",
+      [`${basePath}api`]: {
+        target: `http://localhost:${process.env.BACKEND_PORT || "3001"}`,
         changeOrigin: true,
+        rewrite: (p: string) => p.replace(new RegExp(`^${basePath}`), "/"),
       },
     },
     fs: {

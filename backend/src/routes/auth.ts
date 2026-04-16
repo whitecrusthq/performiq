@@ -1,28 +1,35 @@
 import { Router } from "express";
 import bcrypt from "bcryptjs";
-import jwt from "jsonwebtoken";
-import speakeasy from "speakeasy";
-import QRCode from "qrcode";
-import { Agent } from "../models/index.js";
-import { requireAuth, generateToken, JWT_SECRET, AuthRequest } from "../middlewares/auth.js";
+import { db, usersTable, customRolesTable } from "../db/index.js";
+import { eq } from "drizzle-orm";
+import { requireAuth, generateToken, AuthRequest } from "../middlewares/auth";
+import { sendOtpEmail } from "../lib/mailgun.js";
+import { generateOtp, storeOtp, verifyOtp } from "../lib/otp-store.js";
+import { getSettings } from "./security.js";
 
 const router = Router();
 
-function partialToken(agentId: number): string {
-  return jwt.sign({ agentId, scope: "2fa-pending" }, JWT_SECRET, { expiresIn: "5m" });
+const OTP_ENABLED = !!(process.env.MAILGUN_API_KEY && process.env.MAILGUN_DOMAIN);
+
+const formatAuthUser = (user: typeof usersTable.$inferSelect, customRole?: typeof customRolesTable.$inferSelect | null) => ({
+  id: user.id, name: user.name, email: user.email, role: user.role,
+  managerId: user.managerId, siteId: user.siteId, department: user.department,
+  jobTitle: user.jobTitle, phone: user.phone, staffId: user.staffId, createdAt: user.createdAt,
+  customRoleId: user.customRoleId ?? null,
+  customRole: customRole ? {
+    id: customRole.id,
+    name: customRole.name,
+    permissionLevel: customRole.permissionLevel,
+    menuPermissions: (() => { try { return JSON.parse(customRole.menuPermissions ?? "[]"); } catch { return []; } })(),
+  } : null,
+});
+
+async function getCustomRole(user: typeof usersTable.$inferSelect) {
+  if (!user.customRoleId) return null;
+  const [cr] = await db.select().from(customRolesTable).where(eq(customRolesTable.id, user.customRoleId)).limit(1);
+  return cr ?? null;
 }
 
-function verifyPartialToken(token: string): { agentId: number } | null {
-  try {
-    const payload = jwt.verify(token, JWT_SECRET) as { agentId: number; scope: string };
-    if (payload.scope !== "2fa-pending") return null;
-    return { agentId: payload.agentId };
-  } catch {
-    return null;
-  }
-}
-
-// ── Login ─────────────────────────────────────────────────────────────────────
 router.post("/auth/login", async (req, res) => {
   try {
     const { email, password } = req.body;
@@ -31,144 +38,139 @@ router.post("/auth/login", async (req, res) => {
       return;
     }
 
-    const agent = await Agent.findOne({ where: { email: email.toLowerCase().trim() } });
-    if (!agent) { res.status(401).json({ error: "Invalid credentials" }); return; }
-    if (!agent.isActive) { res.status(403).json({ error: "Account is deactivated" }); return; }
+    const [user] = await db.select().from(usersTable).where(eq(usersTable.email, email.toLowerCase().trim())).limit(1);
+    if (!user) { res.status(401).json({ error: "Invalid credentials" }); return; }
 
-    const valid = await bcrypt.compare(password, agent.passwordHash);
-    if (!valid) { res.status(401).json({ error: "Invalid credentials" }); return; }
+    const settings = await getSettings();
 
-    if (agent.totpEnabled && agent.totpSecret) {
-      res.json({ requires2FA: true, partialToken: partialToken(agent.id) });
+    if (settings.lockoutEnabled && user.isLocked) {
+      const lockedAt = user.lockedAt ? new Date(user.lockedAt).getTime() : 0;
+      const unlockAt = lockedAt + settings.lockoutDurationMinutes * 60 * 1000;
+      if (Date.now() < unlockAt) {
+        const minsLeft = Math.ceil((unlockAt - Date.now()) / 60000);
+        res.status(403).json({ error: `Account is locked. Try again in ${minsLeft} minute${minsLeft === 1 ? "" : "s"} or contact your administrator.` });
+        return;
+      }
+      await db.update(usersTable).set({ isLocked: false, failedLoginAttempts: 0, lockedAt: null }).where(eq(usersTable.id, user.id));
+      user.isLocked = false;
+      user.failedLoginAttempts = 0;
+    }
+
+    const valid = await bcrypt.compare(password, user.passwordHash);
+    if (!valid) {
+      if (settings.lockoutEnabled) {
+        const newAttempts = user.failedLoginAttempts + 1;
+        const shouldLock = newAttempts >= settings.maxAttempts;
+        await db.update(usersTable).set({
+          failedLoginAttempts: newAttempts,
+          isLocked: shouldLock,
+          lockedAt: shouldLock ? new Date() : user.lockedAt,
+        }).where(eq(usersTable.id, user.id));
+        if (shouldLock) {
+          res.status(403).json({ error: `Account locked after ${settings.maxAttempts} failed attempts. Contact your administrator to unlock.` });
+          return;
+        }
+        const remaining = settings.maxAttempts - newAttempts;
+        res.status(401).json({ error: `Invalid credentials. ${remaining} attempt${remaining === 1 ? "" : "s"} remaining before lockout.` });
+      } else {
+        res.status(401).json({ error: "Invalid credentials" });
+      }
       return;
     }
 
-    const token = generateToken({ id: agent.id, email: agent.email, role: agent.role, name: agent.name });
-    res.json({
-      token,
-      agent: { id: agent.id, name: agent.name, email: agent.email, role: agent.role, avatar: agent.avatar, allowedMenus: agent.allowedMenus },
-    });
+    await db.update(usersTable).set({ failedLoginAttempts: 0, isLocked: false, lockedAt: null }).where(eq(usersTable.id, user.id));
+
+    if (OTP_ENABLED) {
+      const otp = generateOtp();
+      storeOtp(email, otp);
+      try {
+        await sendOtpEmail(email, otp, user.name);
+        res.json({ status: "otp_required", message: "A verification code has been sent to your email." });
+      } catch (mailErr) {
+        console.error("Mailgun error:", mailErr);
+        res.status(500).json({ error: "Failed to send verification code. Please try again." });
+      }
+      return;
+    }
+
+    const customRole = await getCustomRole(user);
+    const token = generateToken({ id: user.id, role: user.role, email: user.email, customRoleName: customRole?.name ?? null });
+    res.json({ token, user: formatAuthUser(user, customRole) });
   } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: "Internal server error" });
+    console.error("Login error:", err);
+    res.status(500).json({ error: "Server error" });
   }
 });
 
-// ── Complete 2FA login ────────────────────────────────────────────────────────
-router.post("/auth/2fa/complete", async (req, res) => {
+router.post("/auth/verify-otp", async (req, res) => {
   try {
-    const { partialToken: pToken, code } = req.body;
-    if (!pToken || !code) { res.status(400).json({ error: "partialToken and code required" }); return; }
-
-    const payload = verifyPartialToken(pToken);
-    if (!payload) { res.status(401).json({ error: "Invalid or expired session. Please log in again." }); return; }
-
-    const agent = await Agent.findByPk(payload.agentId);
-    if (!agent || !agent.totpEnabled || !agent.totpSecret) {
-      res.status(401).json({ error: "2FA not configured for this account" });
+    const { email, otp } = req.body;
+    if (!email || !otp) {
+      res.status(400).json({ error: "Email and OTP are required" });
       return;
     }
-
-    const isValid = speakeasy.totp.verify({ secret: agent.totpSecret, encoding: "base32", token: code.replace(/\s/g, ""), window: 1 });
-    if (!isValid) { res.status(401).json({ error: "Invalid authenticator code" }); return; }
-
-    const token = generateToken({ id: agent.id, email: agent.email, role: agent.role, name: agent.name });
-    res.json({
-      token,
-      agent: { id: agent.id, name: agent.name, email: agent.email, role: agent.role, avatar: agent.avatar, allowedMenus: agent.allowedMenus },
-    });
+    const result = verifyOtp(email, otp);
+    if (result === "expired") {
+      res.status(401).json({ error: "Verification code has expired. Please sign in again." });
+      return;
+    }
+    if (result === "too_many_attempts") {
+      res.status(429).json({ error: "Too many failed attempts. Please sign in again." });
+      return;
+    }
+    if (result !== "valid") {
+      res.status(401).json({ error: "Invalid verification code." });
+      return;
+    }
+    const [user] = await db.select().from(usersTable).where(eq(usersTable.email, email.toLowerCase().trim())).limit(1);
+    if (!user) { res.status(404).json({ error: "User not found" }); return; }
+    const customRole = await getCustomRole(user);
+    const token = generateToken({ id: user.id, role: user.role, email: user.email, customRoleName: customRole?.name ?? null });
+    res.json({ token, user: formatAuthUser(user, customRole) });
   } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: "Internal server error" });
+    console.error("Verify OTP error:", err);
+    res.status(500).json({ error: "Server error" });
   }
 });
 
-// ── Me ────────────────────────────────────────────────────────────────────────
+router.post("/auth/logout", (_req, res) => {
+  res.json({ message: "Logged out" });
+});
+
+router.post("/auth/change-password", requireAuth, async (req: AuthRequest, res) => {
+  try {
+    const { currentPassword, newPassword } = req.body;
+    if (!currentPassword || !newPassword) {
+      res.status(400).json({ error: "Current and new password are required" });
+      return;
+    }
+    if (newPassword.length < 6) {
+      res.status(400).json({ error: "New password must be at least 6 characters" });
+      return;
+    }
+    const [user] = await db.select().from(usersTable).where(eq(usersTable.id, req.user!.id)).limit(1);
+    if (!user) { res.status(404).json({ error: "User not found" }); return; }
+    const valid = await bcrypt.compare(currentPassword, user.passwordHash);
+    if (!valid) {
+      res.status(401).json({ error: "Current password is incorrect" });
+      return;
+    }
+    const newHash = await bcrypt.hash(newPassword, 10);
+    await db.update(usersTable).set({ passwordHash: newHash }).where(eq(usersTable.id, req.user!.id));
+    res.json({ message: "Password updated successfully" });
+  } catch {
+    res.status(500).json({ error: "Server error" });
+  }
+});
+
 router.get("/auth/me", requireAuth, async (req: AuthRequest, res) => {
   try {
-    const agent = await Agent.findByPk(req.agent!.id, {
-      attributes: ["id", "name", "email", "role", "avatar", "isActive", "totpEnabled", "activeConversations", "resolvedToday", "rating"],
-    });
-    if (!agent) { res.status(404).json({ error: "Agent not found" }); return; }
-    res.json(agent);
+    const [user] = await db.select().from(usersTable).where(eq(usersTable.id, req.user!.id)).limit(1);
+    if (!user) { res.status(404).json({ error: "User not found" }); return; }
+    const customRole = await getCustomRole(user);
+    res.json(formatAuthUser(user, customRole));
   } catch {
-    res.status(500).json({ error: "Internal server error" });
-  }
-});
-
-// ── 2FA Setup: generate secret + QR code ─────────────────────────────────────
-router.get("/auth/2fa/setup", requireAuth, async (req: AuthRequest, res) => {
-  try {
-    const agent = await Agent.findByPk(req.agent!.id);
-    if (!agent) { res.status(404).json({ error: "Agent not found" }); return; }
-
-    const secretObj = speakeasy.generateSecret({ length: 20, name: `CommsCRM (${agent.email})`, issuer: "CommsCRM" });
-    const otpauth = speakeasy.otpauthURL({ secret: secretObj.base32, label: agent.email, issuer: "CommsCRM", encoding: "base32" });
-    const qrCodeDataUrl = await QRCode.toDataURL(otpauth);
-
-    agent.totpSecret = secretObj.base32;
-    agent.totpEnabled = false;
-    await agent.save();
-
-    res.json({ secret: secretObj.base32, qrCode: qrCodeDataUrl });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: "Internal server error" });
-  }
-});
-
-// ── 2FA Enable: verify code and activate ─────────────────────────────────────
-router.post("/auth/2fa/enable", requireAuth, async (req: AuthRequest, res) => {
-  try {
-    const { code } = req.body;
-    if (!code) { res.status(400).json({ error: "code required" }); return; }
-
-    const agent = await Agent.findByPk(req.agent!.id);
-    if (!agent || !agent.totpSecret) { res.status(400).json({ error: "Run 2FA setup first" }); return; }
-
-    const isValid = speakeasy.totp.verify({ secret: agent.totpSecret, encoding: "base32", token: code.replace(/\s/g, ""), window: 1 });
-    if (!isValid) { res.status(400).json({ error: "Invalid authenticator code. Please try again." }); return; }
-
-    agent.totpEnabled = true;
-    await agent.save();
-    res.json({ ok: true, message: "Two-factor authentication enabled." });
-  } catch {
-    res.status(500).json({ error: "Internal server error" });
-  }
-});
-
-// ── 2FA Disable: verify code and deactivate ───────────────────────────────────
-router.post("/auth/2fa/disable", requireAuth, async (req: AuthRequest, res) => {
-  try {
-    const { code } = req.body;
-    if (!code) { res.status(400).json({ error: "code required" }); return; }
-
-    const agent = await Agent.findByPk(req.agent!.id);
-    if (!agent || !agent.totpEnabled || !agent.totpSecret) {
-      res.status(400).json({ error: "2FA is not enabled on this account" });
-      return;
-    }
-
-    const isValid = speakeasy.totp.verify({ secret: agent.totpSecret, encoding: "base32", token: code.replace(/\s/g, ""), window: 1 });
-    if (!isValid) { res.status(400).json({ error: "Invalid authenticator code." }); return; }
-
-    agent.totpEnabled = false;
-    agent.totpSecret = null;
-    await agent.save();
-    res.json({ ok: true, message: "Two-factor authentication disabled." });
-  } catch {
-    res.status(500).json({ error: "Internal server error" });
-  }
-});
-
-// ── 2FA Status ────────────────────────────────────────────────────────────────
-router.get("/auth/2fa/status", requireAuth, async (req: AuthRequest, res) => {
-  try {
-    const agent = await Agent.findByPk(req.agent!.id, { attributes: ["id", "totpEnabled"] });
-    if (!agent) { res.status(404).json({ error: "Not found" }); return; }
-    res.json({ totpEnabled: agent.totpEnabled });
-  } catch {
-    res.status(500).json({ error: "Internal server error" });
+    res.status(500).json({ error: "Server error" });
   }
 });
 

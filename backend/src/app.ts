@@ -3,35 +3,46 @@ import cors from "cors";
 import helmet from "helmet";
 import rateLimit from "express-rate-limit";
 import pinoHttp from "pino-http";
-import path from "path";
-import { fileURLToPath } from "url";
-import router from "./routes/index.js";
-import { logger } from "./lib/logger.js";
-
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
+import { createProxyMiddleware } from "http-proxy-middleware";
+import router from "./routes";
+import { logger } from "./lib/logger";
 
 const app: Express = express();
-
-// app.set("trust proxy", true);
 
 app.use(
   pinoHttp({
     logger,
-    serializers: {
-      req(req) {
-        return { id: req.id, method: req.method, url: req.url?.split("?")[0] };
-      },
-      res(res) {
-        return { statusCode: res.statusCode };
+    autoLogging: {
+      ignore: (req: any) => {
+        const url = req.url || "";
+        return !url.startsWith("/api");
       },
     },
-  })
+    serializers: {
+      req(req) {
+        return {
+          id: req.id,
+          method: req.method,
+          url: req.url?.split("?")[0],
+        };
+      },
+      res(res) {
+        return {
+          statusCode: res.statusCode,
+        };
+      },
+    },
+  }),
 );
 
-app.use(helmet({ contentSecurityPolicy: false, crossOriginEmbedderPolicy: false }));
+app.use(
+  helmet({
+    contentSecurityPolicy: false,
+    crossOriginEmbedderPolicy: false,
+  }),
+);
 
 app.use(cors());
-
 app.use(express.json({ limit: "5mb" }));
 app.use(express.urlencoded({ extended: true, limit: "5mb" }));
 
@@ -40,33 +51,23 @@ const authLimiter = rateLimit({
   max: 30,
   standardHeaders: true,
   legacyHeaders: false,
-  validate: { trustProxy: false },
-  message: { error: "Too many requests, please try again later." },
+  message: { error: "Too many requests from this IP, please try again after 15 minutes." },
 });
 
-app.use("/crm-api/auth/login", authLimiter);
 app.use("/api/auth/login", authLimiter);
+app.use("/api/auth/verify-otp", authLimiter);
 
-app.use("/crm-api", router);
 app.use("/api", router);
 
 if (process.env.NODE_ENV === "development") {
-  const { createProxyMiddleware } = await import("http-proxy-middleware");
   app.use(
     "/",
     createProxyMiddleware({
-      target: "http://localhost:3000",
+      target: `http://localhost:${process.env.FRONTEND_PORT || "5000"}`,
       changeOrigin: true,
       ws: true,
-      logLevel: "silent",
-    })
+    }),
   );
-} else {
-  const frontendDist = path.resolve(__dirname, "../frontend/dist/public");
-  app.use(express.static(frontendDist));
-  app.get("*path", (_req, res) => {
-    res.sendFile(path.resolve(frontendDist, "index.html"));
-  });
 }
 
-export { app };
+export default app;

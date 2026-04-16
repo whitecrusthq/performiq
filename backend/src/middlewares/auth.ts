@@ -1,73 +1,59 @@
 import { Request, Response, NextFunction } from "express";
 import jwt from "jsonwebtoken";
-import { randomBytes } from "crypto";
-import { Agent } from "../models/index.js";
 
-if (!process.env.JWT_SECRET) {
-  if (process.env.NODE_ENV === "production") {
-    console.error("FATAL: JWT_SECRET environment variable is not set. Refusing to start in production.");
-    process.exit(1);
-  } else {
-    console.warn("WARNING: JWT_SECRET is not set. Using a random ephemeral secret — all sessions will be invalidated on restart.");
-  }
+const JWT_SECRET = process.env.JWT_SECRET;
+if (!JWT_SECRET) {
+  throw new Error("JWT_SECRET environment variable is not set. Server cannot start without it.");
 }
-export const JWT_SECRET: string = process.env.JWT_SECRET ?? randomBytes(32).toString("hex");
-
-// Throttle: only write lastActiveAt at most once per 60 seconds per agent
-const lastActiveWritten = new Map<number, number>();
 
 export interface AuthRequest extends Request {
-  agent?: {
-    id: number;
-    email: string;
-    role: string;
-    name: string;
-  };
+  user?: { id: number; role: string; email: string; customRoleName?: string | null };
 }
 
-export function generateToken(agent: { id: number; email: string; role: string; name: string }): string {
-  return jwt.sign(agent, JWT_SECRET, { expiresIn: "7d" });
-}
-
-export function requireAuth(req: AuthRequest, res: Response, next: NextFunction): void {
-  const header = req.headers.authorization;
-  if (!header?.startsWith("Bearer ")) {
+export function requireAuth(req: AuthRequest, res: Response, next: NextFunction) {
+  const authHeader = req.headers.authorization;
+  if (!authHeader?.startsWith("Bearer ")) {
     res.status(401).json({ error: "Unauthorized" });
     return;
   }
-
-  const token = header.slice(7);
+  const token = authHeader.slice(7);
   try {
-    const payload = jwt.verify(token, JWT_SECRET) as { id: number; email: string; role: string; name: string };
-    req.agent = payload;
-
-    // Fire-and-forget: update lastActiveAt with 60s throttle
-    const agentId = payload.id;
-    const now = Date.now();
-    const lastWrite = lastActiveWritten.get(agentId) ?? 0;
-    if (now - lastWrite > 60_000) {
-      lastActiveWritten.set(agentId, now);
-      Agent.update({ lastActiveAt: new Date() }, { where: { id: agentId } }).catch(() => {});
-    }
-
+    const payload = jwt.verify(token, JWT_SECRET) as { id: number; role: string; email: string; customRoleName?: string | null };
+    req.user = payload;
     next();
   } catch {
-    res.status(401).json({ error: "Invalid or expired token" });
+    res.status(401).json({ error: "Invalid token" });
   }
 }
 
-export function requireAdmin(req: AuthRequest, res: Response, next: NextFunction): void {
-  if (!req.agent || (req.agent.role !== "admin" && req.agent.role !== "super_admin")) {
-    res.status(403).json({ error: "Admin access required" });
-    return;
-  }
-  next();
+const ROLE_HIERARCHY: Record<string, number> = {
+  super_admin: 4,
+  admin: 3,
+  manager: 2,
+  employee: 1,
+};
+
+export function requireRole(...roles: string[]) {
+  return (req: AuthRequest, res: Response, next: NextFunction) => {
+    if (!req.user) { res.status(403).json({ error: "Forbidden" }); return; }
+    const userLevel = ROLE_HIERARCHY[req.user.role] ?? 0;
+    const minRequired = Math.min(...roles.map(r => ROLE_HIERARCHY[r] ?? 99));
+    if (userLevel >= minRequired) { next(); return; }
+    res.status(403).json({ error: "Forbidden" });
+  };
 }
 
-export function requireSuperAdmin(req: AuthRequest, res: Response, next: NextFunction): void {
-  if (!req.agent || req.agent.role !== "super_admin") {
-    res.status(403).json({ error: "Super admin access required" });
-    return;
-  }
-  next();
+/**
+ * Allows: super_admin, admin, OR any user whose custom role name is "hr manager" (case-insensitive).
+ */
+export function requireHRAccess(req: AuthRequest, res: Response, next: NextFunction) {
+  if (!req.user) { res.status(403).json({ error: "Forbidden" }); return; }
+  const { role, customRoleName } = req.user;
+  if (role === "super_admin" || role === "admin") { next(); return; }
+  if (customRoleName && customRoleName.toLowerCase() === "hr manager") { next(); return; }
+  res.status(403).json({ error: "Forbidden" });
+}
+
+export function generateToken(user: { id: number; role: string; email: string; customRoleName?: string | null }) {
+  return jwt.sign(user, JWT_SECRET, { expiresIn: "7d" });
 }

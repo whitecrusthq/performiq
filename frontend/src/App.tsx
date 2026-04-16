@@ -2,85 +2,139 @@ import { Switch, Route, Router as WouterRouter, Redirect } from "wouter";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
-import { AuthProvider, useAuth } from "@/lib/auth-context";
-import { BrandingProvider } from "@/lib/branding-context";
+import { AuthProvider, useAuth } from "@/hooks/use-auth";
+import { AppSettingsProvider } from "@/hooks/use-app-settings";
+import { AppLayout } from "@/components/layout";
+import { FullPageLoader } from "@/components/shared";
 import NotFound from "@/pages/not-found";
+
 import Login from "@/pages/login";
-import Layout from "@/components/layout";
 import Dashboard from "@/pages/dashboard";
-import Inbox from "@/pages/inbox";
-import Customers from "@/pages/customers";
-import Campaigns from "@/pages/campaigns";
-import Analytics from "@/pages/analytics";
-import Settings from "@/pages/settings";
-import Channels from "@/pages/channels";
-import AiChat from "@/pages/ai-chat";
-import Admin from "@/pages/admin";
-import Feedback from "@/pages/feedback";
-import FollowUps from "@/pages/follow-ups";
-import Insights from "@/pages/insights";
-import Transcripts from "@/pages/transcripts";
-import ProductDemand from "@/pages/product-demand";
-import ClockIn from "@/pages/clock-in";
-import PublicFeedback from "@/pages/public-feedback";
-import KpiPage from "@/pages/kpi";
-import ContactsAnalyticsPage from "@/pages/contacts-analytics";
-import PaymentsPage from "@/pages/payments";
-import Products from "@/pages/products";
+import Appraisals from "@/pages/appraisals";
+import AppraisalDetail from "@/pages/appraisal-detail";
+import Cycles from "@/pages/cycles";
+import Goals from "@/pages/goals";
+import Criteria from "@/pages/criteria";
+import Users from "@/pages/users";
+import Roles from "@/pages/roles";
+import Reports from "@/pages/reports";
+import Departments from "@/pages/departments";
+import Sites from "@/pages/sites";
+import Leave from "@/pages/leave";
+import Attendance from "@/pages/attendance";
+import Timesheets from "@/pages/timesheets";
+import Onboarding from "@/pages/onboarding";
+import Staff from "@/pages/staff";
+import HrQueries from "@/pages/hr-queries";
+import Profile from "@/pages/profile";
+import Security from "@/pages/security";
+import Appearance from "@/pages/appearance";
+import Transfers from "@/pages/transfers";
+import Anniversaries from "@/pages/anniversaries";
+import Recruitment from "@/pages/recruitment";
+import NotificationSettingsPage from "@/pages/notification-settings";
+import Careers from "@/pages/careers";
 
-const queryClient = new QueryClient({
-  defaultOptions: {
-    queries: { retry: 1, staleTime: 30000 },
-  },
-});
+const queryClient = new QueryClient();
 
-function PrivateRoute({ component: Component }: { component: React.ComponentType }) {
-  const { agent, isLoading } = useAuth();
-  if (isLoading) return null;
-  if (!agent) return <Redirect to="/login" />;
-  return (
-    <Layout>
-      <Component />
-    </Layout>
-  );
-}
-
-function AdminRoute({ component: Component }: { component: React.ComponentType }) {
-  const { agent, isLoading } = useAuth();
-  if (isLoading) return null;
-  if (!agent) return <Redirect to="/login" />;
-  if (agent.role !== "admin" && agent.role !== "super_admin") return <Redirect to="/" />;
-  return (
-    <Layout>
-      <Component />
-    </Layout>
-  );
+// Protected Route wrapper
+function ProtectedRoute({ component: Component, ...rest }: { component: React.ComponentType }) {
+  const { user, isLoading } = useAuth();
+  
+  if (isLoading) return <FullPageLoader />;
+  if (!user) return <Redirect to="/login" />;
+  
+  return <Component />;
 }
 
 function Router() {
+  const { user, isLoading } = useAuth();
+
+  if (isLoading) return <FullPageLoader />;
+
   return (
     <Switch>
+      <Route path="/">
+        {user ? <Redirect to="/dashboard" /> : <Redirect to="/login" />}
+      </Route>
       <Route path="/login" component={Login} />
-      <Route path="/" component={() => <PrivateRoute component={Dashboard} />} />
-      <Route path="/inbox" component={() => <PrivateRoute component={Inbox} />} />
-      <Route path="/customers" component={() => <PrivateRoute component={Customers} />} />
-      <Route path="/campaigns" component={() => <PrivateRoute component={Campaigns} />} />
-      <Route path="/analytics" component={() => <PrivateRoute component={Analytics} />} />
-      <Route path="/settings" component={() => <PrivateRoute component={Settings} />} />
-      <Route path="/channels" component={() => <PrivateRoute component={Channels} />} />
-      <Route path="/ai-chat" component={() => <PrivateRoute component={AiChat} />} />
-      <Route path="/admin" component={() => <AdminRoute component={Admin} />} />
-      <Route path="/feedback" component={() => <PrivateRoute component={Feedback} />} />
-      <Route path="/follow-ups" component={() => <PrivateRoute component={FollowUps} />} />
-      <Route path="/insights" component={() => <PrivateRoute component={Insights} />} />
-      <Route path="/transcripts" component={() => <PrivateRoute component={Transcripts} />} />
-      <Route path="/product-demand" component={() => <PrivateRoute component={ProductDemand} />} />
-      <Route path="/clock-in" component={() => <PrivateRoute component={ClockIn} />} />
-      <Route path="/kpi" component={() => <PrivateRoute component={KpiPage} />} />
-      <Route path="/contacts-analytics" component={() => <PrivateRoute component={ContactsAnalyticsPage} />} />
-      <Route path="/payments" component={() => <PrivateRoute component={PaymentsPage} />} />
-      <Route path="/products" component={() => <PrivateRoute component={Products} />} />
-      <Route path="/feedback-form" component={PublicFeedback} />
+      <Route path="/careers" component={Careers} />
+      <Route path="/careers/track/:token" component={Careers} />
+      
+      {/* Protected Routes wrapped in Layout */}
+      <Route path="/dashboard">
+        <AppLayout><ProtectedRoute component={Dashboard} /></AppLayout>
+      </Route>
+      <Route path="/appraisals">
+        <AppLayout><ProtectedRoute component={Appraisals} /></AppLayout>
+      </Route>
+      <Route path="/appraisals/:id">
+        <AppLayout><ProtectedRoute component={AppraisalDetail} /></AppLayout>
+      </Route>
+      <Route path="/cycles">
+        <AppLayout><ProtectedRoute component={Cycles} /></AppLayout>
+      </Route>
+      <Route path="/goals">
+        <AppLayout><ProtectedRoute component={Goals} /></AppLayout>
+      </Route>
+      <Route path="/criteria">
+        <AppLayout><ProtectedRoute component={Criteria} /></AppLayout>
+      </Route>
+      <Route path="/users">
+        <AppLayout><ProtectedRoute component={Users} /></AppLayout>
+      </Route>
+      <Route path="/roles">
+        <AppLayout><ProtectedRoute component={Roles} /></AppLayout>
+      </Route>
+      <Route path="/reports">
+        <AppLayout><ProtectedRoute component={Reports} /></AppLayout>
+      </Route>
+      <Route path="/departments">
+        <AppLayout><ProtectedRoute component={Departments} /></AppLayout>
+      </Route>
+      <Route path="/sites">
+        <AppLayout><ProtectedRoute component={Sites} /></AppLayout>
+      </Route>
+      <Route path="/leave">
+        <AppLayout><ProtectedRoute component={Leave} /></AppLayout>
+      </Route>
+      <Route path="/attendance">
+        <AppLayout><ProtectedRoute component={Attendance} /></AppLayout>
+      </Route>
+      <Route path="/timesheets">
+        <AppLayout><ProtectedRoute component={Timesheets} /></AppLayout>
+      </Route>
+      <Route path="/onboarding">
+        <AppLayout><ProtectedRoute component={Onboarding} /></AppLayout>
+      </Route>
+      <Route path="/staff">
+        <AppLayout><ProtectedRoute component={Staff} /></AppLayout>
+      </Route>
+      <Route path="/hr-queries">
+        <AppLayout><ProtectedRoute component={HrQueries} /></AppLayout>
+      </Route>
+      <Route path="/profile">
+        <AppLayout><ProtectedRoute component={Profile} /></AppLayout>
+      </Route>
+      <Route path="/security">
+        <AppLayout><ProtectedRoute component={Security} /></AppLayout>
+      </Route>
+      <Route path="/appearance">
+        <AppLayout><ProtectedRoute component={Appearance} /></AppLayout>
+      </Route>
+      <Route path="/transfers">
+        <AppLayout><ProtectedRoute component={Transfers} /></AppLayout>
+      </Route>
+      <Route path="/anniversaries">
+        <AppLayout><ProtectedRoute component={Anniversaries} /></AppLayout>
+      </Route>
+      <Route path="/recruitment">
+        <AppLayout><ProtectedRoute component={Recruitment} /></AppLayout>
+      </Route>
+      <Route path="/notifications">
+        <AppLayout><ProtectedRoute component={NotificationSettingsPage} /></AppLayout>
+      </Route>
+
       <Route component={NotFound} />
     </Switch>
   );
@@ -90,14 +144,14 @@ function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <TooltipProvider>
-        <BrandingProvider>
-          <AuthProvider>
-            <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, "")}>
+        <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, "")}>
+          <AppSettingsProvider>
+            <AuthProvider>
               <Router />
-            </WouterRouter>
-            <Toaster />
-          </AuthProvider>
-        </BrandingProvider>
+              <Toaster />
+            </AuthProvider>
+          </AppSettingsProvider>
+        </WouterRouter>
       </TooltipProvider>
     </QueryClientProvider>
   );

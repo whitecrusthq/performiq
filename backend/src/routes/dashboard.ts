@@ -1,79 +1,202 @@
 import { Router } from "express";
-import { Op, fn, col, literal } from "sequelize";
-import { Conversation, Customer, Message, Agent, Campaign } from "../models/index.js";
-import { requireAuth, AuthRequest } from "../middlewares/auth.js";
+import { db, usersTable, cyclesTable, appraisalsTable, goalsTable, leavePoliciesTable, leaveAllocationsTable, leaveRequestsTable, leaveTypesTable } from "../db/index.js";
+import { eq, and, count, inArray } from "drizzle-orm";
+import { requireAuth, AuthRequest } from "../middlewares/auth";
 
 const router = Router();
 
+function getCycleKey(policy: { cycleStartMonth: number; cycleStartDay: number; cycleEndMonth: number; cycleEndDay: number }) {
+  const today = new Date();
+  const year = today.getFullYear();
+  const cycleStart = new Date(year, policy.cycleStartMonth - 1, policy.cycleStartDay);
+  if (today < cycleStart) {
+    return year - 1;
+  }
+  return year;
+}
+
+async function getLeaveBalance(userId: number) {
+  const policies = await db.select().from(leavePoliciesTable);
+  const cycleKeys = [...new Set(policies.map(p => getCycleKey(p)))];
+  if (cycleKeys.length === 0) cycleKeys.push(new Date().getFullYear());
+
+  for (const p of policies) {
+    const ck = getCycleKey(p);
+    const existing = await db.select().from(leaveAllocationsTable)
+      .where(and(
+        eq(leaveAllocationsTable.employeeId, userId),
+        eq(leaveAllocationsTable.leaveType, p.leaveType),
+        eq(leaveAllocationsTable.cycleYear, ck)
+      )).limit(1);
+    if (existing.length === 0) {
+      await db.insert(leaveAllocationsTable).values({
+        employeeId: userId,
+        leaveType: p.leaveType,
+        policyId: p.id,
+        allocated: p.daysAllocated,
+        used: 0,
+        cycleYear: ck,
+      });
+    }
+  }
+
+  const allAllocations = [];
+  for (const ck of cycleKeys) {
+    const rows = await db.select().from(leaveAllocationsTable)
+      .where(and(
+        eq(leaveAllocationsTable.employeeId, userId),
+        eq(leaveAllocationsTable.cycleYear, ck)
+      ));
+    allAllocations.push(...rows);
+  }
+
+  const seen = new Set<string>();
+  const dedupedAllocations = allAllocations.filter(a => {
+    if (seen.has(a.leaveType)) return false;
+    seen.add(a.leaveType);
+    return true;
+  });
+
+  const [pendingLeave] = await db.select({ count: count() }).from(leaveRequestsTable)
+    .where(and(eq(leaveRequestsTable.employeeId, userId), eq(leaveRequestsTable.status, "pending")));
+
+  const leaveTypeRows = await db.select().from(leaveTypesTable);
+  const labelMap: Record<string, string> = {};
+  for (const lt of leaveTypeRows) labelMap[lt.name] = lt.label;
+
+  return {
+    cycleYear: cycleKeys[0],
+    pendingLeaveRequests: Number(pendingLeave.count),
+    balances: dedupedAllocations.map(a => ({
+      leaveType: a.leaveType,
+      label: labelMap[a.leaveType] || a.leaveType,
+      allocated: a.allocated,
+      used: a.used,
+      remaining: a.allocated - a.used,
+    })),
+  };
+}
+
 router.get("/dashboard", requireAuth, async (req: AuthRequest, res) => {
   try {
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
+    const { id: userId, role } = req.user!;
 
-    const [totalOpen, totalPending, resolvedToday, totalCustomers, agentsOnline] = await Promise.all([
-      Conversation.count({ where: { status: "open" } }),
-      Conversation.count({ where: { status: "pending" } }),
-      Conversation.count({ where: { status: "resolved", updatedAt: { [Op.gte]: today } } }),
-      Customer.count(),
-      Agent.count({ where: { isActive: true } }),
-    ]);
+    if (role === "admin" || role === "super_admin") {
+      const [empCount] = await db.select({ count: count() }).from(usersTable).where(eq(usersTable.role, "employee"));
+      const [mgrCount] = await db.select({ count: count() }).from(usersTable).where(eq(usersTable.role, "manager"));
+      const [activeCount] = await db.select({ count: count() }).from(cyclesTable).where(eq(cyclesTable.status, "active"));
+      const [pendingCount] = await db.select({ count: count() }).from(appraisalsTable).where(eq(appraisalsTable.status, "pending"));
+      const [awaitingApprovalCount] = await db.select({ count: count() }).from(appraisalsTable).where(eq(appraisalsTable.status, "pending_approval"));
+      const [completedCount] = await db.select({ count: count() }).from(appraisalsTable).where(eq(appraisalsTable.status, "completed"));
+      const [myGoals] = await db.select({ count: count() }).from(goalsTable);
+      const [activeGoals] = await db.select({ count: count() }).from(goalsTable).where(eq(goalsTable.status, "in_progress"));
 
-    const totalClosed = resolvedToday;
-    const resolutionRate = totalClosed + totalOpen > 0
-      ? Math.round((totalClosed / (totalClosed + totalOpen + totalPending)) * 100)
-      : 0;
+      const recentAppraisals = await db.select().from(appraisalsTable).orderBy(appraisalsTable.createdAt).limit(5);
+      const enrichedAppraisals = await Promise.all(recentAppraisals.map(async (a) => {
+        const [emp] = await db.select().from(usersTable).where(eq(usersTable.id, a.employeeId)).limit(1);
+        const [cyc] = await db.select().from(cyclesTable).where(eq(cyclesTable.id, a.cycleId)).limit(1);
+        return { ...a, employee: emp, cycle: cyc, reviewer: null };
+      }));
 
-    const channelCounts = await Conversation.findAll({
-      attributes: ["channel", [fn("COUNT", col("id")), "count"]],
-      group: ["channel"],
-      raw: true,
-    }) as unknown as Array<{ channel: string; count: string }>;
+      const recentGoals = await db.select().from(goalsTable).orderBy(goalsTable.createdAt).limit(5);
+      const enrichedGoals = await Promise.all(recentGoals.map(async (g) => {
+        const [u] = await db.select().from(usersTable).where(eq(usersTable.id, g.userId)).limit(1);
+        return { ...g, user: u };
+      }));
 
-    const recentActivity = await Conversation.findAll({
-      where: { status: { [Op.in]: ["open", "pending"] } },
-      include: [{ model: Customer, as: "customer", attributes: ["name", "channel"] }],
-      order: [["lastMessageAt", "DESC"], ["createdAt", "DESC"]],
-      limit: 10,
-    });
+      const leaveBalance = await getLeaveBalance(userId);
 
-    const [campaignChannelCounts, totalCampaigns, sentCampaigns] = await Promise.all([
-      Campaign.findAll({
-        attributes: ["channel", [fn("COUNT", col("id")), "count"]],
-        group: ["channel"],
-        raw: true,
-      }) as unknown as Promise<Array<{ channel: string; count: string }>>,
-      Campaign.count(),
-      Campaign.count({ where: { status: "sent" } }),
-    ]);
+      res.json({
+        role,
+        totalEmployees: Number(empCount.count),
+        totalManagers: Number(mgrCount.count),
+        activeCycles: Number(activeCount.count),
+        pendingAppraisals: Number(pendingCount.count),
+        awaitingApproval: Number(awaitingApprovalCount.count),
+        completedAppraisals: Number(completedCount.count),
+        myGoals: Number(myGoals.count),
+        activeGoals: Number(activeGoals.count),
+        recentAppraisals: enrichedAppraisals,
+        recentGoals: enrichedGoals,
+        leaveBalance,
+      });
+    } else if (role === "manager") {
+      const team = await db.select({ id: usersTable.id }).from(usersTable).where(eq(usersTable.managerId, userId));
+      const teamIds = team.map(m => m.id);
+      const [pendingCount] = teamIds.length > 0
+        ? await db.select({ count: count() }).from(appraisalsTable).where(and(inArray(appraisalsTable.employeeId, teamIds), eq(appraisalsTable.status, "pending")))
+        : [{ count: 0 }];
+      const [completedCount] = teamIds.length > 0
+        ? await db.select({ count: count() }).from(appraisalsTable).where(and(inArray(appraisalsTable.employeeId, teamIds), eq(appraisalsTable.status, "completed")))
+        : [{ count: 0 }];
+      const [myGoals] = await db.select({ count: count() }).from(goalsTable).where(eq(goalsTable.userId, userId));
+      const [activeGoals] = await db.select({ count: count() }).from(goalsTable).where(and(eq(goalsTable.userId, userId), eq(goalsTable.status, "in_progress")));
 
-    const recentCampaigns = await Campaign.findAll({
-      order: [["createdAt", "DESC"]],
-      limit: 5,
-    });
+      const recentAppraisals = teamIds.length > 0
+        ? await db.select().from(appraisalsTable).where(inArray(appraisalsTable.employeeId, teamIds)).orderBy(appraisalsTable.createdAt).limit(5)
+        : [];
+      const enrichedAppraisals = await Promise.all(recentAppraisals.map(async (a) => {
+        const [emp] = await db.select().from(usersTable).where(eq(usersTable.id, a.employeeId)).limit(1);
+        const [cyc] = await db.select().from(cyclesTable).where(eq(cyclesTable.id, a.cycleId)).limit(1);
+        return { ...a, employee: emp, cycle: cyc, reviewer: null };
+      }));
 
-    res.json({
-      kpis: {
-        openConversations: totalOpen,
-        pendingConversations: totalPending,
-        resolvedToday,
-        totalCustomers,
-        agentsOnline,
-        resolutionRate,
-        avgResponseMinutes: 8,
-        csatScore: 4.6,
-      },
-      channelBreakdown: channelCounts.map((r) => ({ channel: r.channel, count: parseInt(r.count) })),
-      recentActivity,
-      campaigns: {
-        total: totalCampaigns,
-        sent: sentCampaigns,
-        byChannel: campaignChannelCounts.map((r) => ({ channel: r.channel, count: parseInt(r.count) })),
-        recent: recentCampaigns,
-      },
-    });
+      const recentGoals = await db.select().from(goalsTable).where(eq(goalsTable.userId, userId)).orderBy(goalsTable.createdAt).limit(5);
+      const enrichedGoals = await Promise.all(recentGoals.map(async (g) => {
+        const [u] = await db.select().from(usersTable).where(eq(usersTable.id, g.userId)).limit(1);
+        return { ...g, user: u };
+      }));
+
+      const leaveBalance = await getLeaveBalance(userId);
+
+      res.json({
+        role,
+        teamSize: teamIds.length,
+        pendingAppraisals: Number(pendingCount.count),
+        completedAppraisals: Number(completedCount.count),
+        myGoals: Number(myGoals.count),
+        activeGoals: Number(activeGoals.count),
+        recentAppraisals: enrichedAppraisals,
+        recentGoals: enrichedGoals,
+        leaveBalance,
+      });
+    } else {
+      const [myAppraisals] = await db.select({ count: count() }).from(appraisalsTable).where(eq(appraisalsTable.employeeId, userId));
+      const [pendingCount] = await db.select({ count: count() }).from(appraisalsTable).where(and(eq(appraisalsTable.employeeId, userId), eq(appraisalsTable.status, "self_review")));
+      const [completedCount] = await db.select({ count: count() }).from(appraisalsTable).where(and(eq(appraisalsTable.employeeId, userId), eq(appraisalsTable.status, "completed")));
+      const [myGoals] = await db.select({ count: count() }).from(goalsTable).where(eq(goalsTable.userId, userId));
+      const [activeGoals] = await db.select({ count: count() }).from(goalsTable).where(and(eq(goalsTable.userId, userId), eq(goalsTable.status, "in_progress")));
+
+      const recentAppraisals = await db.select().from(appraisalsTable).where(eq(appraisalsTable.employeeId, userId)).orderBy(appraisalsTable.createdAt).limit(5);
+      const enrichedAppraisals = await Promise.all(recentAppraisals.map(async (a) => {
+        const [emp] = await db.select().from(usersTable).where(eq(usersTable.id, a.employeeId)).limit(1);
+        const [cyc] = await db.select().from(cyclesTable).where(eq(cyclesTable.id, a.cycleId)).limit(1);
+        return { ...a, employee: emp, cycle: cyc, reviewer: null };
+      }));
+
+      const recentGoals = await db.select().from(goalsTable).where(eq(goalsTable.userId, userId)).orderBy(goalsTable.createdAt).limit(5);
+      const enrichedGoals = await Promise.all(recentGoals.map(async (g) => {
+        const [u] = await db.select().from(usersTable).where(eq(usersTable.id, g.userId)).limit(1);
+        return { ...g, user: u };
+      }));
+
+      const leaveBalance = await getLeaveBalance(userId);
+
+      res.json({
+        role,
+        pendingAppraisals: Number(pendingCount.count),
+        completedAppraisals: Number(completedCount.count),
+        myGoals: Number(myGoals.count),
+        activeGoals: Number(activeGoals.count),
+        totalAppraisals: Number(myAppraisals.count),
+        recentAppraisals: enrichedAppraisals,
+        recentGoals: enrichedGoals,
+        leaveBalance,
+      });
+    }
   } catch (err) {
     console.error(err);
-    res.status(500).json({ error: "Internal server error" });
+    res.status(500).json({ error: "Server error" });
   }
 });
 
