@@ -543,6 +543,8 @@ export default function Attendance() {
 
   const [filterDate, setFilterDate] = useState("");
   const [filterUserId, setFilterUserId] = useState("");
+  const [filterSiteId, setFilterSiteId] = useState("");
+  const [filterDepartment, setFilterDepartment] = useState("");
   const [elapsed, setElapsed] = useState("");
 
   // Camera capture state
@@ -570,11 +572,13 @@ export default function Attendance() {
   });
 
   const { data: logs = [], isLoading: logsLoading } = useQuery({
-    queryKey: ["attendance", filterDate, filterUserId],
+    queryKey: ["attendance", filterDate, filterUserId, filterSiteId, filterDepartment],
     queryFn: () => {
       const params = new URLSearchParams();
       if (filterDate) { params.set("startDate", filterDate); params.set("endDate", filterDate); }
       if (filterUserId) params.set("userId", filterUserId);
+      if (filterSiteId) params.set("siteId", filterSiteId);
+      if (filterDepartment) params.set("department", filterDepartment);
       return apiFetch(`/api/attendance?${params}`);
     },
   });
@@ -582,6 +586,18 @@ export default function Attendance() {
   const { data: users = [] } = useQuery({
     queryKey: ["users-list"],
     queryFn: () => apiFetch("/api/users"),
+    enabled: isManager,
+  });
+
+  const { data: sites = [] } = useQuery({
+    queryKey: ["sites-list"],
+    queryFn: () => apiFetch("/api/sites"),
+    enabled: isManager,
+  });
+
+  const { data: departments = [] } = useQuery({
+    queryKey: ["departments-list"],
+    queryFn: () => apiFetch("/api/departments"),
     enabled: isManager,
   });
 
@@ -875,18 +891,54 @@ export default function Attendance() {
           {filterDate && <Button variant="ghost" size="sm" className="h-9 px-2 text-xs" onClick={() => setFilterDate("")}>Clear</Button>}
         </div>
         {isManager && (
-          <div className="flex items-center gap-2">
-            <Users className="w-4 h-4 text-muted-foreground" />
-            <Select value={filterUserId || "all"} onValueChange={v => setFilterUserId(v === "all" ? "" : v)}>
-              <SelectTrigger className="w-44 h-9 text-sm"><SelectValue placeholder="All employees" /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All employees</SelectItem>
-                {(users as any[]).map((u: any) => (
-                  <SelectItem key={u.id} value={String(u.id)}>{u.name ?? u.email}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
+          <>
+            <div className="flex items-center gap-2">
+              <Users className="w-4 h-4 text-muted-foreground" />
+              <Select value={filterUserId || "all"} onValueChange={v => setFilterUserId(v === "all" ? "" : v)}>
+                <SelectTrigger className="w-44 h-9 text-sm"><SelectValue placeholder="All employees" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All employees</SelectItem>
+                  {(users as any[]).map((u: any) => (
+                    <SelectItem key={u.id} value={String(u.id)}>{u.name ?? u.email}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="flex items-center gap-2">
+              <MapPin className="w-4 h-4 text-muted-foreground" />
+              <Select value={filterSiteId || "all"} onValueChange={v => setFilterSiteId(v === "all" ? "" : v)}>
+                <SelectTrigger className="w-44 h-9 text-sm"><SelectValue placeholder="All sites" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All sites</SelectItem>
+                  {(sites as any[]).map((s: any) => (
+                    <SelectItem key={s.id} value={String(s.id)}>{s.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="flex items-center gap-2">
+              <Users className="w-4 h-4 text-muted-foreground" />
+              <Select value={filterDepartment || "all"} onValueChange={v => setFilterDepartment(v === "all" ? "" : v)}>
+                <SelectTrigger className="w-44 h-9 text-sm"><SelectValue placeholder="All departments" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All departments</SelectItem>
+                  {(departments as any[]).map((d: any) => (
+                    <SelectItem key={d.id} value={d.name}>{d.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            {(filterUserId || filterSiteId || filterDepartment) && (
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-9 px-2 text-xs"
+                onClick={() => { setFilterUserId(""); setFilterSiteId(""); setFilterDepartment(""); }}
+              >
+                Clear filters
+              </Button>
+            )}
+          </>
         )}
       </div>
 

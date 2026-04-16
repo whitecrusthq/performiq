@@ -59,7 +59,7 @@ export default class AttendanceController {
     return { data: updatedRows[0] };
   }
 
-  static async listLogs(userId: number, role: string, filters: { startDate?: string; endDate?: string; userId?: string }) {
+  static async listLogs(userId: number, role: string, filters: { startDate?: string; endDate?: string; userId?: string; siteId?: string; department?: string }) {
     let rows = await AttendanceLog.findAll({ order: [["date", "DESC"]] });
     let rowsJson = rows.map(r => r.toJSON() as any);
 
@@ -77,6 +77,19 @@ export default class AttendanceController {
     }
     if (filters.startDate) rowsJson = rowsJson.filter((r: any) => r.date >= filters.startDate!);
     if (filters.endDate) rowsJson = rowsJson.filter((r: any) => r.date <= filters.endDate!);
+
+    // Site filter (uses siteId stamped on the attendance log at clock-in time)
+    if (filters.siteId) {
+      const sid = parseInt(filters.siteId);
+      rowsJson = rowsJson.filter((r: any) => r.siteId === sid);
+    }
+
+    // Department filter — needs a join through users
+    if (filters.department) {
+      const deptUsers = await User.findAll({ where: { department: filters.department }, attributes: ["id"] });
+      const deptIds = new Set(deptUsers.map(u => u.id));
+      rowsJson = rowsJson.filter((r: any) => deptIds.has(r.userId));
+    }
 
     const userIds = [...new Set(rowsJson.map((r: any) => r.userId))];
     const users = userIds.length > 0
