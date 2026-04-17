@@ -5,8 +5,8 @@ import ReportController from "../../controllers/ReportController.js";
 export class GetTimesheetsSummaryAction {
   static async handle(req: AuthRequest, res: Response) {
     try {
-      const { from, to, status, userId } = req.query as Record<string, string | undefined>;
-      const data = await ReportController.getTimesheetsSummary({ from, to, status, userId });
+      const { from, to, status, userId, siteId, department } = req.query as Record<string, string | undefined>;
+      const data = await ReportController.getTimesheetsSummary({ from, to, status, userId, siteId, department });
       res.json(data);
     } catch (err) {
       console.error("GET /reports/timesheets-summary error:", err);

@@ -46,6 +46,7 @@ type ReportData = {
 
 type AttRow = {
   userId: number; name: string; email: string; department: string;
+  siteId: number | null; site: string;
   daysPresent: number; totalMinutes: number; totalHours: number;
   avgMinutesPerDay: number; avgHoursPerDay: number;
 };
@@ -56,6 +57,7 @@ type AttData = {
 
 type TsRow = {
   id: number; userId: number; name: string; email: string; department: string;
+  siteId: number | null; site: string;
   weekStart: string; weekEnd: string; totalMinutes: number; totalHours: number;
   status: string; submittedAt: string | null; approvedAt: string | null;
 };
@@ -89,21 +91,34 @@ function AttendanceTab() {
   const firstOfMonth = today.slice(0, 8) + "01";
   const [from, setFrom] = useState(firstOfMonth);
   const [to, setTo] = useState(today);
+  const [siteId, setSiteId] = useState("");
+  const [department, setDepartment] = useState("");
   const [data, setData] = useState<AttData | null>(null);
+  const [sites, setSites] = useState<{ id: number; name: string }[]>([]);
+  const [departments, setDepartments] = useState<{ id: number; name: string }[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    apiFetch("/api/sites").then(r => r.ok ? r.json() : []).then(setSites).catch(() => {});
+    apiFetch("/api/departments").then(r => r.ok ? r.json() : []).then(setDepartments).catch(() => {});
+  }, []);
+
+  const siteName = siteId ? (sites.find(s => String(s.id) === siteId)?.name ?? "") : "";
 
   const load = useCallback(() => {
     setLoading(true); setError(null);
     const params = new URLSearchParams();
     if (from) params.set("from", from);
     if (to) params.set("to", to);
+    if (siteId) params.set("siteId", siteId);
+    if (department) params.set("department", department);
     apiFetch(`/api/reports/attendance-summary?${params}`)
       .then(r => r.ok ? r.json() : Promise.reject("Failed"))
       .then(setData)
       .catch(() => setError("Could not load attendance report."))
       .finally(() => setLoading(false));
-  }, [from, to]);
+  }, [from, to, siteId, department]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -115,6 +130,8 @@ function AttendanceTab() {
     const summaryRows = [
       ["PerformIQ — Attendance Report"],
       [`Period: ${from} to ${to}`],
+      [`Site: ${siteName || "All Sites"}`],
+      [`Department: ${department || "All Departments"}`],
       [`Generated: ${new Date().toLocaleString()}`],
       [],
       ["Metric", "Value"],
@@ -126,11 +143,12 @@ function AttendanceTab() {
     ];
     XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(summaryRows), "Summary");
     const detailRows = [
-      ["Employee", "Email", "Department", "Days Present", "Total Hours", "Avg Hours/Day"],
-      ...data.rows.map(r => [r.name, r.email, r.department, r.daysPresent, r.totalHours, r.avgHoursPerDay]),
+      ["Employee", "Email", "Department", "Site", "Days Present", "Total Hours", "Avg Hours/Day"],
+      ...data.rows.map(r => [r.name, r.email, r.department, r.site, r.daysPresent, r.totalHours, r.avgHoursPerDay]),
     ];
     XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(detailRows), "Attendance Detail");
-    XLSX.writeFile(wb, `PerformIQ_Attendance_${from}_${to}.xlsx`);
+    const suffix = [siteName, department].filter(Boolean).join("_").replace(/\s+/g, "-");
+    XLSX.writeFile(wb, `PerformIQ_Attendance_${from}_${to}${suffix ? "_" + suffix : ""}.xlsx`);
   };
 
   // ── PDF export ──
@@ -144,6 +162,7 @@ function AttendanceTab() {
     doc.text("PerformIQ — Attendance Report", 14, y); y += 7;
     doc.setFontSize(11); doc.setTextColor(80, 80, 80);
     doc.text(`Period: ${from} to ${to}`, 14, y); y += 5;
+    doc.text(`Site: ${siteName || "All Sites"}   Department: ${department || "All Departments"}`, 14, y); y += 5;
     doc.setFontSize(9); doc.setTextColor(140, 140, 140);
     doc.text(`Generated: ${new Date().toLocaleString()}`, 14, y); y += 8;
     doc.setFontSize(13); doc.setTextColor(30, 30, 30);
@@ -166,11 +185,12 @@ function AttendanceTab() {
     doc.text("Attendance by Employee", 14, y); y += 4;
     autoTable(doc, {
       startY: y,
-      head: [["Employee", "Department", "Days Present", "Total Hours", "Avg Hours/Day"]],
-      body: data.rows.map(r => [r.name, r.department, r.daysPresent, r.totalHours, r.avgHoursPerDay]),
+      head: [["Employee", "Department", "Site", "Days Present", "Total Hours", "Avg Hours/Day"]],
+      body: data.rows.map(r => [r.name, r.department, r.site, r.daysPresent, r.totalHours, r.avgHoursPerDay]),
       theme: "striped",
     });
-    doc.save(`PerformIQ_Attendance_${from}_${to}.pdf`);
+    const suffix = [siteName, department].filter(Boolean).join("_").replace(/\s+/g, "-");
+    doc.save(`PerformIQ_Attendance_${from}_${to}${suffix ? "_" + suffix : ""}.pdf`);
   };
 
   const deptData = data ? Object.entries(
@@ -192,6 +212,26 @@ function AttendanceTab() {
           <input type="date" value={to} onChange={e => setTo(e.target.value)}
             className="text-sm bg-transparent border-none outline-none" />
         </div>
+        <div className="flex items-center gap-2 bg-card border border-border rounded-xl px-3 py-2">
+          <Building2 className="w-4 h-4 text-muted-foreground" />
+          <select value={siteId} onChange={e => setSiteId(e.target.value)}
+            className="text-sm bg-transparent border-none outline-none cursor-pointer">
+            <option value="">All Sites</option>
+            {sites.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+          </select>
+        </div>
+        <div className="flex items-center gap-2 bg-card border border-border rounded-xl px-3 py-2">
+          <Filter className="w-4 h-4 text-muted-foreground" />
+          <select value={department} onChange={e => setDepartment(e.target.value)}
+            className="text-sm bg-transparent border-none outline-none cursor-pointer">
+            <option value="">All Departments</option>
+            {departments.map(d => <option key={d.id} value={d.name}>{d.name}</option>)}
+          </select>
+        </div>
+        {(siteId || department) && (
+          <button onClick={() => { setSiteId(""); setDepartment(""); }}
+            className="text-xs text-muted-foreground hover:text-foreground underline">Clear filters</button>
+        )}
         <div className="ml-auto flex gap-2">
           <button onClick={exportExcel} disabled={!data}
             className="flex items-center gap-2 px-4 py-2 rounded-xl border border-border bg-card text-sm font-medium hover:bg-muted transition-colors disabled:opacity-50">
@@ -277,6 +317,7 @@ function AttendanceTab() {
                       <tr className="border-b text-muted-foreground">
                         <th className="pb-2 pr-4 font-medium">Employee</th>
                         <th className="pb-2 pr-4 font-medium hidden sm:table-cell">Department</th>
+                        <th className="pb-2 pr-4 font-medium hidden md:table-cell">Site</th>
                         <th className="pb-2 pr-4 font-medium text-right">Days</th>
                         <th className="pb-2 pr-4 font-medium text-right">Total Hours</th>
                         <th className="pb-2 font-medium text-right">Avg Hours/Day</th>
@@ -290,6 +331,7 @@ function AttendanceTab() {
                             <p className="text-xs text-muted-foreground hidden sm:block">{r.email}</p>
                           </td>
                           <td className="py-2.5 pr-4 text-muted-foreground hidden sm:table-cell">{r.department}</td>
+                          <td className="py-2.5 pr-4 text-muted-foreground hidden md:table-cell">{r.site}</td>
                           <td className="py-2.5 pr-4 text-right font-medium">{r.daysPresent}</td>
                           <td className="py-2.5 pr-4 text-right">
                             <span className="font-semibold text-blue-600">{r.totalHours}h</span>
@@ -320,9 +362,20 @@ function TimesheetsTab() {
   const [from, setFrom] = useState(threeMonthsAgo);
   const [to, setTo] = useState(today);
   const [statusFilter, setStatusFilter] = useState("");
+  const [siteId, setSiteId] = useState("");
+  const [department, setDepartment] = useState("");
   const [data, setData] = useState<TsData | null>(null);
+  const [sites, setSites] = useState<{ id: number; name: string }[]>([]);
+  const [departments, setDepartments] = useState<{ id: number; name: string }[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    apiFetch("/api/sites").then(r => r.ok ? r.json() : []).then(setSites).catch(() => {});
+    apiFetch("/api/departments").then(r => r.ok ? r.json() : []).then(setDepartments).catch(() => {});
+  }, []);
+
+  const siteName = siteId ? (sites.find(s => String(s.id) === siteId)?.name ?? "") : "";
 
   const load = useCallback(() => {
     setLoading(true); setError(null);
@@ -330,12 +383,14 @@ function TimesheetsTab() {
     if (from) params.set("from", from);
     if (to) params.set("to", to);
     if (statusFilter) params.set("status", statusFilter);
+    if (siteId) params.set("siteId", siteId);
+    if (department) params.set("department", department);
     apiFetch(`/api/reports/timesheets-summary?${params}`)
       .then(r => r.ok ? r.json() : Promise.reject("Failed"))
       .then(setData)
       .catch(() => setError("Could not load timesheets report."))
       .finally(() => setLoading(false));
-  }, [from, to, statusFilter]);
+  }, [from, to, statusFilter, siteId, department]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -347,6 +402,9 @@ function TimesheetsTab() {
     const summaryRows = [
       ["PerformIQ — Timesheets Report"],
       [`Period: ${from} to ${to}`],
+      [`Site: ${siteName || "All Sites"}`],
+      [`Department: ${department || "All Departments"}`],
+      [`Status: ${statusFilter || "All"}`],
       [`Generated: ${new Date().toLocaleString()}`],
       [],
       ["Metric", "Value"],
@@ -359,11 +417,12 @@ function TimesheetsTab() {
     ];
     XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(summaryRows), "Summary");
     const detailRows = [
-      ["Employee", "Email", "Department", "Week Start", "Week End", "Total Hours", "Status"],
-      ...data.rows.map(r => [r.name, r.email, r.department, r.weekStart, r.weekEnd, r.totalHours, r.status]),
+      ["Employee", "Email", "Department", "Site", "Week Start", "Week End", "Total Hours", "Status"],
+      ...data.rows.map(r => [r.name, r.email, r.department, r.site, r.weekStart, r.weekEnd, r.totalHours, r.status]),
     ];
     XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(detailRows), "Timesheets Detail");
-    XLSX.writeFile(wb, `PerformIQ_Timesheets_${from}_${to}.xlsx`);
+    const suffix = [siteName, department].filter(Boolean).join("_").replace(/\s+/g, "-");
+    XLSX.writeFile(wb, `PerformIQ_Timesheets_${from}_${to}${suffix ? "_" + suffix : ""}.xlsx`);
   };
 
   // ── PDF export ──
@@ -377,6 +436,7 @@ function TimesheetsTab() {
     doc.text("PerformIQ — Timesheets Report", 14, y); y += 7;
     doc.setFontSize(11); doc.setTextColor(80, 80, 80);
     doc.text(`Period: ${from} to ${to}`, 14, y); y += 5;
+    doc.text(`Site: ${siteName || "All Sites"}   Department: ${department || "All Departments"}   Status: ${statusFilter || "All"}`, 14, y); y += 5;
     doc.setFontSize(9); doc.setTextColor(140, 140, 140);
     doc.text(`Generated: ${new Date().toLocaleString()}`, 14, y); y += 8;
     doc.setFontSize(13); doc.setTextColor(30, 30, 30);
@@ -400,11 +460,12 @@ function TimesheetsTab() {
     doc.text("Timesheets Detail", 14, y); y += 4;
     autoTable(doc, {
       startY: y,
-      head: [["Employee", "Department", "Week Start", "Week End", "Hours", "Status"]],
-      body: data.rows.map(r => [r.name, r.department, r.weekStart, r.weekEnd, `${r.totalHours}h`, r.status]),
+      head: [["Employee", "Department", "Site", "Week Start", "Week End", "Hours", "Status"]],
+      body: data.rows.map(r => [r.name, r.department, r.site, r.weekStart, r.weekEnd, `${r.totalHours}h`, r.status]),
       theme: "striped",
     });
-    doc.save(`PerformIQ_Timesheets_${from}_${to}.pdf`);
+    const suffix = [siteName, department].filter(Boolean).join("_").replace(/\s+/g, "-");
+    doc.save(`PerformIQ_Timesheets_${from}_${to}${suffix ? "_" + suffix : ""}.pdf`);
   };
 
   const statusChartData = data
@@ -447,6 +508,29 @@ function TimesheetsTab() {
             <option value="draft">Draft</option>
           </select>
         </div>
+
+        <div className="flex items-center gap-2 bg-card border border-border rounded-xl px-3 py-2">
+          <Building2 className="w-4 h-4 text-muted-foreground" />
+          <select value={siteId} onChange={e => setSiteId(e.target.value)}
+            className="text-sm bg-transparent border-none outline-none cursor-pointer">
+            <option value="">All Sites</option>
+            {sites.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+          </select>
+        </div>
+
+        <div className="flex items-center gap-2 bg-card border border-border rounded-xl px-3 py-2">
+          <Filter className="w-4 h-4 text-muted-foreground" />
+          <select value={department} onChange={e => setDepartment(e.target.value)}
+            className="text-sm bg-transparent border-none outline-none cursor-pointer">
+            <option value="">All Departments</option>
+            {departments.map(d => <option key={d.id} value={d.name}>{d.name}</option>)}
+          </select>
+        </div>
+
+        {(siteId || department) && (
+          <button onClick={() => { setSiteId(""); setDepartment(""); }}
+            className="text-xs text-muted-foreground hover:text-foreground underline">Clear filters</button>
+        )}
 
         <div className="ml-auto flex gap-2">
           <button onClick={exportExcel} disabled={!data}
@@ -535,6 +619,7 @@ function TimesheetsTab() {
                       <tr className="border-b text-muted-foreground">
                         <th className="pb-2 pr-4 font-medium">Employee</th>
                         <th className="pb-2 pr-4 font-medium hidden sm:table-cell">Department</th>
+                        <th className="pb-2 pr-4 font-medium hidden md:table-cell">Site</th>
                         <th className="pb-2 pr-4 font-medium">Week</th>
                         <th className="pb-2 pr-4 font-medium text-right">Hours</th>
                         <th className="pb-2 font-medium">Status</th>
@@ -548,6 +633,7 @@ function TimesheetsTab() {
                             <p className="text-xs text-muted-foreground hidden sm:block">{r.email}</p>
                           </td>
                           <td className="py-2.5 pr-4 text-muted-foreground hidden sm:table-cell">{r.department}</td>
+                          <td className="py-2.5 pr-4 text-muted-foreground hidden md:table-cell">{r.site}</td>
                           <td className="py-2.5 pr-4 text-muted-foreground text-xs">{r.weekStart} → {r.weekEnd}</td>
                           <td className="py-2.5 pr-4 text-right font-semibold text-purple-600">{fmtHours(r.totalMinutes)}</td>
                           <td className="py-2.5">
