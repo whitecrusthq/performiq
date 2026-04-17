@@ -53,17 +53,18 @@ function Avatar({ name, photo, size = 40 }: { name: string; photo?: string | nul
   );
 }
 
-type Tab = "personal" | "employment" | "financial" | "emergency" | "notes" | "documents" | "disciplinary" | "transfers";
+type Tab = "personal" | "employment" | "financial" | "emergency" | "beneficiaries" | "notes" | "documents" | "disciplinary" | "transfers";
 
 const TABS: { id: Tab; label: string; icon: any; adminOnly?: boolean }[] = [
-  { id: "personal",     label: "Personal",     icon: User },
-  { id: "employment",   label: "Employment",   icon: Briefcase },
-  { id: "financial",    label: "Financial",     icon: CreditCard },
-  { id: "emergency",    label: "Next of Kin",   icon: Heart },
-  { id: "documents",    label: "Documents",     icon: FolderOpen },
-  { id: "transfers",    label: "Transfer History", icon: ArrowRightLeft },
-  { id: "disciplinary", label: "Disciplinary",  icon: ShieldAlert, adminOnly: true },
-  { id: "notes",        label: "Notes",         icon: FileText },
+  { id: "personal",      label: "Personal",         icon: User },
+  { id: "employment",    label: "Employment",       icon: Briefcase },
+  { id: "financial",     label: "Financial",        icon: CreditCard },
+  { id: "emergency",     label: "Next of Kin",      icon: Heart },
+  { id: "beneficiaries", label: "Beneficiaries",    icon: Users },
+  { id: "documents",     label: "Documents",        icon: FolderOpen },
+  { id: "transfers",     label: "Transfer History", icon: ArrowRightLeft },
+  { id: "disciplinary",  label: "Disciplinary",     icon: ShieldAlert, adminOnly: true },
+  { id: "notes",         label: "Notes",            icon: FileText },
 ];
 
 const DOC_TYPES: { value: string; label: string; color: string }[] = [
@@ -353,6 +354,49 @@ function StaffPanel({ staffId, canEdit, onClose, onUpdated }: {
     mutationFn: ({ recordId, attachmentId }: { recordId: number; attachmentId: number }) =>
       apiFetchJson(`/api/users/${staffId}/disciplinary/${recordId}/attachments/${attachmentId}`, { method: "DELETE" }),
     onSuccess: () => { refetchDisciplinary(); toast({ title: "Attachment removed" }); },
+    onError: (e: any) => toast({ title: "Error", description: e.message, variant: "destructive" }),
+  });
+
+  // ─── Beneficiaries ─────────────────────────────────────────────────────
+  const { data: beneficiaries = [], refetch: refetchBeneficiaries } = useQuery<any[]>({
+    queryKey: ["staff-beneficiaries", staffId],
+    queryFn: () => apiFetchJson(`/api/users/${staffId}/beneficiaries`),
+    enabled: tab === "beneficiaries",
+  });
+  const [addingBeneficiary, setAddingBeneficiary] = useState(false);
+  const [beneficiaryDraft, setBeneficiaryDraft] = useState({ name: "", phoneNumber: "", address: "" });
+  const [editingBeneficiaryId, setEditingBeneficiaryId] = useState<number | null>(null);
+  const [beneficiaryEditDraft, setBeneficiaryEditDraft] = useState({ name: "", phoneNumber: "", address: "" });
+
+  const addBeneficiary = useMutation({
+    mutationFn: (body: any) => apiFetchJson(`/api/users/${staffId}/beneficiaries`, {
+      method: "POST", body: JSON.stringify(body),
+    }),
+    onSuccess: () => {
+      refetchBeneficiaries();
+      setAddingBeneficiary(false);
+      setBeneficiaryDraft({ name: "", phoneNumber: "", address: "" });
+      toast({ title: "Beneficiary added" });
+    },
+    onError: (e: any) => toast({ title: "Error", description: e.message, variant: "destructive" }),
+  });
+
+  const updateBeneficiary = useMutation({
+    mutationFn: ({ rowId, body }: { rowId: number; body: any }) =>
+      apiFetchJson(`/api/users/${staffId}/beneficiaries/${rowId}`, {
+        method: "PUT", body: JSON.stringify(body),
+      }),
+    onSuccess: () => {
+      refetchBeneficiaries();
+      setEditingBeneficiaryId(null);
+      toast({ title: "Beneficiary updated" });
+    },
+    onError: (e: any) => toast({ title: "Error", description: e.message, variant: "destructive" }),
+  });
+
+  const removeBeneficiary = useMutation({
+    mutationFn: (rowId: number) => apiFetchJson(`/api/users/${staffId}/beneficiaries/${rowId}`, { method: "DELETE" }),
+    onSuccess: () => { refetchBeneficiaries(); toast({ title: "Beneficiary removed" }); },
     onError: (e: any) => toast({ title: "Error", description: e.message, variant: "destructive" }),
   });
 
@@ -944,6 +988,185 @@ function StaffPanel({ staffId, canEdit, onClose, onUpdated }: {
                     </div>
                     <Field label="Address" value={d.emergencyContactAddress} editing={editing} placeholder="Contact address" onChange={set("emergencyContactAddress")} />
                   </div>
+                </div>
+              )}
+
+              {/* Beneficiaries Tab */}
+              {tab === "beneficiaries" && (
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between">
+                    <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-widest flex items-center gap-2">
+                      <Users className="w-3.5 h-3.5" /> Beneficiaries
+                    </h3>
+                    {canEdit && !addingBeneficiary && (
+                      <button onClick={() => setAddingBeneficiary(true)}
+                        className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-primary text-primary-foreground text-xs font-semibold hover:bg-primary/90 transition-colors">
+                        <Plus className="w-3.5 h-3.5" /> Add Beneficiary
+                      </button>
+                    )}
+                  </div>
+
+                  <p className="text-xs text-muted-foreground">
+                    People nominated as beneficiaries for benefits, insurance, or pension entitlements.
+                  </p>
+
+                  {/* Add Beneficiary Form */}
+                  {addingBeneficiary && (
+                    <div className="border border-primary/30 bg-primary/5 rounded-xl p-4 space-y-3">
+                      <p className="text-xs font-semibold text-primary">New Beneficiary</p>
+                      <div className="space-y-3">
+                        <div>
+                          <label className="block text-xs font-semibold text-muted-foreground mb-1 uppercase tracking-wide">Full Name *</label>
+                          <input
+                            value={beneficiaryDraft.name}
+                            onChange={e => setBeneficiaryDraft(p => ({ ...p, name: e.target.value }))}
+                            placeholder="e.g. Jane Doe"
+                            className="w-full px-3 py-2 rounded-xl border border-border bg-background text-sm outline-none focus:ring-2 focus:ring-primary/20"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-xs font-semibold text-muted-foreground mb-1 uppercase tracking-wide">Phone Number</label>
+                          <input
+                            type="tel"
+                            value={beneficiaryDraft.phoneNumber}
+                            onChange={e => setBeneficiaryDraft(p => ({ ...p, phoneNumber: e.target.value }))}
+                            placeholder="+1 555 000 0000"
+                            className="w-full px-3 py-2 rounded-xl border border-border bg-background text-sm outline-none focus:ring-2 focus:ring-primary/20"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-xs font-semibold text-muted-foreground mb-1 uppercase tracking-wide">Address</label>
+                          <textarea
+                            value={beneficiaryDraft.address}
+                            onChange={e => setBeneficiaryDraft(p => ({ ...p, address: e.target.value }))}
+                            placeholder="Mailing address"
+                            rows={2}
+                            className="w-full px-3 py-2 rounded-xl border border-border bg-background text-sm outline-none focus:ring-2 focus:ring-primary/20 resize-none"
+                          />
+                        </div>
+                      </div>
+                      <div className="flex gap-2 justify-end pt-1">
+                        <button
+                          onClick={() => { setAddingBeneficiary(false); setBeneficiaryDraft({ name: "", phoneNumber: "", address: "" }); }}
+                          className="px-3 py-1.5 rounded-lg border border-border text-xs font-medium hover:bg-muted">
+                          Cancel
+                        </button>
+                        <button
+                          onClick={() => addBeneficiary.mutate(beneficiaryDraft)}
+                          disabled={!beneficiaryDraft.name.trim() || addBeneficiary.isPending}
+                          className="px-3 py-1.5 rounded-lg bg-primary text-primary-foreground text-xs font-semibold disabled:opacity-50">
+                          {addBeneficiary.isPending ? "Saving…" : "Save Beneficiary"}
+                        </button>
+                      </div>
+                    </div>
+                  )}
+
+                  {beneficiaries.length === 0 && !addingBeneficiary && (
+                    <div className="text-center py-10 border border-dashed border-border rounded-xl">
+                      <Users className="w-8 h-8 mx-auto mb-2 opacity-30" />
+                      <p className="text-sm text-muted-foreground">No beneficiaries on record.</p>
+                      {canEdit && (
+                        <p className="text-xs text-muted-foreground mt-1">Use the "Add Beneficiary" button to add one.</p>
+                      )}
+                    </div>
+                  )}
+
+                  {beneficiaries.length > 0 && (
+                    <div className="space-y-2">
+                      {beneficiaries.map((b: any) => {
+                        const isEditingRow = editingBeneficiaryId === b.id;
+                        return (
+                          <div key={b.id} className="border border-border rounded-xl p-3">
+                            {isEditingRow ? (
+                              <div className="space-y-3">
+                                <div>
+                                  <label className="block text-xs font-semibold text-muted-foreground mb-1 uppercase tracking-wide">Full Name *</label>
+                                  <input
+                                    value={beneficiaryEditDraft.name}
+                                    onChange={e => setBeneficiaryEditDraft(p => ({ ...p, name: e.target.value }))}
+                                    className="w-full px-3 py-2 rounded-xl border border-border bg-background text-sm outline-none focus:ring-2 focus:ring-primary/20"
+                                  />
+                                </div>
+                                <div>
+                                  <label className="block text-xs font-semibold text-muted-foreground mb-1 uppercase tracking-wide">Phone</label>
+                                  <input
+                                    type="tel"
+                                    value={beneficiaryEditDraft.phoneNumber}
+                                    onChange={e => setBeneficiaryEditDraft(p => ({ ...p, phoneNumber: e.target.value }))}
+                                    className="w-full px-3 py-2 rounded-xl border border-border bg-background text-sm outline-none focus:ring-2 focus:ring-primary/20"
+                                  />
+                                </div>
+                                <div>
+                                  <label className="block text-xs font-semibold text-muted-foreground mb-1 uppercase tracking-wide">Address</label>
+                                  <textarea
+                                    value={beneficiaryEditDraft.address}
+                                    onChange={e => setBeneficiaryEditDraft(p => ({ ...p, address: e.target.value }))}
+                                    rows={2}
+                                    className="w-full px-3 py-2 rounded-xl border border-border bg-background text-sm outline-none focus:ring-2 focus:ring-primary/20 resize-none"
+                                  />
+                                </div>
+                                <div className="flex gap-2 justify-end">
+                                  <button
+                                    onClick={() => setEditingBeneficiaryId(null)}
+                                    className="px-3 py-1.5 rounded-lg border border-border text-xs font-medium hover:bg-muted">
+                                    Cancel
+                                  </button>
+                                  <button
+                                    onClick={() => updateBeneficiary.mutate({ rowId: b.id, body: beneficiaryEditDraft })}
+                                    disabled={!beneficiaryEditDraft.name.trim() || updateBeneficiary.isPending}
+                                    className="px-3 py-1.5 rounded-lg bg-primary text-primary-foreground text-xs font-semibold disabled:opacity-50">
+                                    {updateBeneficiary.isPending ? "Saving…" : "Save"}
+                                  </button>
+                                </div>
+                              </div>
+                            ) : (
+                              <div className="flex items-start justify-between gap-3">
+                                <div className="min-w-0 flex-1">
+                                  <p className="font-semibold text-sm truncate">{b.name}</p>
+                                  {b.phoneNumber && (
+                                    <p className="text-xs text-muted-foreground mt-0.5 flex items-center gap-1">
+                                      <Phone className="w-3 h-3" /> {b.phoneNumber}
+                                    </p>
+                                  )}
+                                  {b.address && (
+                                    <p className="text-xs text-muted-foreground mt-1 flex items-start gap-1">
+                                      <MapPin className="w-3 h-3 mt-0.5 shrink-0" />
+                                      <span className="whitespace-pre-line">{b.address}</span>
+                                    </p>
+                                  )}
+                                </div>
+                                {canEdit && (
+                                  <div className="flex items-center gap-1 shrink-0">
+                                    <button
+                                      title="Edit"
+                                      onClick={() => {
+                                        setEditingBeneficiaryId(b.id);
+                                        setBeneficiaryEditDraft({
+                                          name: b.name ?? "",
+                                          phoneNumber: b.phoneNumber ?? "",
+                                          address: b.address ?? "",
+                                        });
+                                      }}
+                                      className="p-1.5 rounded-lg hover:bg-muted text-muted-foreground hover:text-foreground">
+                                      <Edit2 className="w-3.5 h-3.5" />
+                                    </button>
+                                    <button
+                                      title="Remove"
+                                      onClick={() => {
+                                        if (confirm(`Remove beneficiary "${b.name}"?`)) removeBeneficiary.mutate(b.id);
+                                      }}
+                                      className="p-1.5 rounded-lg hover:bg-red-50 text-muted-foreground hover:text-red-600">
+                                      <Trash2 className="w-3.5 h-3.5" />
+                                    </button>
+                                  </div>
+                                )}
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
                 </div>
               )}
 

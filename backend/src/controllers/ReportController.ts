@@ -1,4 +1,4 @@
-import { User, Appraisal, Cycle, Criterion, AppraisalScore, AttendanceLog, Timesheet, Site } from "../models/index.js";
+import { User, Appraisal, Cycle, Criterion, AppraisalScore, AttendanceLog, Timesheet, Site, LeaveRequest, LeaveType } from "../models/index.js";
 import { Op } from "sequelize";
 
 const RATING_BANDS = [
@@ -9,17 +9,35 @@ const RATING_BANDS = [
   { label: "Unsatisfactory (<1.5)", min: 0, max: 1.49 },
 ];
 
+type AppraisalFilters = {
+  department?: string;
+  siteId?: string;
+  from?: string;
+  to?: string;
+};
+
 export default class ReportController {
-  static async getReports(deptFilter?: string) {
+  static async getReports(filters: AppraisalFilters = {}) {
+    const { department: deptFilter, siteId, from, to } = filters;
+    const siteIdNum = siteId ? Number(siteId) : null;
+
     const allUsers = await User.findAll();
     const allUsersPlain = allUsers.map((u: any) => u.get({ plain: true }));
     const departments = Array.from(
       new Set(allUsersPlain.map((u: any) => u.department || "Unassigned"))
     ).sort();
 
-    const users = deptFilter
-      ? allUsersPlain.filter((u: any) => (u.department || "Unassigned") === deptFilter)
-      : allUsersPlain;
+    const allSites = await Site.findAll({ attributes: ["id", "name"], order: [["name", "ASC"]] });
+    const sites = allSites.map((s: any) => {
+      const p = s.get({ plain: true });
+      return { id: p.id, name: p.name };
+    });
+    const siteMap = new Map<number, string>(sites.map((s: any) => [s.id, s.name]));
+
+    let users = allUsersPlain;
+    if (deptFilter) users = users.filter((u: any) => (u.department || "Unassigned") === deptFilter);
+    if (siteIdNum !== null) users = users.filter((u: any) => u.siteId === siteIdNum);
+    const hasUserFilter = !!deptFilter || siteIdNum !== null;
 
     const userIds = new Set(users.map((u: any) => u.id));
 
@@ -33,14 +51,28 @@ export default class ReportController {
       return acc;
     }, {});
 
+    const allCyclesRaw = await Cycle.findAll();
+    const allCycles = allCyclesRaw.map((c: any) => c.get({ plain: true }));
+
+    const cycleInRange = (c: any) => {
+      if (!from && !to) return true;
+      const cs = c.startDate ?? null;
+      const ce = c.endDate ?? null;
+      if (from && ce && ce < from) return false;
+      if (to && cs && cs > to) return false;
+      return true;
+    };
+    const cyclesInRange = allCycles.filter(cycleInRange);
+    const cycleIdsInRange = new Set(cyclesInRange.map((c: any) => c.id));
+
     const allAppraisalsRaw = await Appraisal.findAll({
       attributes: ["id", "status", "cycleId", "employeeId", "overallScore"],
     });
     const allAppraisals = allAppraisalsRaw.map((a: any) => a.get({ plain: true }));
 
-    const appraisals = deptFilter
-      ? allAppraisals.filter((a: any) => userIds.has(a.employeeId))
-      : allAppraisals;
+    let appraisals = allAppraisals;
+    if (hasUserFilter) appraisals = appraisals.filter((a: any) => userIds.has(a.employeeId));
+    if (from || to) appraisals = appraisals.filter((a: any) => cycleIdsInRange.has(a.cycleId));
 
     const statusBreakdown = appraisals.reduce<Record<string, number>>((acc, a: any) => {
       acc[a.status] = (acc[a.status] || 0) + 1;
@@ -69,9 +101,7 @@ export default class ReportController {
       count: scores.length,
     })).sort((a, b) => b.avgScore - a.avgScore);
 
-    const cyclesRaw = await Cycle.findAll();
-    const cycles = cyclesRaw.map((c: any) => c.get({ plain: true }));
-    const cycleStats = cycles.map((c: any) => {
+    const cycleStats = cyclesInRange.map((c: any) => {
       const cycleAppraisals = appraisals.filter((a: any) => a.cycleId === c.id);
       const cycleCompleted = cycleAppraisals.filter((a: any) => a.status === "completed").length;
       const cycleScored = cycleAppraisals.filter((a: any) => a.overallScore !== null);
@@ -84,7 +114,7 @@ export default class ReportController {
         completionRate: cycleAppraisals.length > 0 ? Math.round((cycleCompleted / cycleAppraisals.length) * 100) : 0,
         avgScore: cycleAvg,
       };
-    }).filter((c: any) => !deptFilter || c.total > 0);
+    }).filter((c: any) => !hasUserFilter || c.total > 0);
 
     const appraisalIds = appraisals.map((a: any) => a.id);
     const allScoreRowsRaw = appraisalIds.length > 0
@@ -114,7 +144,7 @@ export default class ReportController {
     }));
 
     let employeeList: any[] = [];
-    if (deptFilter) {
+    if (hasUserFilter) {
       employeeList = users.map((u: any) => {
         const empAppraisals = appraisals.filter((a: any) => a.employeeId === u.id);
         const empCompleted = empAppraisals.filter((a: any) => a.status === "completed").length;
@@ -124,6 +154,9 @@ export default class ReportController {
           : null;
         return {
           id: u.id, name: u.name, jobTitle: u.jobTitle, role: u.role,
+          department: u.department ?? "Unassigned",
+          siteId: u.siteId ?? null,
+          site: u.siteId ? (siteMap.get(u.siteId) ?? "Unassigned") : "Unassigned",
           totalAppraisals: empAppraisals.length, completed: empCompleted,
           completionRate: empAppraisals.length > 0 ? Math.round((empCompleted / empAppraisals.length) * 100) : 0,
           avgScore: empAvg,
@@ -132,7 +165,11 @@ export default class ReportController {
     }
 
     return {
-      departments, selectedDepartment: deptFilter ?? null,
+      departments,
+      sites,
+      selectedDepartment: deptFilter ?? null,
+      selectedSiteId: siteIdNum,
+      filters: { from: from ?? null, to: to ?? null, department: deptFilter ?? null, siteId: siteIdNum },
       workforce: { total: users.length, roleBreakdown, deptBreakdown },
       appraisals: { total, completed, completionRate, avgOverallScore, statusBreakdown },
       avgScoreByDept, cycleStats, criteriaStats, ratingDistribution, employeeList,
@@ -255,6 +292,104 @@ export default class ReportController {
         totalMinutes,
         totalHours: Number((totalMinutes / 60).toFixed(1)),
       },
+      rows,
+    };
+  }
+
+  static async getLeaveSummary(filters: { from?: string; to?: string; status?: string; userId?: string; siteId?: string; department?: string; leaveType?: string }) {
+    const allUsers = await User.findAll({ attributes: ["id", "name", "email", "department", "siteId"] });
+    const userMap = new Map<number, any>(allUsers.map((u: any) => [u.id, u.get({ plain: true })]));
+    const allSites = await Site.findAll({ attributes: ["id", "name"] });
+    const siteMap = new Map<number, string>(allSites.map((s: any) => [s.id, s.get({ plain: true }).name]));
+    const leaveTypesRaw = await LeaveType.findAll();
+    const leaveTypes = leaveTypesRaw.map((t: any) => t.get({ plain: true }));
+    const leaveTypeLabel = new Map<string, string>(leaveTypes.map((t: any) => [t.name, t.label]));
+
+    const requestsRaw = await LeaveRequest.findAll();
+    let reqs = requestsRaw.map((r: any) => r.get({ plain: true }));
+
+    // Date-range overlap filter (request overlaps [from, to])
+    if (filters.from) reqs = reqs.filter((r: any) => r.endDate >= filters.from!);
+    if (filters.to) reqs = reqs.filter((r: any) => r.startDate <= filters.to!);
+    if (filters.status) reqs = reqs.filter((r: any) => r.status === filters.status);
+    if (filters.leaveType) reqs = reqs.filter((r: any) => r.leaveType === filters.leaveType);
+    if (filters.userId) reqs = reqs.filter((r: any) => r.employeeId === Number(filters.userId));
+    if (filters.siteId) {
+      const sid = Number(filters.siteId);
+      reqs = reqs.filter((r: any) => userMap.get(r.employeeId)?.siteId === sid);
+    }
+    if (filters.department) {
+      reqs = reqs.filter((r: any) => (userMap.get(r.employeeId)?.department ?? "Unassigned") === filters.department);
+    }
+
+    const rows = reqs.map((r: any) => {
+      const user = userMap.get(r.employeeId);
+      return {
+        id: r.id,
+        employeeId: r.employeeId,
+        name: user?.name ?? "Unknown",
+        email: user?.email ?? "",
+        department: user?.department ?? "Unassigned",
+        siteId: user?.siteId ?? null,
+        site: user?.siteId ? (siteMap.get(user.siteId) ?? "Unassigned") : "Unassigned",
+        leaveType: r.leaveType,
+        leaveTypeLabel: leaveTypeLabel.get(r.leaveType) ?? r.leaveType,
+        startDate: r.startDate,
+        endDate: r.endDate,
+        days: r.days,
+        status: r.status,
+        reason: r.reason,
+        reviewerId: r.reviewerId,
+        createdAt: r.createdAt,
+      };
+    }).sort((a: any, b: any) =>
+      String(b.startDate).localeCompare(String(a.startDate)) || a.name.localeCompare(b.name)
+    );
+
+    const statusCounts = rows.reduce<Record<string, number>>((acc, r: any) => {
+      acc[r.status] = (acc[r.status] ?? 0) + 1;
+      return acc;
+    }, {});
+    const totalDays = rows.reduce((s: number, r: any) => s + (Number(r.days) || 0), 0);
+    const approvedDays = rows
+      .filter((r: any) => r.status === "approved")
+      .reduce((s: number, r: any) => s + (Number(r.days) || 0), 0);
+
+    const byType: Record<string, { count: number; days: number; label: string }> = {};
+    for (const r of rows) {
+      const key = r.leaveType;
+      if (!byType[key]) byType[key] = { count: 0, days: 0, label: r.leaveTypeLabel };
+      byType[key].count += 1;
+      byType[key].days += Number(r.days) || 0;
+    }
+    const byLeaveType = Object.entries(byType)
+      .map(([name, v]) => ({ name, label: v.label, count: v.count, days: v.days }))
+      .sort((a, b) => b.days - a.days);
+
+    const byDept: Record<string, { count: number; days: number }> = {};
+    for (const r of rows) {
+      if (!byDept[r.department]) byDept[r.department] = { count: 0, days: 0 };
+      byDept[r.department].count += 1;
+      byDept[r.department].days += Number(r.days) || 0;
+    }
+    const byDepartment = Object.entries(byDept)
+      .map(([department, v]) => ({ department, count: v.count, days: v.days }))
+      .sort((a, b) => b.days - a.days);
+
+    return {
+      summary: {
+        total: rows.length,
+        approved: statusCounts["approved"] ?? 0,
+        pending: statusCounts["pending"] ?? 0,
+        rejected: statusCounts["rejected"] ?? 0,
+        cancelled: statusCounts["cancelled"] ?? 0,
+        totalDays,
+        approvedDays,
+        uniqueEmployees: new Set(rows.map((r: any) => r.employeeId)).size,
+      },
+      leaveTypes: leaveTypes.map((t: any) => ({ name: t.name, label: t.label })),
+      byLeaveType,
+      byDepartment,
       rows,
     };
   }

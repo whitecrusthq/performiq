@@ -1032,14 +1032,397 @@ function AppraisalsTab() {
   );
 }
 
+// ─── Tab: Leave Report ────────────────────────────────────────────────────────
+
+type LeaveRow = {
+  id: number; employeeId: number; name: string; email: string;
+  department: string; siteId: number | null; site: string;
+  leaveType: string; leaveTypeLabel: string;
+  startDate: string; endDate: string; days: number;
+  status: string; reason: string | null;
+};
+type LeaveData = {
+  summary: {
+    total: number; approved: number; pending: number; rejected: number; cancelled: number;
+    totalDays: number; approvedDays: number; uniqueEmployees: number;
+  };
+  leaveTypes: { name: string; label: string }[];
+  byLeaveType: { name: string; label: string; count: number; days: number }[];
+  byDepartment: { department: string; count: number; days: number }[];
+  rows: LeaveRow[];
+};
+
+const LEAVE_STATUS_COLORS: Record<string, string> = {
+  approved: "#22c55e",
+  pending: "#f59e0b",
+  rejected: "#ef4444",
+  cancelled: "#94a3b8",
+};
+
+function leaveStatusBadge(status: string) {
+  const map: Record<string, string> = {
+    approved: "bg-green-100 text-green-700",
+    pending: "bg-amber-100 text-amber-700",
+    rejected: "bg-red-100 text-red-700",
+    cancelled: "bg-slate-100 text-slate-600",
+  };
+  return `px-2 py-0.5 rounded-full text-xs font-medium capitalize ${map[status] ?? "bg-slate-100 text-slate-600"}`;
+}
+
+function LeaveTab() {
+  const today = new Date().toISOString().split("T")[0];
+  const oneYearAgo = new Date(Date.now() - 365 * 24 * 60 * 60 * 1000).toISOString().split("T")[0];
+  const [from, setFrom] = useState(oneYearAgo);
+  const [to, setTo] = useState(today);
+  const [siteId, setSiteId] = useState("");
+  const [department, setDepartment] = useState("");
+  const [statusFilter, setStatusFilter] = useState("");
+  const [leaveTypeFilter, setLeaveTypeFilter] = useState("");
+  const [data, setData] = useState<LeaveData | null>(null);
+  const [sites, setSites] = useState<{ id: number; name: string }[]>([]);
+  const [departments, setDepartments] = useState<string[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    apiFetch("/api/sites")
+      .then(r => r.ok ? r.json() : [])
+      .then((rows: any[]) => setSites((rows ?? []).map(r => ({ id: r.id, name: r.name })).sort((a, b) => a.name.localeCompare(b.name))))
+      .catch(() => setSites([]));
+    apiFetch("/api/departments")
+      .then(r => r.ok ? r.json() : [])
+      .then((rows: any[]) => setDepartments((rows ?? []).map(r => (typeof r === "string" ? r : r.name)).filter(Boolean).sort()))
+      .catch(() => setDepartments([]));
+  }, []);
+
+  const siteName = sites.find(s => String(s.id) === siteId)?.name ?? "";
+  const leaveTypeLabel = data?.leaveTypes.find(t => t.name === leaveTypeFilter)?.label ?? "";
+
+  const load = useCallback(() => {
+    setLoading(true); setError(null);
+    const params = new URLSearchParams();
+    if (from) params.set("from", from);
+    if (to) params.set("to", to);
+    if (siteId) params.set("siteId", siteId);
+    if (department) params.set("department", department);
+    if (statusFilter) params.set("status", statusFilter);
+    if (leaveTypeFilter) params.set("leaveType", leaveTypeFilter);
+    apiFetch(`/api/reports/leave-summary?${params}`)
+      .then(r => r.ok ? r.json() : Promise.reject("Failed"))
+      .then(setData)
+      .catch(() => setError("Could not load leave report."))
+      .finally(() => setLoading(false));
+  }, [from, to, siteId, department, statusFilter, leaveTypeFilter]);
+
+  useEffect(() => { load(); }, [load]);
+
+  const clearFilters = () => { setSiteId(""); setDepartment(""); setStatusFilter(""); setLeaveTypeFilter(""); };
+
+  const filterSlug = (parts: Array<string | undefined>) =>
+    parts.filter(Boolean).map(p => String(p).replace(/[^A-Za-z0-9]+/g, "-")).join("_");
+
+  // ── Excel export ──
+  const exportExcel = async () => {
+    if (!data) return;
+    const XLSX = await import("xlsx");
+    const wb = XLSX.utils.book_new();
+    const summaryRows: any[] = [
+      ["PerformIQ — Leave Report"],
+      [`Period: ${from} to ${to}`],
+      [`Site: ${siteName || "All Sites"}`],
+      [`Department: ${department || "All Departments"}`],
+      [`Leave Type: ${leaveTypeLabel || "All Types"}`],
+      [`Status: ${statusFilter || "All"}`],
+      [`Generated: ${new Date().toLocaleString()}`],
+      [],
+      ["Metric", "Value"],
+      ["Total Requests", data.summary.total],
+      ["Unique Employees", data.summary.uniqueEmployees],
+      ["Approved", data.summary.approved],
+      ["Pending", data.summary.pending],
+      ["Rejected", data.summary.rejected],
+      ["Cancelled", data.summary.cancelled],
+      ["Total Days Requested", data.summary.totalDays],
+      ["Approved Days", data.summary.approvedDays],
+    ];
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(summaryRows), "Summary");
+
+    const byTypeRows: any[] = [
+      ["Leave Type", "Requests", "Days"],
+      ...data.byLeaveType.map(t => [t.label, t.count, t.days]),
+    ];
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(byTypeRows), "By Leave Type");
+
+    const byDeptRows: any[] = [
+      ["Department", "Requests", "Days"],
+      ...data.byDepartment.map(d => [d.department, d.count, d.days]),
+    ];
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(byDeptRows), "By Department");
+
+    const detailRows: any[] = [
+      ["Employee", "Email", "Department", "Site", "Leave Type", "Start Date", "End Date", "Days", "Status", "Reason"],
+      ...data.rows.map(r => [r.name, r.email, r.department, r.site, r.leaveTypeLabel, r.startDate, r.endDate, r.days, r.status, r.reason ?? ""]),
+    ];
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(detailRows), "Leave Detail");
+
+    const suffix = filterSlug([siteName, department, leaveTypeLabel, statusFilter]);
+    XLSX.writeFile(wb, `PerformIQ_Leave_${from}_${to}${suffix ? "_" + suffix : ""}.xlsx`);
+  };
+
+  // ── PDF export ──
+  const exportPDF = async () => {
+    if (!data) return;
+    const { default: jsPDF } = await import("jspdf");
+    const { default: autoTable } = await import("jspdf-autotable");
+    const doc = new jsPDF();
+    let y = 18;
+    doc.setFontSize(18); doc.setTextColor(59, 130, 246);
+    doc.text("PerformIQ — Leave Report", 14, y); y += 7;
+    doc.setFontSize(11); doc.setTextColor(80, 80, 80);
+    doc.text(`Period: ${from} to ${to}`, 14, y); y += 5;
+    doc.text(`Site: ${siteName || "All Sites"}    Department: ${department || "All Departments"}`, 14, y); y += 5;
+    doc.text(`Leave Type: ${leaveTypeLabel || "All Types"}    Status: ${statusFilter || "All"}`, 14, y); y += 5;
+    doc.setFontSize(9); doc.setTextColor(140, 140, 140);
+    doc.text(`Generated: ${new Date().toLocaleString()}`, 14, y); y += 8;
+
+    doc.setFontSize(13); doc.setTextColor(30, 30, 30);
+    doc.text("Summary", 14, y); y += 4;
+    autoTable(doc, {
+      startY: y,
+      head: [["Metric", "Value"]],
+      body: [
+        ["Total Requests", data.summary.total],
+        ["Unique Employees", data.summary.uniqueEmployees],
+        ["Approved", data.summary.approved],
+        ["Pending", data.summary.pending],
+        ["Rejected", data.summary.rejected],
+        ["Cancelled", data.summary.cancelled],
+        ["Total Days", data.summary.totalDays],
+        ["Approved Days", data.summary.approvedDays],
+      ],
+      theme: "grid",
+    });
+    y = (doc as any).lastAutoTable.finalY + 8;
+
+    if (y > 220) { doc.addPage(); y = 18; }
+    doc.setFontSize(13); doc.setTextColor(30, 30, 30);
+    doc.text("Leave by Type", 14, y); y += 4;
+    autoTable(doc, {
+      startY: y,
+      head: [["Leave Type", "Requests", "Days"]],
+      body: data.byLeaveType.map(t => [t.label, t.count, t.days]),
+      theme: "striped",
+    });
+    y = (doc as any).lastAutoTable.finalY + 8;
+
+    if (y > 220) { doc.addPage(); y = 18; }
+    doc.setFontSize(13); doc.setTextColor(30, 30, 30);
+    doc.text("Leave Detail", 14, y); y += 4;
+    autoTable(doc, {
+      startY: y,
+      head: [["Employee", "Department", "Site", "Type", "Start", "End", "Days", "Status"]],
+      body: data.rows.map(r => [r.name, r.department, r.site, r.leaveTypeLabel, r.startDate, r.endDate, r.days, r.status]),
+      theme: "striped",
+      styles: { fontSize: 8 },
+    });
+
+    const suffix = filterSlug([siteName, department, leaveTypeLabel, statusFilter]);
+    doc.save(`PerformIQ_Leave_${from}_${to}${suffix ? "_" + suffix : ""}.pdf`);
+  };
+
+  const statusChartData = data
+    ? [
+        { name: "Approved", value: data.summary.approved, color: LEAVE_STATUS_COLORS.approved },
+        { name: "Pending", value: data.summary.pending, color: LEAVE_STATUS_COLORS.pending },
+        { name: "Rejected", value: data.summary.rejected, color: LEAVE_STATUS_COLORS.rejected },
+        { name: "Cancelled", value: data.summary.cancelled, color: LEAVE_STATUS_COLORS.cancelled },
+      ].filter(d => d.value > 0)
+    : [];
+
+  return (
+    <div>
+      {/* Filters + Export */}
+      <div className="flex flex-wrap items-center gap-3 mb-6">
+        <div className="flex items-center gap-2 bg-card border border-border rounded-xl px-3 py-2">
+          <Calendar className="w-4 h-4 text-muted-foreground" />
+          <input type="date" value={from} onChange={e => setFrom(e.target.value)}
+            className="text-sm bg-transparent border-none outline-none" />
+          <span className="text-muted-foreground text-sm">–</span>
+          <input type="date" value={to} onChange={e => setTo(e.target.value)}
+            className="text-sm bg-transparent border-none outline-none" />
+        </div>
+
+        <div className="flex items-center gap-2 bg-card border border-border rounded-xl px-3 py-2">
+          <Building2 className="w-4 h-4 text-muted-foreground" />
+          <select value={siteId} onChange={e => setSiteId(e.target.value)}
+            className="text-sm bg-transparent border-none outline-none cursor-pointer">
+            <option value="">All Sites</option>
+            {sites.map(s => <option key={s.id} value={String(s.id)}>{s.name}</option>)}
+          </select>
+        </div>
+
+        <div className="flex items-center gap-2 bg-card border border-border rounded-xl px-3 py-2">
+          <Users className="w-4 h-4 text-muted-foreground" />
+          <select value={department} onChange={e => setDepartment(e.target.value)}
+            className="text-sm bg-transparent border-none outline-none cursor-pointer">
+            <option value="">All Departments</option>
+            {departments.map(d => <option key={d} value={d}>{d}</option>)}
+          </select>
+        </div>
+
+        <div className="flex items-center gap-2 bg-card border border-border rounded-xl px-3 py-2">
+          <Filter className="w-4 h-4 text-muted-foreground" />
+          <select value={leaveTypeFilter} onChange={e => setLeaveTypeFilter(e.target.value)}
+            className="text-sm bg-transparent border-none outline-none cursor-pointer">
+            <option value="">All Leave Types</option>
+            {data?.leaveTypes.map(t => <option key={t.name} value={t.name}>{t.label}</option>)}
+          </select>
+        </div>
+
+        <div className="flex items-center gap-2 bg-card border border-border rounded-xl px-3 py-2">
+          <CheckCircle2 className="w-4 h-4 text-muted-foreground" />
+          <select value={statusFilter} onChange={e => setStatusFilter(e.target.value)}
+            className="text-sm bg-transparent border-none outline-none cursor-pointer">
+            <option value="">All Statuses</option>
+            <option value="approved">Approved</option>
+            <option value="pending">Pending</option>
+            <option value="rejected">Rejected</option>
+            <option value="cancelled">Cancelled</option>
+          </select>
+        </div>
+
+        {(siteId || department || statusFilter || leaveTypeFilter) && (
+          <button onClick={clearFilters} className="text-xs text-muted-foreground underline hover:text-foreground">
+            Clear filters
+          </button>
+        )}
+
+        <div className="ml-auto flex gap-2">
+          <button onClick={exportExcel} disabled={!data}
+            className="flex items-center gap-2 px-4 py-2 rounded-xl border border-border bg-card text-sm font-medium hover:bg-muted transition-colors disabled:opacity-50">
+            <FileSpreadsheet className="w-4 h-4 text-green-600" /> Excel
+          </button>
+          <button onClick={exportPDF} disabled={!data}
+            className="flex items-center gap-2 px-4 py-2 rounded-xl border border-border bg-card text-sm font-medium hover:bg-muted transition-colors disabled:opacity-50">
+            <Download className="w-4 h-4 text-red-500" /> PDF
+          </button>
+        </div>
+      </div>
+
+      {loading && <div className="flex items-center justify-center h-48 text-muted-foreground">Loading…</div>}
+      {error && <div className="flex items-center gap-2 text-destructive p-4"><AlertCircle className="w-4 h-4" />{error}</div>}
+      {!loading && !error && data && (
+        <>
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+            {[
+              { label: "Total Requests", value: data.summary.total, icon: ClipboardCheck, color: "text-blue-500 bg-blue-50" },
+              { label: "Approved", value: data.summary.approved, icon: CheckCircle2, color: "text-green-500 bg-green-50" },
+              { label: "Pending", value: data.summary.pending, icon: Clock, color: "text-amber-500 bg-amber-50" },
+              { label: "Approved Days", value: data.summary.approvedDays, icon: Calendar, color: "text-purple-500 bg-purple-50" },
+            ].map(card => (
+              <Card key={card.label} className="p-5 flex items-center gap-4">
+                <div className={`w-11 h-11 rounded-xl flex items-center justify-center shrink-0 ${card.color}`}>
+                  <card.icon className="w-5 h-5" />
+                </div>
+                <div>
+                  <p className="text-2xl font-bold text-foreground">{card.value}</p>
+                  <p className="text-xs text-muted-foreground mt-0.5">{card.label}</p>
+                </div>
+              </Card>
+            ))}
+          </div>
+
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+            <Card className="p-6">
+              <h3 className="font-semibold text-foreground mb-4">Status Breakdown</h3>
+              {statusChartData.length === 0
+                ? <p className="text-muted-foreground text-sm">No leave requests in this period.</p>
+                : (
+                  <ResponsiveContainer width="100%" height={220}>
+                    <PieChart>
+                      <Pie data={statusChartData} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={80}>
+                        {statusChartData.map((entry, i) => <Cell key={i} fill={entry.color} />)}
+                      </Pie>
+                      <Tooltip />
+                      <Legend />
+                    </PieChart>
+                  </ResponsiveContainer>
+                )}
+            </Card>
+
+            <Card className="p-6">
+              <h3 className="font-semibold text-foreground mb-4">Days by Leave Type</h3>
+              {data.byLeaveType.length === 0
+                ? <p className="text-muted-foreground text-sm">No leave data for this period.</p>
+                : (
+                  <ResponsiveContainer width="100%" height={220}>
+                    <BarChart data={data.byLeaveType}>
+                      <CartesianGrid strokeDasharray="3 3" vertical={false} />
+                      <XAxis dataKey="label" tick={{ fontSize: 11 }} />
+                      <YAxis />
+                      <Tooltip formatter={(v: any) => [`${v} days`, "Days"]} />
+                      <Bar dataKey="days" fill="#3b82f6" radius={[4, 4, 0, 0]} />
+                    </BarChart>
+                  </ResponsiveContainer>
+                )}
+            </Card>
+          </div>
+
+          <Card className="p-6">
+            <h3 className="font-semibold text-foreground mb-4">Leave Requests Detail</h3>
+            {data.rows.length === 0
+              ? <p className="text-muted-foreground text-sm">No leave requests found for this period.</p>
+              : (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm text-left">
+                    <thead>
+                      <tr className="border-b text-muted-foreground">
+                        <th className="pb-2 pr-4 font-medium">Employee</th>
+                        <th className="pb-2 pr-4 font-medium hidden sm:table-cell">Department</th>
+                        <th className="pb-2 pr-4 font-medium hidden md:table-cell">Site</th>
+                        <th className="pb-2 pr-4 font-medium">Type</th>
+                        <th className="pb-2 pr-4 font-medium hidden lg:table-cell">Period</th>
+                        <th className="pb-2 pr-4 font-medium text-right">Days</th>
+                        <th className="pb-2 font-medium">Status</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-border">
+                      {data.rows.map(r => (
+                        <tr key={r.id} className="hover:bg-muted/30">
+                          <td className="py-2.5 pr-4">
+                            <p className="font-medium">{r.name}</p>
+                            <p className="text-xs text-muted-foreground hidden sm:block">{r.email}</p>
+                          </td>
+                          <td className="py-2.5 pr-4 text-muted-foreground hidden sm:table-cell">{r.department}</td>
+                          <td className="py-2.5 pr-4 text-muted-foreground hidden md:table-cell">{r.site}</td>
+                          <td className="py-2.5 pr-4">{r.leaveTypeLabel}</td>
+                          <td className="py-2.5 pr-4 text-muted-foreground text-xs hidden lg:table-cell">{r.startDate} → {r.endDate}</td>
+                          <td className="py-2.5 pr-4 text-right font-semibold">{r.days}</td>
+                          <td className="py-2.5">
+                            <span className={leaveStatusBadge(r.status)}>{r.status}</span>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+          </Card>
+        </>
+      )}
+    </div>
+  );
+}
+
 // ─── Main Page ────────────────────────────────────────────────────────────────
 
-type Tab = "appraisals" | "attendance" | "timesheets";
+type Tab = "appraisals" | "attendance" | "timesheets" | "leave";
 
 const TABS: { id: Tab; label: string; icon: React.ElementType }[] = [
   { id: "appraisals", label: "Appraisals", icon: BarChart3 },
   { id: "attendance", label: "Attendance", icon: Clock },
   { id: "timesheets", label: "Timesheets", icon: ClipboardCheck },
+  { id: "leave",      label: "Leave",      icon: Calendar },
 ];
 
 export default function Reports() {
@@ -1047,7 +1430,7 @@ export default function Reports() {
 
   return (
     <div>
-      <PageHeader title="Reports & Analytics" description="Performance, attendance, and timesheet insights across the organisation." />
+      <PageHeader title="Reports & Analytics" description="Performance, attendance, timesheet, and leave insights across the organisation." />
 
       {/* Tab Bar */}
       <div className="flex gap-1 bg-muted/40 rounded-xl p-1 mb-6 w-fit">
@@ -1070,6 +1453,7 @@ export default function Reports() {
       {activeTab === "appraisals" && <AppraisalsTab />}
       {activeTab === "attendance" && <AttendanceTab />}
       {activeTab === "timesheets" && <TimesheetsTab />}
+      {activeTab === "leave" && <LeaveTab />}
     </div>
   );
 }
