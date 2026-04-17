@@ -10,7 +10,7 @@ import { Textarea } from "@/components/ui/textarea";
 import {
   Briefcase, MapPin, Clock, Building2, ChevronRight, Search,
   Upload, CheckCircle2, ArrowLeft, FileText, Send, User, Mail,
-  Phone, Globe, GraduationCap, DollarSign, Calendar, Loader2
+  Phone, Globe, GraduationCap, Calendar, Loader2
 } from "lucide-react";
 
 const EMPLOYMENT_LABELS: Record<string, string> = {
@@ -288,8 +288,8 @@ function ApplicationForm({ job, company, onBack, onSuccess }: {
               <Input value={form.linkedin || ""} onChange={e => set("linkedin", e.target.value)} placeholder="https://linkedin.com/in/..." />
             </div>
             <div className="space-y-1.5">
-              <Label className="flex items-center gap-1"><DollarSign className="h-3.5 w-3.5" /> Expected Salary</Label>
-              <Input value={form.expectedSalary || ""} onChange={e => set("expectedSalary", e.target.value)} />
+              <Label className="flex items-center gap-1"><span className="font-semibold text-base leading-none">₦</span> Expected Salary (NGN)</Label>
+              <Input value={form.expectedSalary || ""} onChange={e => set("expectedSalary", e.target.value)} placeholder="e.g. 250,000" />
             </div>
             <div className="space-y-1.5">
               <Label className="flex items-center gap-1"><Calendar className="h-3.5 w-3.5" /> Available Start Date</Label>

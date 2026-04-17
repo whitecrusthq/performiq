@@ -88,6 +88,17 @@ const EMP_TYPES: Record<string, string> = {
   full_time: "Full-time", part_time: "Part-time", contract: "Contract", intern: "Intern", temporary: "Temporary",
 };
 
+function formatNaira(value: string | number | null | undefined): string {
+  if (value == null || value === "") return "";
+  const str = String(value).trim();
+  if (/^[₦$€£¥]/.test(str)) return str;
+  const num = Number(str.replace(/[^\d.-]/g, ""));
+  if (Number.isFinite(num) && str.replace(/[^\d.-]/g, "") !== "") {
+    return `₦${num.toLocaleString("en-NG", { maximumFractionDigits: 2 })}`;
+  }
+  return `₦${str}`;
+}
+
 function fmt(d: string) {
   if (!d) return "";
   return new Date(d).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" });
@@ -469,7 +480,7 @@ export default function Recruitment() {
                         {candidateDetail.experienceYears && <div><span className="text-muted-foreground text-xs">Experience:</span><p className="font-medium">{candidateDetail.experienceYears} year{candidateDetail.experienceYears !== 1 ? "s" : ""}</p></div>}
                         {candidateDetail.education && <div><span className="text-muted-foreground text-xs">Education:</span><p className="font-medium">{candidateDetail.education}</p></div>}
                         {candidateDetail.linkedin && <div><span className="text-muted-foreground text-xs">LinkedIn:</span><a href={candidateDetail.linkedin} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline block font-medium">Profile</a></div>}
-                        {candidateDetail.expectedSalary && <div><span className="text-muted-foreground text-xs">Expected Salary:</span><p className="font-medium">{candidateDetail.expectedSalary}</p></div>}
+                        {candidateDetail.expectedSalary && <div><span className="text-muted-foreground text-xs">Expected Salary:</span><p className="font-medium">{formatNaira(candidateDetail.expectedSalary)}</p></div>}
                       </div>
                     </div>
                   )}
@@ -479,7 +490,7 @@ export default function Recruitment() {
                   {candidateDetail.rating && <div><p className="text-xs text-muted-foreground mb-1">Rating</p><StarRating value={candidateDetail.rating} /></div>}
                   {candidateDetail.notes && <div><p className="text-xs text-muted-foreground mb-1">Notes</p><p className="text-sm bg-muted/50 rounded-lg p-3">{candidateDetail.notes}</p></div>}
                   {candidateDetail.interviewNotes && <div><p className="text-xs text-muted-foreground mb-1">Interview Notes</p><p className="text-sm bg-muted/50 rounded-lg p-3">{candidateDetail.interviewNotes}</p></div>}
-                  {candidateDetail.offerSalary && <div><p className="text-xs text-muted-foreground mb-1">Offer Salary</p><p className="text-sm font-medium">{candidateDetail.offerSalary}</p></div>}
+                  {candidateDetail.offerSalary && <div><p className="text-xs text-muted-foreground mb-1">Offer Salary</p><p className="text-sm font-medium">{formatNaira(candidateDetail.offerSalary)}</p></div>}
                   <p className="text-xs text-muted-foreground">Applied {fmt(candidateDetail.createdAt)}</p>
                 </div>
               )}
