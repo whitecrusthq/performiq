@@ -79,6 +79,7 @@ interface LeaveRequest {
   reviewer?: { id: number; name: string } | null;
   approvers?: ApproverStep[];
   currentApproverId?: number | null;
+  coverers?: { id: number; name: string; department?: string | null; jobTitle?: string | null }[];
 }
 
 interface UserOption { id: number; name: string; role: string; department?: string | null }
@@ -113,6 +114,7 @@ export default function Leave() {
   const [submitting, setSubmitting] = useState(false);
   const [form, setForm] = useState({ leaveType: "annual", startDate: "", endDate: "", reason: "" });
   const [approverSteps, setApproverSteps] = useState<string[]>([""]);
+  const [coverUserIds, setCoverUserIds] = useState<string[]>(["", ""]);
   const [activeTab, setActiveTab] = useState<TabType>("requests");
   const [balances, setBalances] = useState<LeaveBalanceItem[]>([]);
   const [policies, setPolicies] = useState<LeavePolicy[]>([]);
@@ -161,7 +163,7 @@ export default function Leave() {
 
   const loadUsers = async () => {
     try {
-      const r = await apiFetch("/api/users");
+      const r = await apiFetch("/api/users/coworkers");
       const data = await r.json();
       if (Array.isArray(data)) setAllUsers(data);
     } catch {}
@@ -262,15 +264,17 @@ export default function Leave() {
     setSubmitting(true);
     try {
       const approverIds = approverSteps.map(Number).filter(Boolean);
+      const coverIds = Array.from(new Set(coverUserIds.map(Number).filter(Boolean))).slice(0, 2);
       const r = await apiFetch("/api/leave-requests", {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ...form, days, approverIds }),
+        body: JSON.stringify({ ...form, days, approverIds, coverUserIds: coverIds }),
       });
       const data = await r.json();
       if (!r.ok) { setMutationError(data.error || "Failed to submit"); setSubmitting(false); return; }
       setIsDialogOpen(false);
       setForm({ leaveType: "annual", startDate: "", endDate: "", reason: "" });
       setApproverSteps([""]);
+      setCoverUserIds(["", ""]);
       load();
       loadBalances();
     } catch { setMutationError("Network error"); }
@@ -377,7 +381,7 @@ export default function Leave() {
   return (
     <div>
       <PageHeader title="Leave Management" description="Apply for leave, track balances, and manage leave policies.">
-        <Button onClick={() => { setMutationError(null); setForm({ leaveType: "annual", startDate: "", endDate: "", reason: "" }); setApproverSteps([""]); setIsDialogOpen(true); }}>
+        <Button onClick={() => { setMutationError(null); setForm({ leaveType: "annual", startDate: "", endDate: "", reason: "" }); setApproverSteps([""]); setCoverUserIds(["", ""]); setIsDialogOpen(true); }}>
           <Plus className="w-4 h-4 mr-2" /> Apply for Leave
         </Button>
       </PageHeader>
@@ -544,6 +548,17 @@ export default function Leave() {
                             </span>
                           );
                         })}
+                      </div>
+                    )}
+
+                    {req.coverers && req.coverers.length > 0 && (
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        <span className="text-xs text-muted-foreground font-medium">Covered by:</span>
+                        {req.coverers.map(c => (
+                          <span key={c.id} className="inline-flex items-center gap-1 text-xs font-medium px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200">
+                            {c.name}
+                          </span>
+                        ))}
                       </div>
                     )}
 
@@ -1082,6 +1097,52 @@ export default function Leave() {
                   <UserPlus className="w-4 h-4" /> Add another approver
                 </button>
                 <p className="text-xs text-muted-foreground mt-1">Leave blank to use your direct manager by default.</p>
+              </div>
+
+              <div>
+                <Label>Cover Officers <span className="text-muted-foreground text-xs font-normal">(up to 2 colleagues who will cover for you)</span></Label>
+                <div className="mt-2 space-y-2">
+                  {[0, 1].map(idx => {
+                    const otherPicked = coverUserIds[idx === 0 ? 1 : 0];
+                    const available = allUsers.filter(u =>
+                      u.id !== user?.id && String(u.id) !== otherPicked
+                    );
+                    return (
+                      <div key={idx} className="flex items-center gap-2">
+                        <span className="flex items-center justify-center w-6 h-6 rounded-full bg-emerald-100 text-emerald-700 text-xs font-bold shrink-0">{idx + 1}</span>
+                        <select
+                          className="flex-1 px-3 py-2 rounded-xl bg-background border border-border text-sm outline-none focus:ring-2 focus:ring-primary/20"
+                          value={coverUserIds[idx] ?? ""}
+                          onChange={e => setCoverUserIds(prev => {
+                            const next = [...prev];
+                            next[idx] = e.target.value;
+                            return next;
+                          })}
+                        >
+                          <option value="">-- Select cover officer{idx === 1 ? " (optional)" : ""} --</option>
+                          {available.map(u => (
+                            <option key={u.id} value={String(u.id)}>{u.name}{u.department ? ` · ${u.department}` : ""}</option>
+                          ))}
+                        </select>
+                        {coverUserIds[idx] && (
+                          <button
+                            type="button"
+                            onClick={() => setCoverUserIds(prev => {
+                              const next = [...prev];
+                              next[idx] = "";
+                              return next;
+                            })}
+                            className="p-1.5 rounded-lg hover:bg-destructive/10 text-muted-foreground hover:text-destructive"
+                            title="Clear"
+                          >
+                            <X className="w-3.5 h-3.5" />
+                          </button>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+                <p className="text-xs text-muted-foreground mt-1">These colleagues will be listed as covering your duties while you're away.</p>
               </div>
 
               <div className="flex gap-3 pt-2">

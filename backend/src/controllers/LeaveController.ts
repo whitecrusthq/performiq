@@ -67,12 +67,16 @@ export default class LeaveController {
   static async enrichLeaveRequest(r: any, userMap: Record<number, any>) {
     const approvers = await LeaveController.getApproversForRequest(r.id);
     const currentApprover = approvers.find(a => a.status === "pending") ?? null;
+    const coverers: any[] = [];
+    if (r.coverUserId1 && userMap[r.coverUserId1]) coverers.push(userMap[r.coverUserId1]);
+    if (r.coverUserId2 && userMap[r.coverUserId2]) coverers.push(userMap[r.coverUserId2]);
     return {
       ...r.toJSON ? r.toJSON() : r,
       employee: userMap[r.employeeId] ?? null,
       reviewer: r.reviewerId ? (userMap[r.reviewerId] ?? null) : null,
       approvers,
       currentApproverId: currentApprover?.id ?? null,
+      coverers,
     };
   }
 
@@ -288,6 +292,8 @@ export default class LeaveController {
     const allUserIds = [...new Set([
       ...rows.map(r => r.employeeId),
       ...rows.map(r => r.reviewerId).filter(Boolean) as number[],
+      ...rows.map(r => r.coverUserId1).filter(Boolean) as number[],
+      ...rows.map(r => r.coverUserId2).filter(Boolean) as number[],
     ])];
     const users = allUserIds.length > 0
       ? await User.findAll({
@@ -311,8 +317,14 @@ export default class LeaveController {
     return Promise.all(rows.map(r => LeaveController.enrichLeaveRequest(r, userMap)));
   }
 
-  static async createLeaveRequest(userId: number, data: { leaveType: string; startDate: string; endDate: string; days: number; reason?: string; approverIds?: number[] }) {
-    const { leaveType, startDate, endDate, days, reason, approverIds } = data;
+  static async createLeaveRequest(userId: number, data: { leaveType: string; startDate: string; endDate: string; days: number; reason?: string; approverIds?: number[]; coverUserIds?: number[] }) {
+    const { leaveType, startDate, endDate, days, reason, approverIds, coverUserIds } = data;
+
+    const cleanCoverers = Array.isArray(coverUserIds)
+      ? Array.from(new Set(coverUserIds.map(Number).filter(v => Number.isFinite(v) && v !== userId)))
+      : [];
+    const coverUserId1 = cleanCoverers[0] ?? null;
+    const coverUserId2 = cleanCoverers[1] ?? null;
 
     const row = await LeaveRequest.create({
       employeeId: userId,
@@ -322,6 +334,8 @@ export default class LeaveController {
       days: Number(days),
       reason: reason || null,
       status: "pending",
+      coverUserId1,
+      coverUserId2,
     });
 
     let orderedApproverIds: number[] = Array.isArray(approverIds) && approverIds.length > 0
@@ -346,8 +360,11 @@ export default class LeaveController {
       await LeaveRequest.update({ reviewerId: orderedApproverIds[0] }, { where: { id: row.id } });
     }
 
-    const allIds = [userId, ...orderedApproverIds];
-    const users = await User.findAll({ where: { id: { [Op.in]: allIds } } });
+    const allIds = [userId, ...orderedApproverIds, ...cleanCoverers];
+    const users = await User.findAll({
+      where: { id: { [Op.in]: allIds } },
+      attributes: ["id", "name", "email", "department", "jobTitle"],
+    });
     const userMap: Record<number, any> = {};
     users.forEach(u => { userMap[u.id] = u.toJSON(); });
 

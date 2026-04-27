@@ -20,7 +20,16 @@ export class GetLeaveRequestAction {
         }
       }
       const userMap: Record<number, any> = {};
-      const users = await User.findAll({ where: { id: row.employeeId } });
+      const lookupIds = [
+        row.employeeId,
+        ...(row.reviewerId ? [row.reviewerId] : []),
+        ...(row.coverUserId1 ? [row.coverUserId1] : []),
+        ...(row.coverUserId2 ? [row.coverUserId2] : []),
+      ];
+      const users = await User.findAll({
+        where: { id: lookupIds },
+        attributes: ["id", "name", "email", "department", "jobTitle"],
+      });
       users.forEach(u => { userMap[u.id] = u.toJSON(); });
       res.json(await LeaveController.enrichLeaveRequest(row, userMap));
     } catch (err) {
