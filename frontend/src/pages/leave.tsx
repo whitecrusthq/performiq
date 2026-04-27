@@ -425,12 +425,12 @@ export default function Leave() {
 
   const tabs: { key: TabType; label: string; icon: React.ReactNode; badge?: number }[] = [
     { key: "requests", label: "Leave Requests", icon: <CalendarDays className="w-4 h-4" /> },
-    { key: "covering", label: "Covering For", icon: <Users className="w-4 h-4" />, badge: myPendingCoverCount },
     ...(isManager ? [{ key: "returning" as TabType, label: "Returning Soon", icon: <UserCheck className="w-4 h-4" />, badge: returningRequests.length }] : []),
-    ...(isManager ? [{ key: "all-covers" as TabType, label: "All Cover Assignments", icon: <UserCheck className="w-4 h-4" /> }] : []),
-    ...(isManager ? [{ key: "cover-analytics" as TabType, label: "Cover Analytics", icon: <BarChart3 className="w-4 h-4" /> }] : []),
     { key: "balance", label: "Leave Balance", icon: <BarChart3 className="w-4 h-4" /> },
     ...(isAdmin ? [{ key: "policies" as TabType, label: "Leave Policies", icon: <Settings className="w-4 h-4" /> }] : []),
+    { key: "covering", label: "Covering For", icon: <Users className="w-4 h-4" />, badge: myPendingCoverCount },
+    ...(isManager ? [{ key: "all-covers" as TabType, label: "All Cover Assignments", icon: <UserCheck className="w-4 h-4" /> }] : []),
+    ...(isManager ? [{ key: "cover-analytics" as TabType, label: "Cover Analytics", icon: <BarChart3 className="w-4 h-4" /> }] : []),
   ];
 
   return (
