@@ -106,25 +106,4 @@ router.post("/documents/:id/questions/generate", requireAuth, requireRole("admin
   }
 });
 
-router.get("/quiz/random", requireAuth, async (req: AuthRequest, res: Response) => {
-  try {
-    const count = Number(req.query.count) || 10;
-    res.json(await DocumentController.randomQuiz(count));
-  } catch (err: any) {
-    console.error(err);
-    res.status(500).json({ error: "Server error" });
-  }
-});
-
-router.post("/quiz/submit", requireAuth, async (req: AuthRequest, res: Response) => {
-  try {
-    const result = await DocumentController.submitQuiz(req.body?.answers ?? []);
-    if ("error" in result) { res.status(result.status).json({ error: result.error }); return; }
-    res.json(result.data);
-  } catch (err: any) {
-    console.error(err);
-    res.status(500).json({ error: "Server error" });
-  }
-});
-
 export default router;
