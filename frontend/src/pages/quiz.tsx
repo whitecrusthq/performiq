@@ -246,7 +246,7 @@ export default function Quiz() {
                   </div>
                   <Button
                     size="sm"
-                    variant={done ? "outline" : "default"}
+                    variant={done ? "outline" : "primary"}
                     onClick={() => startQuiz(d.documentId)}
                   >
                     {done ? <><RotateCcw className="h-4 w-4 mr-1.5" /> Retake</> : <><ArrowRight className="h-4 w-4 mr-1.5" /> Start</>}
