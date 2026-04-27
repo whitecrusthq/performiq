@@ -8,6 +8,9 @@ interface AttemptRow {
   id: number;
   userId: number;
   user: { id: number; name: string; email: string } | null;
+  siteId: number | null;
+  site: string | null;
+  department: string | null;
   documentId: number;
   document: { id: number; title: string; category: string } | null;
   score: number;
@@ -52,17 +55,26 @@ export default function QuizResults() {
 
   const [filterDoc, setFilterDoc] = useState("");
   const [filterUser, setFilterUser] = useState("");
+  const [filterSite, setFilterSite] = useState("");
+  const [filterDept, setFilterDept] = useState("");
   const [filterFrom, setFilterFrom] = useState("");
   const [filterTo, setFilterTo] = useState("");
 
+  const [sites, setSites] = useState<{ id: number; name: string }[]>([]);
+  const [departments, setDepartments] = useState<{ id: number; name: string }[]>([]);
+
   const [detail, setDetail] = useState<AttemptDetail | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
+
+  const [reloadKey, setReloadKey] = useState(0);
 
   async function load() {
     setLoading(true); setError(null);
     const params = new URLSearchParams();
     if (filterDoc) params.set("documentId", filterDoc);
     if (filterUser && isAdmin) params.set("userId", filterUser);
+    if (filterSite && isAdmin) params.set("siteId", filterSite);
+    if (filterDept && isAdmin) params.set("department", filterDept);
     if (filterFrom) params.set("from", filterFrom);
     if (filterTo) params.set("to", filterTo);
     const r = await apiFetch(`/api/quiz/attempts?${params.toString()}`);
@@ -70,7 +82,14 @@ export default function QuizResults() {
     if (!r.ok) { setError("Could not load results"); return; }
     setResp(await r.json());
   }
-  useEffect(() => { load(); }, []);
+  // Re-fetch whenever Apply or Clear bumps the reload key (also runs on mount).
+  useEffect(() => { load(); }, [reloadKey]);
+
+  useEffect(() => {
+    if (!isAdmin) return;
+    apiFetch("/api/sites").then(r => r.ok ? r.json() : []).then(setSites).catch(() => {});
+    apiFetch("/api/departments").then(r => r.ok ? r.json() : []).then(setDepartments).catch(() => {});
+  }, [isAdmin]);
 
   async function openDetail(id: number) {
     setDetailLoading(true);
@@ -94,8 +113,9 @@ export default function QuizResults() {
   }, [resp, isAdmin]);
 
   function clearFilters() {
-    setFilterDoc(""); setFilterUser(""); setFilterFrom(""); setFilterTo("");
-    setTimeout(load, 0);
+    setFilterDoc(""); setFilterUser(""); setFilterSite(""); setFilterDept("");
+    setFilterFrom(""); setFilterTo("");
+    setReloadKey(k => k + 1);
   }
 
   return (
@@ -105,7 +125,7 @@ export default function QuizResults() {
         description={isAdmin
           ? "Every quiz attempt across the company. Use the filters to drill in by user, document, or date."
           : "All your past quiz attempts and scores."}
-        action={<Button variant="outline" onClick={load} disabled={loading}><RefreshCw className="h-4 w-4 mr-1.5" /> Refresh</Button>}
+        action={<Button variant="outline" onClick={() => setReloadKey(k => k + 1)} disabled={loading}><RefreshCw className="h-4 w-4 mr-1.5" /> Refresh</Button>}
       />
 
       {resp?.summary && (
@@ -142,13 +162,31 @@ export default function QuizResults() {
 
       <Card className="mb-4">
         <div className="flex items-center gap-2 mb-3 text-sm font-medium"><Filter className="h-4 w-4" /> Filters</div>
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
           {isAdmin && (
             <div>
               <Label>User</Label>
               <select className="h-9 rounded-md border border-input bg-background px-3 text-sm w-full mt-1" value={filterUser} onChange={e => setFilterUser(e.target.value)}>
                 <option value="">All users</option>
                 {userOptions.map(([id, name]) => <option key={id} value={id}>{name}</option>)}
+              </select>
+            </div>
+          )}
+          {isAdmin && (
+            <div>
+              <Label>Site</Label>
+              <select className="h-9 rounded-md border border-input bg-background px-3 text-sm w-full mt-1" value={filterSite} onChange={e => setFilterSite(e.target.value)}>
+                <option value="">All sites</option>
+                {sites.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+              </select>
+            </div>
+          )}
+          {isAdmin && (
+            <div>
+              <Label>Department</Label>
+              <select className="h-9 rounded-md border border-input bg-background px-3 text-sm w-full mt-1" value={filterDept} onChange={e => setFilterDept(e.target.value)}>
+                <option value="">All departments</option>
+                {departments.map(d => <option key={d.id} value={d.name}>{d.name}</option>)}
               </select>
             </div>
           )}
@@ -162,7 +200,7 @@ export default function QuizResults() {
           <div><Label>From</Label><Input type="date" value={filterFrom} onChange={e => setFilterFrom(e.target.value)} className="mt-1" /></div>
           <div><Label>To</Label><Input type="date" value={filterTo} onChange={e => setFilterTo(e.target.value)} className="mt-1" /></div>
           <div className="flex items-end gap-2">
-            <Button onClick={load} disabled={loading}>Apply</Button>
+            <Button onClick={() => setReloadKey(k => k + 1)} disabled={loading}>Apply</Button>
             <Button variant="outline" onClick={clearFilters}>Clear</Button>
           </div>
         </div>
@@ -181,6 +219,8 @@ export default function QuizResults() {
               <thead className="bg-muted/40 border-b">
                 <tr className="text-left">
                   {isAdmin && <th className="px-4 py-2 font-medium">User</th>}
+                  {isAdmin && <th className="px-4 py-2 font-medium hidden md:table-cell">Site</th>}
+                  {isAdmin && <th className="px-4 py-2 font-medium hidden md:table-cell">Department</th>}
                   <th className="px-4 py-2 font-medium">Document</th>
                   <th className="px-4 py-2 font-medium">Category</th>
                   <th className="px-4 py-2 font-medium text-right">Score</th>
@@ -199,6 +239,8 @@ export default function QuizResults() {
                         <div className="text-xs text-muted-foreground">{a.user?.email ?? ""}</div>
                       </td>
                     )}
+                    {isAdmin && <td className="px-4 py-2 text-muted-foreground hidden md:table-cell">{a.site ?? "—"}</td>}
+                    {isAdmin && <td className="px-4 py-2 text-muted-foreground hidden md:table-cell">{a.department ?? "—"}</td>}
                     <td className="px-4 py-2">{a.document?.title ?? `#${a.documentId}`}</td>
                     <td className="px-4 py-2"><span className="text-xs px-1.5 py-0.5 rounded bg-muted">{a.document?.category ?? "—"}</span></td>
                     <td className="px-4 py-2 text-right font-mono">{a.score}/{a.total}</td>

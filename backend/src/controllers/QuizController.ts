@@ -3,6 +3,7 @@ import Document from "../models/Document.js";
 import DocumentQuestion from "../models/DocumentQuestion.js";
 import QuizAttempt from "../models/QuizAttempt.js";
 import User from "../models/User.js";
+import Site from "../models/Site.js";
 
 const PASS_THRESHOLD = 70;
 
@@ -148,6 +149,27 @@ export default class QuizController {
       if (filters.from) where.completedAt[Op.gte] = new Date(String(filters.from));
       if (filters.to) where.completedAt[Op.lte] = new Date(String(filters.to));
     }
+
+    // Site / department filters narrow the user set first (admin-only honoured)
+    if (isAdmin && (filters.siteId || filters.department)) {
+      const userWhere: any = {};
+      if (filters.siteId) userWhere.siteId = Number(filters.siteId);
+      if (filters.department) userWhere.department = String(filters.department);
+      const matchingUsers = await User.findAll({ where: userWhere, attributes: ["id"] });
+      const matchingIds = matchingUsers.map((u: any) => u.id);
+      if (matchingIds.length === 0) {
+        return { data: [], summary: null, isAdminView: isAdmin };
+      }
+      // Combine with any existing userId filter
+      if (where.userId !== undefined) {
+        if (!matchingIds.includes(where.userId)) {
+          return { data: [], summary: null, isAdminView: isAdmin };
+        }
+      } else {
+        where.userId = { [Op.in]: matchingIds };
+      }
+    }
+
     const limit = Math.min(Math.max(Number(filters.limit) || 200, 1), 1000);
 
     const attempts = await QuizAttempt.findAll({
@@ -160,7 +182,7 @@ export default class QuizController {
     const docIds = Array.from(new Set(attempts.map(a => a.documentId)));
     const [users, docs] = await Promise.all([
       userIds.length
-        ? User.findAll({ where: { id: { [Op.in]: userIds } }, attributes: ["id", "name", "email"] })
+        ? User.findAll({ where: { id: { [Op.in]: userIds } }, attributes: ["id", "name", "email", "siteId", "department"] })
         : Promise.resolve([] as any[]),
       docIds.length
         ? Document.findAll({ where: { id: { [Op.in]: docIds } }, attributes: ["id", "title", "category"] })
@@ -171,18 +193,32 @@ export default class QuizController {
     const dMap: Record<number, any> = {};
     docs.forEach((d: any) => { dMap[d.id] = d.toJSON(); });
 
-    const data = attempts.map(a => ({
-      id: a.id,
-      userId: a.userId,
-      user: uMap[a.userId] ?? null,
-      documentId: a.documentId,
-      document: dMap[a.documentId] ?? null,
-      score: a.score,
-      total: a.total,
-      percent: a.percent,
-      passed: a.passed,
-      completedAt: a.completedAt,
-    }));
+    // Resolve site names for display
+    const siteIds = Array.from(new Set(users.map((u: any) => u.siteId).filter((x: any) => x != null)));
+    const sites = siteIds.length
+      ? await Site.findAll({ where: { id: { [Op.in]: siteIds } }, attributes: ["id", "name"] })
+      : [];
+    const sMap: Record<number, string> = {};
+    sites.forEach((s: any) => { sMap[s.id] = s.name; });
+
+    const data = attempts.map(a => {
+      const u = uMap[a.userId];
+      return {
+        id: a.id,
+        userId: a.userId,
+        user: u ? { id: u.id, name: u.name, email: u.email } : null,
+        siteId: u?.siteId ?? null,
+        site: u?.siteId != null ? (sMap[u.siteId] ?? null) : null,
+        department: u?.department ?? null,
+        documentId: a.documentId,
+        document: dMap[a.documentId] ?? null,
+        score: a.score,
+        total: a.total,
+        percent: a.percent,
+        passed: a.passed,
+        completedAt: a.completedAt,
+      };
+    });
 
     let summary: any = null;
     if (data.length) {
