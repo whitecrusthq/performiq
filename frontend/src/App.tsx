@@ -36,6 +36,7 @@ import NotificationSettingsPage from "@/pages/notification-settings";
 import Careers from "@/pages/careers";
 import Handbook from "@/pages/handbook";
 import Quiz from "@/pages/quiz";
+import AiSettings from "@/pages/ai-settings";
 
 const queryClient = new QueryClient();
 
@@ -141,6 +142,9 @@ function Router() {
       </Route>
       <Route path="/quiz">
         <AppLayout><ProtectedRoute component={Quiz} /></AppLayout>
+      </Route>
+      <Route path="/ai-settings">
+        <AppLayout><ProtectedRoute component={AiSettings} /></AppLayout>
       </Route>
 
       <Route component={NotFound} />

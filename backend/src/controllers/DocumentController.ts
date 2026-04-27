@@ -2,6 +2,7 @@ import { Op } from "sequelize";
 import Document from "../models/Document.js";
 import DocumentQuestion from "../models/DocumentQuestion.js";
 import User from "../models/User.js";
+import AiSettingsController from "./AiSettingsController.js";
 
 const ALLOWED_CATEGORIES = ["HR", "IT", "ESG", "Finance", "Operations", "Compliance", "Health & Safety", "Other"];
 
@@ -132,10 +133,10 @@ export default class DocumentController {
   static async generateQuestionsFromDocument(documentId: number, userId: number, count: number) {
     const doc = await Document.findByPk(documentId);
     if (!doc) return { error: "Document not found", status: 404 };
-    const apiKey = process.env.GEMINI_API_KEY;
-    if (!apiKey) {
+    const cfg = await AiSettingsController.getActiveConfig();
+    if (!cfg.apiKey) {
       return {
-        error: "AI question generation is not configured. An administrator must set the GEMINI_API_KEY secret (Google AI Studio key) to enable this. In the meantime, you can author questions manually.",
+        error: "AI question generation is not configured. Go to Settings → AI Assistant and add your Google Gemini API key. In the meantime, you can author questions manually.",
         status: 400,
       };
     }
@@ -149,7 +150,8 @@ export default class DocumentController {
       };
     }
     const n = Math.min(Math.max(Number(count) || 5, 1), 15);
-    const model = process.env.GEMINI_MODEL || "gemini-2.5-flash";
+    const apiKey = cfg.apiKey;
+    const model = cfg.model;
 
     let parsed: any[] = [];
     try {
