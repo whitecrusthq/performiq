@@ -14,6 +14,12 @@ class LeaveRequest extends Model {
   declare reviewNote: string | null;
   declare coverUserId1: number | null;
   declare coverUserId2: number | null;
+  declare coverUser1Status: string;
+  declare coverUser1RespondedAt: Date | null;
+  declare coverUser1Note: string | null;
+  declare coverUser2Status: string;
+  declare coverUser2RespondedAt: Date | null;
+  declare coverUser2Note: string | null;
   declare createdAt: Date;
   declare updatedAt: Date;
 }
@@ -32,6 +38,12 @@ LeaveRequest.init(
     reviewNote: { type: DataTypes.TEXT, field: "review_note" },
     coverUserId1: { type: DataTypes.INTEGER, field: "cover_user_id_1" },
     coverUserId2: { type: DataTypes.INTEGER, field: "cover_user_id_2" },
+    coverUser1Status: { type: DataTypes.TEXT, allowNull: false, defaultValue: "pending", field: "cover_user_1_status" },
+    coverUser1RespondedAt: { type: DataTypes.DATE, field: "cover_user_1_responded_at" },
+    coverUser1Note: { type: DataTypes.TEXT, field: "cover_user_1_note" },
+    coverUser2Status: { type: DataTypes.TEXT, allowNull: false, defaultValue: "pending", field: "cover_user_2_status" },
+    coverUser2RespondedAt: { type: DataTypes.DATE, field: "cover_user_2_responded_at" },
+    coverUser2Note: { type: DataTypes.TEXT, field: "cover_user_2_note" },
     createdAt: { type: DataTypes.DATE, allowNull: false, defaultValue: DataTypes.NOW, field: "created_at" },
     updatedAt: { type: DataTypes.DATE, allowNull: false, defaultValue: DataTypes.NOW, field: "updated_at" },
   },

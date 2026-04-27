@@ -79,7 +79,15 @@ interface LeaveRequest {
   reviewer?: { id: number; name: string } | null;
   approvers?: ApproverStep[];
   currentApproverId?: number | null;
-  coverers?: { id: number; name: string; department?: string | null; jobTitle?: string | null }[];
+  coverers?: {
+    id: number;
+    name: string;
+    department?: string | null;
+    jobTitle?: string | null;
+    status: "pending" | "agreed" | "declined";
+    respondedAt?: string | null;
+    note?: string | null;
+  }[];
 }
 
 interface UserOption { id: number; name: string; role: string; department?: string | null }
@@ -115,6 +123,7 @@ export default function Leave() {
   const [form, setForm] = useState({ leaveType: "annual", startDate: "", endDate: "", reason: "" });
   const [approverSteps, setApproverSteps] = useState<string[]>([""]);
   const [coverUserIds, setCoverUserIds] = useState<string[]>(["", ""]);
+  const [coverRespondingId, setCoverRespondingId] = useState<number | null>(null);
   const [activeTab, setActiveTab] = useState<TabType>("requests");
   const [balances, setBalances] = useState<LeaveBalanceItem[]>([]);
   const [policies, setPolicies] = useState<LeavePolicy[]>([]);
@@ -256,6 +265,33 @@ export default function Leave() {
   const eligibleApprovers = allUsers.filter(u =>
     u.id !== user?.id && ["manager", "admin", "super_admin"].includes(u.role)
   );
+
+  const handleCoverResponse = async (requestId: number, decision: "agreed" | "declined") => {
+    let note: string | undefined;
+    if (decision === "declined") {
+      const input = window.prompt("Optional: leave a short note for the applicant explaining why you can't cover.");
+      if (input === null) return;
+      note = input.trim() || undefined;
+    }
+    setCoverRespondingId(requestId);
+    setMutationError(null);
+    try {
+      const r = await apiFetch(`/api/leave-requests/${requestId}/cover-response`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ decision, note }),
+      });
+      const data = await r.json();
+      if (!r.ok) {
+        setMutationError(data.error || "Failed to submit cover response");
+      } else {
+        load();
+      }
+    } catch {
+      setMutationError("Network error");
+    }
+    setCoverRespondingId(null);
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -554,11 +590,37 @@ export default function Leave() {
                     {req.coverers && req.coverers.length > 0 && (
                       <div className="flex flex-wrap items-center gap-1.5">
                         <span className="text-xs text-muted-foreground font-medium">Covered by:</span>
-                        {req.coverers.map(c => (
-                          <span key={c.id} className="inline-flex items-center gap-1 text-xs font-medium px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200">
-                            {c.name}
+                        {req.coverers.map(c => {
+                          const cfg =
+                            c.status === "agreed"   ? { bg: "bg-emerald-50", text: "text-emerald-700", border: "border-emerald-200", label: "agreed", Icon: CheckCircle2 } :
+                            c.status === "declined" ? { bg: "bg-red-50",     text: "text-red-700",     border: "border-red-200",     label: "declined", Icon: XCircle } :
+                                                      { bg: "bg-amber-50",   text: "text-amber-700",   border: "border-amber-200",   label: "awaiting reply", Icon: null };
+                          const Icon = cfg.Icon;
+                          return (
+                            <span key={c.id} className={`inline-flex items-center gap-1 text-xs font-medium px-2 py-0.5 rounded-full ${cfg.bg} ${cfg.text} border ${cfg.border}`}>
+                              {c.name}
+                              <span className="opacity-70 font-normal">· {cfg.label}</span>
+                              {Icon && <Icon className="w-3 h-3" />}
+                            </span>
+                          );
+                        })}
+                        {req.status === "pending" && req.coverers.some(c => c.status !== "agreed") && (
+                          <span className="text-[11px] text-amber-700 bg-amber-50 border border-amber-200 rounded-full px-2 py-0.5">
+                            Approval blocked until all cover officers agree
                           </span>
-                        ))}
+                        )}
+                      </div>
+                    )}
+
+                    {req.status === "pending" && req.coverers?.some(c => c.id === user?.id && c.status === "pending") && (
+                      <div className="flex items-center gap-2 pt-1 border-t border-border">
+                        <span className="text-xs font-medium text-foreground">You're a cover officer for this leave:</span>
+                        <Button size="sm" className="bg-emerald-600 hover:bg-emerald-700 text-white h-7" onClick={() => handleCoverResponse(req.id, "agreed")} isLoading={coverRespondingId === req.id}>
+                          <CheckCircle2 className="w-3.5 h-3.5 mr-1" /> Agree to cover
+                        </Button>
+                        <Button size="sm" variant="destructive" className="h-7" onClick={() => handleCoverResponse(req.id, "declined")} isLoading={coverRespondingId === req.id}>
+                          <XCircle className="w-3.5 h-3.5 mr-1" /> Decline
+                        </Button>
                       </div>
                     )}
 
