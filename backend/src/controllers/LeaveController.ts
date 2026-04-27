@@ -291,7 +291,11 @@ export default class LeaveController {
     let rows = await LeaveRequest.findAll({ order: [["createdAt", "DESC"]] });
 
     if (role === "employee") {
-      rows = rows.filter(r => r.employeeId === userId);
+      rows = rows.filter(r =>
+        r.employeeId === userId ||
+        r.coverUserId1 === userId ||
+        r.coverUserId2 === userId
+      );
     } else if (role === "manager") {
       const subordinates = await User.findAll({ where: { managerId: userId }, attributes: ["id"] });
       const subIds = new Set([userId, ...subordinates.map(s => s.id)]);
@@ -300,7 +304,12 @@ export default class LeaveController {
         attributes: ["leaveRequestId"],
       });
       const approverRequestIds = new Set(approverRows.map(a => a.leaveRequestId));
-      rows = rows.filter(r => subIds.has(r.employeeId) || approverRequestIds.has(r.id));
+      rows = rows.filter(r =>
+        subIds.has(r.employeeId) ||
+        approverRequestIds.has(r.id) ||
+        r.coverUserId1 === userId ||
+        r.coverUserId2 === userId
+      );
     }
 
     const allUserIds = [...new Set([
