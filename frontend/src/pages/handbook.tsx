@@ -469,7 +469,7 @@ function ManageQuestionsDialog({ doc, onClose }: { doc: Doc; onClose: () => void
             {generating ? "Generating…" : "Generate"}
           </Button>
           <span className="text-xs text-muted-foreground">
-            Uses the document's "quiz reference text" as the source.
+            Uses Google Gemini and the document's "quiz reference text" as the source.
           </span>
         </div>
 

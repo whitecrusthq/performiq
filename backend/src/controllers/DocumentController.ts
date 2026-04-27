@@ -132,10 +132,10 @@ export default class DocumentController {
   static async generateQuestionsFromDocument(documentId: number, userId: number, count: number) {
     const doc = await Document.findByPk(documentId);
     if (!doc) return { error: "Document not found", status: 404 };
-    const apiKey = process.env.OPENAI_API_KEY;
+    const apiKey = process.env.GEMINI_API_KEY;
     if (!apiKey) {
       return {
-        error: "AI question generation is not configured. An administrator must set the OPENAI_API_KEY secret to enable this. In the meantime, you can author questions manually.",
+        error: "AI question generation is not configured. An administrator must set the GEMINI_API_KEY secret (Google AI Studio key) to enable this. In the meantime, you can author questions manually.",
         status: 400,
       };
     }
@@ -149,28 +149,34 @@ export default class DocumentController {
       };
     }
     const n = Math.min(Math.max(Number(count) || 5, 1), 15);
+    const model = process.env.GEMINI_MODEL || "gemini-2.5-flash";
 
     let parsed: any[] = [];
     try {
       const prompt = `You are an HR training assistant. Read the following policy text and write ${n} multiple-choice quiz questions that test whether an employee understood it. Each question must have 4 plausible choices and exactly one correct answer.\n\nReturn ONLY a JSON array, no prose. Each item: {"question": "...", "choices": ["...","...","...","..."], "correctIndex": 0}\n\nPolicy text:\n"""\n${source.slice(0, 8000)}\n"""`;
-      const r = await fetch("https://api.openai.com/v1/chat/completions", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
-        body: JSON.stringify({
-          model: "gpt-4o-mini",
-          messages: [{ role: "user", content: prompt }],
-          temperature: 0.4,
-          response_format: { type: "json_object" },
-        }),
-      });
+      const r = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(apiKey)}`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            contents: [{ role: "user", parts: [{ text: prompt }] }],
+            generationConfig: {
+              temperature: 0.4,
+              responseMimeType: "application/json",
+            },
+          }),
+        }
+      );
       if (!r.ok) {
         const txt = await r.text();
         return { error: `AI request failed: ${r.status} ${txt.slice(0, 200)}`, status: 502 };
       }
       const body: any = await r.json();
-      const content = body?.choices?.[0]?.message?.content ?? "[]";
+      const content =
+        body?.candidates?.[0]?.content?.parts?.map((p: any) => p?.text ?? "").join("") ?? "[]";
       const obj = JSON.parse(content);
-      parsed = Array.isArray(obj) ? obj : (Array.isArray(obj.questions) ? obj.questions : []);
+      parsed = Array.isArray(obj) ? obj : (Array.isArray(obj?.questions) ? obj.questions : []);
     } catch (err: any) {
       return { error: `AI parse error: ${err?.message ?? "unknown"}`, status: 502 };
     }
