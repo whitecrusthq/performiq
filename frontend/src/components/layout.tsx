@@ -35,6 +35,8 @@ import {
   CalendarClock,
   Settings,
   UserCog,
+  BookOpen,
+  Brain,
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { User } from "@/lib";
@@ -105,6 +107,14 @@ const NAV_STRUCTURE: NavEntry[] = [
       { name: "Security", path: "/security", icon: ShieldAlert, roles: ["super_admin", "admin"] },
       { name: "Notifications", path: "/notifications", icon: Bell, roles: ["super_admin", "admin"] },
       { name: "Appearance", path: "/appearance", icon: Paintbrush, roles: ["super_admin", "admin"] },
+    ],
+  },
+  {
+    label: "Knowledge",
+    icon: BookOpen,
+    items: [
+      { name: "Handbook", path: "/handbook", icon: BookOpen, roles: ["super_admin", "admin", "manager", "employee"] },
+      { name: "Quiz", path: "/quiz", icon: Brain, roles: ["super_admin", "admin", "manager", "employee"] },
     ],
   },
 ];
