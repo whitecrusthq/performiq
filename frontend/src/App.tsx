@@ -34,6 +34,10 @@ import Anniversaries from "@/pages/anniversaries";
 import Recruitment from "@/pages/recruitment";
 import NotificationSettingsPage from "@/pages/notification-settings";
 import Careers from "@/pages/careers";
+import Handbook from "@/pages/handbook";
+import Quiz from "@/pages/quiz";
+import QuizResults from "@/pages/quiz-results";
+import AiSettings from "@/pages/ai-settings";
 
 const queryClient = new QueryClient();
 
@@ -133,6 +137,18 @@ function Router() {
       </Route>
       <Route path="/notifications">
         <AppLayout><ProtectedRoute component={NotificationSettingsPage} /></AppLayout>
+      </Route>
+      <Route path="/handbook">
+        <AppLayout><ProtectedRoute component={Handbook} /></AppLayout>
+      </Route>
+      <Route path="/quiz">
+        <AppLayout><ProtectedRoute component={Quiz} /></AppLayout>
+      </Route>
+      <Route path="/quiz-results">
+        <AppLayout><ProtectedRoute component={QuizResults} /></AppLayout>
+      </Route>
+      <Route path="/ai-settings">
+        <AppLayout><ProtectedRoute component={AiSettings} /></AppLayout>
       </Route>
 
       <Route component={NotFound} />

@@ -14,6 +14,7 @@ import { CreateLeaveRequestAction } from "../actions/leave/CreateLeaveRequestAct
 import { GetLeaveRequestAction } from "../actions/leave/GetLeaveRequestAction.js";
 import { UpdateLeaveRequestAction } from "../actions/leave/UpdateLeaveRequestAction.js";
 import { DeleteLeaveRequestAction } from "../actions/leave/DeleteLeaveRequestAction.js";
+import { RespondCoverAction } from "../actions/leave/RespondCoverAction.js";
 
 const router = Router();
 
@@ -33,6 +34,7 @@ router.get("/leave-requests", requireAuth, ListLeaveRequestsAction.handle);
 router.post("/leave-requests", requireAuth, CreateLeaveRequestAction.handle);
 router.get("/leave-requests/:id", requireAuth, GetLeaveRequestAction.handle);
 router.put("/leave-requests/:id", requireAuth, UpdateLeaveRequestAction.handle);
+router.post("/leave-requests/:id/cover-response", requireAuth, RespondCoverAction.handle);
 router.delete("/leave-requests/:id", requireAuth, requireRole("admin"), DeleteLeaveRequestAction.handle);
 
 export default router;

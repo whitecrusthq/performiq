@@ -26,6 +26,9 @@ import anniversariesRouter from "./anniversaries";
 import recruitmentRouter from "./recruitment";
 import notificationSettingsRouter from "./notification-settings";
 import careersRouter from "./careers";
+import documentsRouter from "./documents";
+import quizRouter from "./quiz";
+import aiSettingsRouter from "./ai-settings";
 
 const router: IRouter = Router();
 
@@ -56,5 +59,8 @@ router.use(anniversariesRouter);
 router.use(recruitmentRouter);
 router.use(notificationSettingsRouter);
 router.use(careersRouter);
+router.use(documentsRouter);
+router.use(quizRouter);
+router.use(aiSettingsRouter);
 
 export default router;

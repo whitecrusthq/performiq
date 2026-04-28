@@ -67,12 +67,30 @@ export default class LeaveController {
   static async enrichLeaveRequest(r: any, userMap: Record<number, any>) {
     const approvers = await LeaveController.getApproversForRequest(r.id);
     const currentApprover = approvers.find(a => a.status === "pending") ?? null;
+    const coverers: any[] = [];
+    if (r.coverUserId1) {
+      coverers.push({
+        ...(userMap[r.coverUserId1] ?? { id: r.coverUserId1, name: `User #${r.coverUserId1}` }),
+        status: r.coverUser1Status ?? "pending",
+        respondedAt: r.coverUser1RespondedAt ?? null,
+        note: r.coverUser1Note ?? null,
+      });
+    }
+    if (r.coverUserId2) {
+      coverers.push({
+        ...(userMap[r.coverUserId2] ?? { id: r.coverUserId2, name: `User #${r.coverUserId2}` }),
+        status: r.coverUser2Status ?? "pending",
+        respondedAt: r.coverUser2RespondedAt ?? null,
+        note: r.coverUser2Note ?? null,
+      });
+    }
     return {
       ...r.toJSON ? r.toJSON() : r,
       employee: userMap[r.employeeId] ?? null,
       reviewer: r.reviewerId ? (userMap[r.reviewerId] ?? null) : null,
       approvers,
       currentApproverId: currentApprover?.id ?? null,
+      coverers,
     };
   }
 
@@ -273,7 +291,11 @@ export default class LeaveController {
     let rows = await LeaveRequest.findAll({ order: [["createdAt", "DESC"]] });
 
     if (role === "employee") {
-      rows = rows.filter(r => r.employeeId === userId);
+      rows = rows.filter(r =>
+        r.employeeId === userId ||
+        r.coverUserId1 === userId ||
+        r.coverUserId2 === userId
+      );
     } else if (role === "manager") {
       const subordinates = await User.findAll({ where: { managerId: userId }, attributes: ["id"] });
       const subIds = new Set([userId, ...subordinates.map(s => s.id)]);
@@ -282,12 +304,19 @@ export default class LeaveController {
         attributes: ["leaveRequestId"],
       });
       const approverRequestIds = new Set(approverRows.map(a => a.leaveRequestId));
-      rows = rows.filter(r => subIds.has(r.employeeId) || approverRequestIds.has(r.id));
+      rows = rows.filter(r =>
+        subIds.has(r.employeeId) ||
+        approverRequestIds.has(r.id) ||
+        r.coverUserId1 === userId ||
+        r.coverUserId2 === userId
+      );
     }
 
     const allUserIds = [...new Set([
       ...rows.map(r => r.employeeId),
       ...rows.map(r => r.reviewerId).filter(Boolean) as number[],
+      ...rows.map(r => r.coverUserId1).filter(Boolean) as number[],
+      ...rows.map(r => r.coverUserId2).filter(Boolean) as number[],
     ])];
     const users = allUserIds.length > 0
       ? await User.findAll({
@@ -311,8 +340,14 @@ export default class LeaveController {
     return Promise.all(rows.map(r => LeaveController.enrichLeaveRequest(r, userMap)));
   }
 
-  static async createLeaveRequest(userId: number, data: { leaveType: string; startDate: string; endDate: string; days: number; reason?: string; approverIds?: number[] }) {
-    const { leaveType, startDate, endDate, days, reason, approverIds } = data;
+  static async createLeaveRequest(userId: number, data: { leaveType: string; startDate: string; endDate: string; days: number; reason?: string; approverIds?: number[]; coverUserIds?: number[] }) {
+    const { leaveType, startDate, endDate, days, reason, approverIds, coverUserIds } = data;
+
+    const cleanCoverers = Array.isArray(coverUserIds)
+      ? Array.from(new Set(coverUserIds.map(Number).filter(v => Number.isFinite(v) && v !== userId)))
+      : [];
+    const coverUserId1 = cleanCoverers[0] ?? null;
+    const coverUserId2 = cleanCoverers[1] ?? null;
 
     const row = await LeaveRequest.create({
       employeeId: userId,
@@ -322,6 +357,8 @@ export default class LeaveController {
       days: Number(days),
       reason: reason || null,
       status: "pending",
+      coverUserId1,
+      coverUserId2,
     });
 
     let orderedApproverIds: number[] = Array.isArray(approverIds) && approverIds.length > 0
@@ -346,8 +383,11 @@ export default class LeaveController {
       await LeaveRequest.update({ reviewerId: orderedApproverIds[0] }, { where: { id: row.id } });
     }
 
-    const allIds = [userId, ...orderedApproverIds];
-    const users = await User.findAll({ where: { id: { [Op.in]: allIds } } });
+    const allIds = [userId, ...orderedApproverIds, ...cleanCoverers];
+    const users = await User.findAll({
+      where: { id: { [Op.in]: allIds } },
+      attributes: ["id", "name", "email", "department", "jobTitle"],
+    });
     const userMap: Record<number, any> = {};
     users.forEach(u => { userMap[u.id] = u.toJSON(); });
 
@@ -358,6 +398,57 @@ export default class LeaveController {
 
   static async getLeaveRequest(requestId: number) {
     return LeaveRequest.findByPk(requestId);
+  }
+
+  static async respondToCover(requestId: number, userId: number, decision: "agreed" | "declined", note?: string) {
+    const row = await LeaveRequest.findByPk(requestId);
+    if (!row) return { error: "Not found", status: 404 };
+    if (row.status !== "pending") return { error: "Only pending requests can receive cover responses", status: 400 };
+
+    let slot: 1 | 2 | null = null;
+    if (row.coverUserId1 === userId) slot = 1;
+    else if (row.coverUserId2 === userId) slot = 2;
+    if (!slot) return { error: "You are not nominated as a cover officer on this request", status: 403 };
+
+    const currentStatus = slot === 1 ? row.coverUser1Status : row.coverUser2Status;
+    if (currentStatus === "agreed" || currentStatus === "declined") {
+      return { error: `You have already responded (${currentStatus})`, status: 400 };
+    }
+
+    if (decision !== "agreed" && decision !== "declined") {
+      return { error: "decision must be 'agreed' or 'declined'", status: 400 };
+    }
+
+    const updates: any = { updatedAt: new Date() };
+    if (slot === 1) {
+      updates.coverUser1Status = decision;
+      updates.coverUser1RespondedAt = new Date();
+      updates.coverUser1Note = note ? String(note).slice(0, 500) : null;
+    } else {
+      updates.coverUser2Status = decision;
+      updates.coverUser2RespondedAt = new Date();
+      updates.coverUser2Note = note ? String(note).slice(0, 500) : null;
+    }
+    const [, updatedRows] = await LeaveRequest.update(updates, { where: { id: row.id }, returning: true });
+    const updated = updatedRows[0];
+
+    const lookupIds = [
+      updated.employeeId,
+      ...(updated.coverUserId1 ? [updated.coverUserId1] : []),
+      ...(updated.coverUserId2 ? [updated.coverUserId2] : []),
+    ];
+    const users = await User.findAll({
+      where: { id: { [Op.in]: lookupIds } },
+      attributes: ["id", "name", "email", "department", "jobTitle"],
+    });
+    const userMap: Record<number, any> = {};
+    users.forEach(u => { userMap[u.id] = u.toJSON(); });
+
+    return {
+      data: await LeaveController.enrichLeaveRequest(updated, userMap),
+      employee: userMap[updated.employeeId] ?? null,
+      slot,
+    };
   }
 
   static async updateLeaveRequest(requestId: number, userId: number, role: string, data: { status: string; reviewNote?: string }) {
@@ -428,6 +519,31 @@ export default class LeaveController {
           row: row.toJSON(),
           reviewNote,
         };
+      }
+
+      const otherPending = await LeaveApprover.count({
+        where: {
+          leaveRequestId: row.id,
+          status: "pending",
+          ...(approverRows.length > 0 ? { id: { [Op.ne]: approverRows[0].id } } : {}),
+        },
+      });
+      const wouldBeFinalApproval = otherPending === 0;
+
+      if (wouldBeFinalApproval) {
+        const coverPending: string[] = [];
+        if (row.coverUserId1 && row.coverUser1Status !== "agreed") {
+          coverPending.push(`Cover Officer 1 has not agreed (status: ${row.coverUser1Status})`);
+        }
+        if (row.coverUserId2 && row.coverUser2Status !== "agreed") {
+          coverPending.push(`Cover Officer 2 has not agreed (status: ${row.coverUser2Status})`);
+        }
+        if (coverPending.length > 0) {
+          return {
+            error: `Cannot finalize approval: ${coverPending.join("; ")}. The applicant must wait for cover officers to agree, or cancel and re-submit.`,
+            status: 400,
+          };
+        }
       }
 
       if (approverRows.length > 0) {

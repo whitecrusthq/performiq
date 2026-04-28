@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { requireAuth, requireRole } from "../middlewares/auth.js";
 import { ListUsersAction } from "../actions/users/ListUsersAction.js";
+import { ListCoworkersAction } from "../actions/users/ListCoworkersAction.js";
 import { CreateUserAction } from "../actions/users/CreateUserAction.js";
 import { GetUserAction } from "../actions/users/GetUserAction.js";
 import { UpdateUserAction } from "../actions/users/UpdateUserAction.js";
@@ -29,6 +30,7 @@ import { BulkImportAction } from "../actions/users/BulkImportAction.js";
 const router = Router();
 
 router.get("/users", requireAuth, requireRole("admin", "manager"), ListUsersAction.handle);
+router.get("/users/coworkers", requireAuth, ListCoworkersAction.handle);
 router.post("/users", requireAuth, requireRole("admin"), CreateUserAction.handle);
 router.get("/users/:id", requireAuth, GetUserAction.handle);
 router.put("/users/:id", requireAuth, requireRole("admin"), UpdateUserAction.handle);

@@ -4,7 +4,7 @@ import { PageHeader, Card } from "@/components/shared";
 import {
   BarChart3, Download, Users, CheckCircle2, TrendingUp, FileSpreadsheet,
   Building2, ChevronDown, Clock, ClipboardCheck, Calendar, Timer,
-  AlertCircle, Filter,
+  AlertCircle, Filter, Trophy, BookOpen,
 } from "lucide-react";
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
@@ -1414,15 +1414,346 @@ function LeaveTab() {
   );
 }
 
+// ─── Tab: Quiz Results Report ─────────────────────────────────────────────────
+
+type QuizAttemptRow = {
+  id: number;
+  userId: number;
+  user: { id: number; name: string; email: string } | null;
+  siteId: number | null;
+  site: string | null;
+  department: string | null;
+  documentId: number;
+  document: { id: number; title: string; category: string } | null;
+  score: number;
+  total: number;
+  percent: number;
+  passed: boolean;
+  completedAt: string;
+};
+
+type QuizResp = {
+  data: QuizAttemptRow[];
+  summary: { count: number; avgPercent: number; passCount: number; passRate: number } | null;
+  isAdminView: boolean;
+};
+
+function QuizResultsTab() {
+  const today = new Date().toISOString().split("T")[0];
+  const firstOfMonth = today.slice(0, 8) + "01";
+  const [from, setFrom] = useState(firstOfMonth);
+  const [to, setTo] = useState(today);
+  const [siteId, setSiteId] = useState("");
+  const [department, setDepartment] = useState("");
+  const [documentId, setDocumentId] = useState("");
+  const [data, setData] = useState<QuizResp | null>(null);
+  const [sites, setSites] = useState<{ id: number; name: string }[]>([]);
+  const [departments, setDepartments] = useState<{ id: number; name: string }[]>([]);
+  const [docs, setDocs] = useState<{ id: number; title: string }[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    apiFetch("/api/sites").then(r => r.ok ? r.json() : []).then(setSites).catch(() => {});
+    apiFetch("/api/departments").then(r => r.ok ? r.json() : []).then(setDepartments).catch(() => {});
+    apiFetch("/api/documents").then(r => r.ok ? r.json() : []).then((rows: any[]) => {
+      setDocs((rows ?? []).map(d => ({ id: d.id, title: d.title })));
+    }).catch(() => {});
+  }, []);
+
+  const siteName = siteId ? (sites.find(s => String(s.id) === siteId)?.name ?? "") : "";
+
+  const load = useCallback(() => {
+    setLoading(true); setError(null);
+    const params = new URLSearchParams();
+    if (from) params.set("from", from);
+    if (to) params.set("to", `${to}T23:59:59`);
+    if (siteId) params.set("siteId", siteId);
+    if (department) params.set("department", department);
+    if (documentId) params.set("documentId", documentId);
+    params.set("limit", "1000");
+    apiFetch(`/api/quiz/attempts?${params}`)
+      .then(r => r.ok ? r.json() : Promise.reject("Failed"))
+      .then(setData)
+      .catch(() => setError("Could not load quiz results."))
+      .finally(() => setLoading(false));
+  }, [from, to, siteId, department, documentId]);
+
+  useEffect(() => { load(); }, [load]);
+
+  // ── Excel export ──
+  const exportExcel = async () => {
+    if (!data) return;
+    const XLSX = await import("xlsx");
+    const wb = XLSX.utils.book_new();
+    const summaryRows = [
+      ["PerformIQ — Quiz Results Report"],
+      [`Period: ${from} to ${to}`],
+      [`Site: ${siteName || "All Sites"}`],
+      [`Department: ${department || "All Departments"}`],
+      [`Document: ${documentId ? (docs.find(d => String(d.id) === documentId)?.title ?? "") : "All Documents"}`],
+      [`Generated: ${new Date().toLocaleString()}`],
+      [],
+      ["Metric", "Value"],
+      ["Total Attempts", data.summary?.count ?? 0],
+      ["Average Score (%)", data.summary?.avgPercent ?? 0],
+      ["Passed", data.summary?.passCount ?? 0],
+      ["Pass Rate (%)", data.summary?.passRate ?? 0],
+    ];
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(summaryRows), "Summary");
+    const detailRows = [
+      ["Employee", "Email", "Site", "Department", "Document", "Category", "Score", "Total", "Percent", "Passed", "Completed"],
+      ...data.data.map(r => [
+        r.user?.name ?? "", r.user?.email ?? "", r.site ?? "", r.department ?? "",
+        r.document?.title ?? "", r.document?.category ?? "",
+        r.score, r.total, r.percent, r.passed ? "Yes" : "No", new Date(r.completedAt).toLocaleString(),
+      ]),
+    ];
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(detailRows), "Attempts");
+    const suffix = [siteName, department].filter(Boolean).join("_").replace(/\s+/g, "-");
+    XLSX.writeFile(wb, `PerformIQ_QuizResults_${from}_${to}${suffix ? "_" + suffix : ""}.xlsx`);
+  };
+
+  // ── PDF export ──
+  const exportPDF = async () => {
+    if (!data) return;
+    const { default: jsPDF } = await import("jspdf");
+    const { default: autoTable } = await import("jspdf-autotable");
+    const doc = new jsPDF();
+    let y = 18;
+    doc.setFontSize(18); doc.setTextColor(59, 130, 246);
+    doc.text("PerformIQ — Quiz Results Report", 14, y); y += 7;
+    doc.setFontSize(11); doc.setTextColor(80, 80, 80);
+    doc.text(`Period: ${from} to ${to}`, 14, y); y += 5;
+    doc.text(`Site: ${siteName || "All Sites"}   Department: ${department || "All Departments"}`, 14, y); y += 5;
+    doc.setFontSize(9); doc.setTextColor(140, 140, 140);
+    doc.text(`Generated: ${new Date().toLocaleString()}`, 14, y); y += 8;
+    doc.setFontSize(13); doc.setTextColor(30, 30, 30);
+    doc.text("Summary", 14, y); y += 4;
+    autoTable(doc, {
+      startY: y,
+      head: [["Metric", "Value"]],
+      body: [
+        ["Total Attempts", data.summary?.count ?? 0],
+        ["Average Score", `${data.summary?.avgPercent ?? 0}%`],
+        ["Passed", data.summary?.passCount ?? 0],
+        ["Pass Rate", `${data.summary?.passRate ?? 0}%`],
+      ],
+      theme: "grid",
+    });
+    y = (doc as any).lastAutoTable.finalY + 8;
+    if (y > 220) { doc.addPage(); y = 18; }
+    doc.setFontSize(13); doc.setTextColor(30, 30, 30);
+    doc.text("Attempts", 14, y); y += 4;
+    autoTable(doc, {
+      startY: y,
+      head: [["Employee", "Site", "Department", "Document", "Score", "%", "Status"]],
+      body: data.data.map(r => [
+        r.user?.name ?? "", r.site ?? "", r.department ?? "",
+        r.document?.title ?? "", `${r.score}/${r.total}`, `${r.percent}%`, r.passed ? "Passed" : "Below pass",
+      ]),
+      theme: "striped",
+    });
+    const suffix = [siteName, department].filter(Boolean).join("_").replace(/\s+/g, "-");
+    doc.save(`PerformIQ_QuizResults_${from}_${to}${suffix ? "_" + suffix : ""}.pdf`);
+  };
+
+  // Aggregations for the chart: avg score per department
+  const deptAvg = data ? Object.entries(
+    data.data.reduce<Record<string, { sum: number; n: number }>>((acc, r) => {
+      const key = r.department ?? "Unassigned";
+      if (!acc[key]) acc[key] = { sum: 0, n: 0 };
+      acc[key].sum += r.percent; acc[key].n += 1;
+      return acc;
+    }, {})
+  ).map(([dept, v]) => ({ dept, avg: Math.round(v.sum / v.n), attempts: v.n }))
+    .sort((a, b) => b.avg - a.avg) : [];
+
+  // Aggregations: pass vs fail
+  const passFail = data && data.summary ? [
+    { name: "Passed", value: data.summary.passCount },
+    { name: "Below pass", value: Math.max(0, data.summary.count - data.summary.passCount) },
+  ] : [];
+
+  return (
+    <div>
+      {/* Filters + Export */}
+      <div className="flex flex-wrap items-center gap-3 mb-6">
+        <div className="flex items-center gap-2 bg-card border border-border rounded-xl px-3 py-2">
+          <Calendar className="w-4 h-4 text-muted-foreground" />
+          <input type="date" value={from} onChange={e => setFrom(e.target.value)}
+            className="text-sm bg-transparent border-none outline-none" />
+          <span className="text-muted-foreground text-sm">–</span>
+          <input type="date" value={to} onChange={e => setTo(e.target.value)}
+            className="text-sm bg-transparent border-none outline-none" />
+        </div>
+        <div className="flex items-center gap-2 bg-card border border-border rounded-xl px-3 py-2">
+          <Building2 className="w-4 h-4 text-muted-foreground" />
+          <select value={siteId} onChange={e => setSiteId(e.target.value)}
+            className="text-sm bg-transparent border-none outline-none cursor-pointer">
+            <option value="">All Sites</option>
+            {sites.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+          </select>
+        </div>
+        <div className="flex items-center gap-2 bg-card border border-border rounded-xl px-3 py-2">
+          <Filter className="w-4 h-4 text-muted-foreground" />
+          <select value={department} onChange={e => setDepartment(e.target.value)}
+            className="text-sm bg-transparent border-none outline-none cursor-pointer">
+            <option value="">All Departments</option>
+            {departments.map(d => <option key={d.id} value={d.name}>{d.name}</option>)}
+          </select>
+        </div>
+        <div className="flex items-center gap-2 bg-card border border-border rounded-xl px-3 py-2">
+          <BookOpen className="w-4 h-4 text-muted-foreground" />
+          <select value={documentId} onChange={e => setDocumentId(e.target.value)}
+            className="text-sm bg-transparent border-none outline-none cursor-pointer">
+            <option value="">All Documents</option>
+            {docs.map(d => <option key={d.id} value={d.id}>{d.title}</option>)}
+          </select>
+        </div>
+        {(siteId || department || documentId) && (
+          <button onClick={() => { setSiteId(""); setDepartment(""); setDocumentId(""); }}
+            className="text-xs text-muted-foreground hover:text-foreground underline">Clear filters</button>
+        )}
+        <div className="ml-auto flex gap-2">
+          <button onClick={exportExcel} disabled={!data}
+            className="flex items-center gap-2 px-4 py-2 rounded-xl border border-border bg-card text-sm font-medium hover:bg-muted transition-colors disabled:opacity-50">
+            <FileSpreadsheet className="w-4 h-4 text-green-600" /> Excel
+          </button>
+          <button onClick={exportPDF} disabled={!data}
+            className="flex items-center gap-2 px-4 py-2 rounded-xl border border-border bg-card text-sm font-medium hover:bg-muted transition-colors disabled:opacity-50">
+            <Download className="w-4 h-4 text-red-500" /> PDF
+          </button>
+        </div>
+      </div>
+
+      {loading && <div className="flex items-center justify-center h-48 text-muted-foreground">Loading…</div>}
+      {error && <div className="flex items-center gap-2 text-destructive p-4"><AlertCircle className="w-4 h-4" />{error}</div>}
+      {!loading && !error && data && (
+        <>
+          {/* KPI Cards */}
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+            {[
+              { label: "Total Attempts", value: data.summary?.count ?? 0, icon: ClipboardCheck, color: "text-blue-500 bg-blue-50" },
+              { label: "Average Score", value: `${data.summary?.avgPercent ?? 0}%`, icon: TrendingUp, color: "text-purple-500 bg-purple-50" },
+              { label: "Passed", value: data.summary?.passCount ?? 0, icon: CheckCircle2, color: "text-green-500 bg-green-50" },
+              { label: "Pass Rate", value: `${data.summary?.passRate ?? 0}%`, icon: Trophy, color: "text-amber-500 bg-amber-50" },
+            ].map(card => (
+              <Card key={card.label} className="p-5 flex items-center gap-4">
+                <div className={`w-11 h-11 rounded-xl flex items-center justify-center shrink-0 ${card.color}`}>
+                  <card.icon className="w-5 h-5" />
+                </div>
+                <div>
+                  <p className="text-2xl font-bold text-foreground">{card.value}</p>
+                  <p className="text-xs text-muted-foreground mt-0.5">{card.label}</p>
+                </div>
+              </Card>
+            ))}
+          </div>
+
+          {/* Charts */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+            <Card className="p-6">
+              <h3 className="font-semibold text-foreground mb-4">Average Score by Department</h3>
+              {deptAvg.length === 0
+                ? <p className="text-muted-foreground text-sm">No data for this period.</p>
+                : (
+                  <ResponsiveContainer width="100%" height={220}>
+                    <BarChart data={deptAvg}>
+                      <CartesianGrid strokeDasharray="3 3" vertical={false} />
+                      <XAxis dataKey="dept" tick={{ fontSize: 11 }} />
+                      <YAxis domain={[0, 100]} />
+                      <Tooltip formatter={(v: any) => [`${v}%`, "Avg Score"]} />
+                      <Bar dataKey="avg" fill="#3b82f6" radius={[4, 4, 0, 0]} />
+                    </BarChart>
+                  </ResponsiveContainer>
+                )}
+            </Card>
+
+            <Card className="p-6">
+              <h3 className="font-semibold text-foreground mb-4">Pass vs Below Pass</h3>
+              {!passFail.length || passFail.every(x => x.value === 0)
+                ? <p className="text-muted-foreground text-sm">No attempts found.</p>
+                : (
+                  <ResponsiveContainer width="100%" height={220}>
+                    <PieChart>
+                      <Pie data={passFail} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={80} label>
+                        <Cell fill="#22c55e" />
+                        <Cell fill="#f59e0b" />
+                      </Pie>
+                      <Tooltip />
+                      <Legend />
+                    </PieChart>
+                  </ResponsiveContainer>
+                )}
+            </Card>
+          </div>
+
+          {/* Detail Table */}
+          <Card className="p-6">
+            <h3 className="font-semibold text-foreground mb-4">Quiz Attempts Detail</h3>
+            {data.data.length === 0
+              ? <p className="text-muted-foreground text-sm">No quiz attempts for this period.</p>
+              : (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm text-left">
+                    <thead>
+                      <tr className="border-b text-muted-foreground">
+                        <th className="pb-2 pr-4 font-medium">Employee</th>
+                        <th className="pb-2 pr-4 font-medium hidden md:table-cell">Site</th>
+                        <th className="pb-2 pr-4 font-medium hidden sm:table-cell">Department</th>
+                        <th className="pb-2 pr-4 font-medium">Document</th>
+                        <th className="pb-2 pr-4 font-medium text-right">Score</th>
+                        <th className="pb-2 pr-4 font-medium text-right">%</th>
+                        <th className="pb-2 pr-4 font-medium">Status</th>
+                        <th className="pb-2 font-medium">Completed</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-border">
+                      {data.data.map(r => (
+                        <tr key={r.id} className="hover:bg-muted/30">
+                          <td className="py-2.5 pr-4">
+                            <p className="font-medium">{r.user?.name ?? "—"}</p>
+                            <p className="text-xs text-muted-foreground hidden sm:block">{r.user?.email ?? ""}</p>
+                          </td>
+                          <td className="py-2.5 pr-4 text-muted-foreground hidden md:table-cell">{r.site ?? "—"}</td>
+                          <td className="py-2.5 pr-4 text-muted-foreground hidden sm:table-cell">{r.department ?? "—"}</td>
+                          <td className="py-2.5 pr-4">{r.document?.title ?? `#${r.documentId}`}</td>
+                          <td className="py-2.5 pr-4 text-right font-mono">{r.score}/{r.total}</td>
+                          <td className="py-2.5 pr-4 text-right">
+                            <span className={`font-semibold ${r.percent >= 90 ? "text-green-600" : r.percent >= 70 ? "text-blue-600" : "text-amber-600"}`}>
+                              {r.percent}%
+                            </span>
+                          </td>
+                          <td className="py-2.5 pr-4">
+                            <span className={`text-xs px-2 py-0.5 rounded-full ${r.passed ? "bg-green-100 text-green-700" : "bg-amber-100 text-amber-700"}`}>
+                              {r.passed ? "Passed" : "Below pass"}
+                            </span>
+                          </td>
+                          <td className="py-2.5 text-muted-foreground">{new Date(r.completedAt).toLocaleString()}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+          </Card>
+        </>
+      )}
+    </div>
+  );
+}
+
 // ─── Main Page ────────────────────────────────────────────────────────────────
 
-type Tab = "appraisals" | "attendance" | "timesheets" | "leave";
+type Tab = "appraisals" | "attendance" | "timesheets" | "leave" | "quiz";
 
 const TABS: { id: Tab; label: string; icon: React.ElementType }[] = [
   { id: "appraisals", label: "Appraisals", icon: BarChart3 },
   { id: "attendance", label: "Attendance", icon: Clock },
   { id: "timesheets", label: "Timesheets", icon: ClipboardCheck },
   { id: "leave",      label: "Leave",      icon: Calendar },
+  { id: "quiz",       label: "Quiz Results", icon: Trophy },
 ];
 
 export default function Reports() {
@@ -1430,7 +1761,7 @@ export default function Reports() {
 
   return (
     <div>
-      <PageHeader title="Reports & Analytics" description="Performance, attendance, timesheet, and leave insights across the organisation." />
+      <PageHeader title="Reports & Analytics" description="Performance, attendance, timesheet, leave, and quiz insights across the organisation." />
 
       {/* Tab Bar */}
       <div className="flex gap-1 bg-muted/40 rounded-xl p-1 mb-6 w-fit">
@@ -1454,6 +1785,7 @@ export default function Reports() {
       {activeTab === "attendance" && <AttendanceTab />}
       {activeTab === "timesheets" && <TimesheetsTab />}
       {activeTab === "leave" && <LeaveTab />}
+      {activeTab === "quiz" && <QuizResultsTab />}
     </div>
   );
 }

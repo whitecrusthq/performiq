@@ -79,6 +79,15 @@ interface LeaveRequest {
   reviewer?: { id: number; name: string } | null;
   approvers?: ApproverStep[];
   currentApproverId?: number | null;
+  coverers?: {
+    id: number;
+    name: string;
+    department?: string | null;
+    jobTitle?: string | null;
+    status: "pending" | "agreed" | "declined";
+    respondedAt?: string | null;
+    note?: string | null;
+  }[];
 }
 
 interface UserOption { id: number; name: string; role: string; department?: string | null }
@@ -95,7 +104,7 @@ interface LeaveBalanceItem {
   policy?: LeavePolicy | null;
 }
 
-type TabType = "requests" | "returning" | "balance" | "policies";
+type TabType = "requests" | "returning" | "covering" | "all-covers" | "cover-analytics" | "balance" | "policies";
 
 export default function Leave() {
   const { user } = useAuth();
@@ -113,6 +122,17 @@ export default function Leave() {
   const [submitting, setSubmitting] = useState(false);
   const [form, setForm] = useState({ leaveType: "annual", startDate: "", endDate: "", reason: "" });
   const [approverSteps, setApproverSteps] = useState<string[]>([""]);
+  const [coverUserIds, setCoverUserIds] = useState<string[]>(["", ""]);
+  const [coverRespondingId, setCoverRespondingId] = useState<number | null>(null);
+  const [coverFilter, setCoverFilter] = useState({
+    coverStatus: "all" as "all" | "pending" | "agreed" | "declined",
+    requestStatus: "all" as "all" | "pending" | "approved" | "rejected" | "cancelled",
+    department: "all",
+    leaveType: "all",
+    coverOfficerId: "all",
+    fromDate: "",
+    toDate: "",
+  });
   const [activeTab, setActiveTab] = useState<TabType>("requests");
   const [balances, setBalances] = useState<LeaveBalanceItem[]>([]);
   const [policies, setPolicies] = useState<LeavePolicy[]>([]);
@@ -161,7 +181,7 @@ export default function Leave() {
 
   const loadUsers = async () => {
     try {
-      const r = await apiFetch("/api/users");
+      const r = await apiFetch("/api/users/coworkers");
       const data = await r.json();
       if (Array.isArray(data)) setAllUsers(data);
     } catch {}
@@ -255,6 +275,33 @@ export default function Leave() {
     u.id !== user?.id && ["manager", "admin", "super_admin"].includes(u.role)
   );
 
+  const handleCoverResponse = async (requestId: number, decision: "agreed" | "declined") => {
+    let note: string | undefined;
+    if (decision === "declined") {
+      const input = window.prompt("Optional: leave a short note for the applicant explaining why you can't cover.");
+      if (input === null) return;
+      note = input.trim() || undefined;
+    }
+    setCoverRespondingId(requestId);
+    setMutationError(null);
+    try {
+      const r = await apiFetch(`/api/leave-requests/${requestId}/cover-response`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ decision, note }),
+      });
+      const data = await r.json();
+      if (!r.ok) {
+        setMutationError(data.error || "Failed to submit cover response");
+      } else {
+        load();
+      }
+    } catch {
+      setMutationError("Network error");
+    }
+    setCoverRespondingId(null);
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setMutationError(null);
@@ -262,15 +309,17 @@ export default function Leave() {
     setSubmitting(true);
     try {
       const approverIds = approverSteps.map(Number).filter(Boolean);
+      const coverIds = Array.from(new Set(coverUserIds.map(Number).filter(Boolean))).slice(0, 2);
       const r = await apiFetch("/api/leave-requests", {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ...form, days, approverIds }),
+        body: JSON.stringify({ ...form, days, approverIds, coverUserIds: coverIds }),
       });
       const data = await r.json();
       if (!r.ok) { setMutationError(data.error || "Failed to submit"); setSubmitting(false); return; }
       setIsDialogOpen(false);
       setForm({ leaveType: "annual", startDate: "", endDate: "", reason: "" });
       setApproverSteps([""]);
+      setCoverUserIds(["", ""]);
       load();
       loadBalances();
     } catch { setMutationError("Network error"); }
@@ -367,17 +416,27 @@ export default function Leave() {
     : new Date(b.endDate).getTime() - new Date(a.endDate).getTime()
   );
 
+  const myCoverRequests = requests.filter(r =>
+    r.coverers?.some(c => c.id === user?.id)
+  );
+  const myPendingCoverCount = myCoverRequests.filter(r =>
+    r.status === "pending" && r.coverers?.some(c => c.id === user?.id && c.status === "pending")
+  ).length;
+
   const tabs: { key: TabType; label: string; icon: React.ReactNode; badge?: number }[] = [
     { key: "requests", label: "Leave Requests", icon: <CalendarDays className="w-4 h-4" /> },
     ...(isManager ? [{ key: "returning" as TabType, label: "Returning Soon", icon: <UserCheck className="w-4 h-4" />, badge: returningRequests.length }] : []),
     { key: "balance", label: "Leave Balance", icon: <BarChart3 className="w-4 h-4" /> },
     ...(isAdmin ? [{ key: "policies" as TabType, label: "Leave Policies", icon: <Settings className="w-4 h-4" /> }] : []),
+    { key: "covering", label: "Covering For", icon: <Users className="w-4 h-4" />, badge: myPendingCoverCount },
+    ...(isManager ? [{ key: "all-covers" as TabType, label: "All Cover Assignments", icon: <UserCheck className="w-4 h-4" /> }] : []),
+    ...(isManager ? [{ key: "cover-analytics" as TabType, label: "Cover Analytics", icon: <BarChart3 className="w-4 h-4" /> }] : []),
   ];
 
   return (
     <div>
       <PageHeader title="Leave Management" description="Apply for leave, track balances, and manage leave policies.">
-        <Button onClick={() => { setMutationError(null); setForm({ leaveType: "annual", startDate: "", endDate: "", reason: "" }); setApproverSteps([""]); setIsDialogOpen(true); }}>
+        <Button onClick={() => { setMutationError(null); setForm({ leaveType: "annual", startDate: "", endDate: "", reason: "" }); setApproverSteps([""]); setCoverUserIds(["", ""]); setIsDialogOpen(true); }}>
           <Plus className="w-4 h-4 mr-2" /> Apply for Leave
         </Button>
       </PageHeader>
@@ -547,6 +606,43 @@ export default function Leave() {
                       </div>
                     )}
 
+                    {req.coverers && req.coverers.length > 0 && (
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        <span className="text-xs text-muted-foreground font-medium">Covered by:</span>
+                        {req.coverers.map(c => {
+                          const cfg =
+                            c.status === "agreed"   ? { bg: "bg-emerald-50", text: "text-emerald-700", border: "border-emerald-200", label: "agreed", Icon: CheckCircle2 } :
+                            c.status === "declined" ? { bg: "bg-red-50",     text: "text-red-700",     border: "border-red-200",     label: "declined", Icon: XCircle } :
+                                                      { bg: "bg-amber-50",   text: "text-amber-700",   border: "border-amber-200",   label: "awaiting reply", Icon: null };
+                          const Icon = cfg.Icon;
+                          return (
+                            <span key={c.id} className={`inline-flex items-center gap-1 text-xs font-medium px-2 py-0.5 rounded-full ${cfg.bg} ${cfg.text} border ${cfg.border}`}>
+                              {c.name}
+                              <span className="opacity-70 font-normal">· {cfg.label}</span>
+                              {Icon && <Icon className="w-3 h-3" />}
+                            </span>
+                          );
+                        })}
+                        {req.status === "pending" && req.coverers.some(c => c.status !== "agreed") && (
+                          <span className="text-[11px] text-amber-700 bg-amber-50 border border-amber-200 rounded-full px-2 py-0.5">
+                            Approval blocked until all cover officers agree
+                          </span>
+                        )}
+                      </div>
+                    )}
+
+                    {req.status === "pending" && req.coverers?.some(c => c.id === user?.id && c.status === "pending") && (
+                      <div className="flex items-center gap-2 pt-1 border-t border-border">
+                        <span className="text-xs font-medium text-foreground">You're a cover officer for this leave:</span>
+                        <Button size="sm" className="bg-emerald-600 hover:bg-emerald-700 text-white h-7" onClick={() => handleCoverResponse(req.id, "agreed")} isLoading={coverRespondingId === req.id}>
+                          <CheckCircle2 className="w-3.5 h-3.5 mr-1" /> Agree to cover
+                        </Button>
+                        <Button size="sm" variant="destructive" className="h-7" onClick={() => handleCoverResponse(req.id, "declined")} isLoading={coverRespondingId === req.id}>
+                          <XCircle className="w-3.5 h-3.5 mr-1" /> Decline
+                        </Button>
+                      </div>
+                    )}
+
                     {req.reviewNote && !req.approvers?.some(a => a.note) && (
                       <p className="text-sm text-muted-foreground italic">"{req.reviewNote}"</p>
                     )}
@@ -666,7 +762,402 @@ export default function Leave() {
         </div>
       )}
 
-      {/* BALANCE TAB */}
+      {/* COVERING FOR — current user's cover assignments */}
+      {activeTab === "covering" && (
+        <div>
+          <Card className="p-4 mb-4 bg-blue-50/50 border-blue-100">
+            <div className="flex items-start gap-3">
+              <Users className="w-5 h-5 text-blue-600 mt-0.5 shrink-0" />
+              <div>
+                <p className="font-semibold text-sm text-foreground">Requests where you're a cover officer</p>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  Coworkers have nominated you to cover their duties while they're on leave. Agree or decline so their request can move forward.
+                </p>
+              </div>
+            </div>
+          </Card>
+
+          {myCoverRequests.length === 0 ? (
+            <Card className="p-10 text-center">
+              <Users className="w-10 h-10 mx-auto text-muted-foreground/50 mb-3" />
+              <p className="font-medium text-foreground">You're not nominated to cover anyone right now</p>
+              <p className="text-sm text-muted-foreground mt-1">When a coworker picks you as their cover officer, their request will appear here.</p>
+            </Card>
+          ) : (
+            <div className="space-y-3">
+              {myCoverRequests.map(r => {
+                const myCover = r.coverers?.find(c => c.id === user?.id);
+                if (!myCover) return null;
+                const sCfg = STATUS_CONFIG[r.status as keyof typeof STATUS_CONFIG] ?? STATUS_CONFIG.pending;
+                const myCfg =
+                  myCover.status === "agreed"   ? { color: "bg-emerald-100 text-emerald-700 border-emerald-200", label: "You agreed" } :
+                  myCover.status === "declined" ? { color: "bg-red-100 text-red-700 border-red-200", label: "You declined" } :
+                                                  { color: "bg-amber-100 text-amber-700 border-amber-200", label: "Your reply needed" };
+                return (
+                  <Card key={r.id} className="p-4">
+                    <div className="flex flex-wrap items-start justify-between gap-4">
+                      <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center font-bold text-sm">
+                          {(r.employee?.name ?? "?").charAt(0).toUpperCase()}
+                        </div>
+                        <div>
+                          <p className="font-semibold text-sm">{r.employee?.name ?? "Unknown"}</p>
+                          <p className="text-xs text-muted-foreground">
+                            {r.employee?.department ?? "—"} · {leaveLabel(r.leaveType)} · {fmt(r.startDate)} → {fmt(r.endDate)} ({r.days}d)
+                          </p>
+                          {r.reason && <p className="text-xs text-muted-foreground italic mt-1">"{r.reason}"</p>}
+                        </div>
+                      </div>
+                      <div className="flex flex-col items-end gap-2">
+                        <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold ${sCfg.color}`}>
+                          {sCfg.icon}{sCfg.label}
+                        </span>
+                        <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold border ${myCfg.color}`}>
+                          {myCfg.label}
+                        </span>
+                      </div>
+                    </div>
+                    {r.status === "pending" && myCover.status === "pending" && (
+                      <div className="flex items-center gap-2 mt-3 pt-3 border-t border-border">
+                        <Button size="sm" className="bg-emerald-600 hover:bg-emerald-700 text-white" onClick={() => handleCoverResponse(r.id, "agreed")} isLoading={coverRespondingId === r.id}>
+                          <CheckCircle2 className="w-4 h-4 mr-1.5" /> Agree to cover
+                        </Button>
+                        <Button size="sm" variant="destructive" onClick={() => handleCoverResponse(r.id, "declined")} isLoading={coverRespondingId === r.id}>
+                          <XCircle className="w-4 h-4 mr-1.5" /> Decline
+                        </Button>
+                      </div>
+                    )}
+                    {myCover.note && (
+                      <p className="text-xs text-muted-foreground italic mt-2">Your note: "{myCover.note}"</p>
+                    )}
+                  </Card>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ALL COVER ASSIGNMENTS — manager / admin master view */}
+      {activeTab === "all-covers" && isManager && (() => {
+        const allCoverRows = requests.flatMap(r =>
+          (r.coverers ?? []).map(c => ({ req: r, cover: c }))
+        );
+        const filtered = allCoverRows.filter(({ req, cover }) => {
+          if (coverFilter.coverStatus !== "all" && cover.status !== coverFilter.coverStatus) return false;
+          if (coverFilter.requestStatus !== "all" && req.status !== coverFilter.requestStatus) return false;
+          if (coverFilter.department !== "all" && req.employee?.department !== coverFilter.department) return false;
+          if (coverFilter.leaveType !== "all" && req.leaveType !== coverFilter.leaveType) return false;
+          if (coverFilter.coverOfficerId !== "all" && String(cover.id) !== coverFilter.coverOfficerId) return false;
+          if (coverFilter.fromDate && req.endDate < coverFilter.fromDate) return false;
+          if (coverFilter.toDate && req.startDate > coverFilter.toDate) return false;
+          return true;
+        });
+        const departments = Array.from(new Set(requests.map(r => r.employee?.department).filter(Boolean))) as string[];
+        const coverOfficers = Array.from(
+          new Map(allCoverRows.map(({ cover }) => [cover.id, cover])).values()
+        );
+        return (
+          <div>
+            <Card className="p-4 mb-4">
+              <div className="flex items-center gap-2 mb-3">
+                <Filter className="w-4 h-4 text-muted-foreground" />
+                <p className="font-semibold text-sm">Filters</p>
+                <Button size="sm" variant="outline" className="ml-auto" onClick={() => setCoverFilter({ coverStatus: "all", requestStatus: "all", department: "all", leaveType: "all", coverOfficerId: "all", fromDate: "", toDate: "" })}>
+                  Clear
+                </Button>
+              </div>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                <div>
+                  <label className="block text-xs font-medium mb-1">Cover status</label>
+                  <select className="w-full px-3 py-2 border border-border rounded-md text-sm bg-background" value={coverFilter.coverStatus} onChange={e => setCoverFilter({ ...coverFilter, coverStatus: e.target.value as any })}>
+                    <option value="all">All</option>
+                    <option value="pending">Pending</option>
+                    <option value="agreed">Agreed</option>
+                    <option value="declined">Declined</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs font-medium mb-1">Request status</label>
+                  <select className="w-full px-3 py-2 border border-border rounded-md text-sm bg-background" value={coverFilter.requestStatus} onChange={e => setCoverFilter({ ...coverFilter, requestStatus: e.target.value as any })}>
+                    <option value="all">All</option>
+                    <option value="pending">Pending</option>
+                    <option value="approved">Approved</option>
+                    <option value="rejected">Rejected</option>
+                    <option value="cancelled">Cancelled</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs font-medium mb-1">Department</label>
+                  <select className="w-full px-3 py-2 border border-border rounded-md text-sm bg-background" value={coverFilter.department} onChange={e => setCoverFilter({ ...coverFilter, department: e.target.value })}>
+                    <option value="all">All</option>
+                    {departments.map(d => <option key={d} value={d}>{d}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs font-medium mb-1">Leave type</label>
+                  <select className="w-full px-3 py-2 border border-border rounded-md text-sm bg-background" value={coverFilter.leaveType} onChange={e => setCoverFilter({ ...coverFilter, leaveType: e.target.value })}>
+                    <option value="all">All</option>
+                    {leaveTypes.map(t => <option key={t.id} value={t.name}>{t.label}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs font-medium mb-1">Cover officer</label>
+                  <select className="w-full px-3 py-2 border border-border rounded-md text-sm bg-background" value={coverFilter.coverOfficerId} onChange={e => setCoverFilter({ ...coverFilter, coverOfficerId: e.target.value })}>
+                    <option value="all">All</option>
+                    {coverOfficers.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs font-medium mb-1">From date</label>
+                  <Input type="date" value={coverFilter.fromDate} onChange={e => setCoverFilter({ ...coverFilter, fromDate: e.target.value })} />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium mb-1">To date</label>
+                  <Input type="date" value={coverFilter.toDate} onChange={e => setCoverFilter({ ...coverFilter, toDate: e.target.value })} />
+                </div>
+              </div>
+            </Card>
+
+            <Card className="p-0 overflow-hidden">
+              <div className="px-4 py-3 border-b border-border flex items-center justify-between">
+                <p className="text-sm font-semibold">{filtered.length} cover assignment{filtered.length !== 1 ? "s" : ""}</p>
+              </div>
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead className="bg-secondary/50">
+                    <tr className="text-left text-xs font-semibold text-muted-foreground">
+                      <th className="px-4 py-2">Applicant</th>
+                      <th className="px-4 py-2">Department</th>
+                      <th className="px-4 py-2">Leave</th>
+                      <th className="px-4 py-2">Dates</th>
+                      <th className="px-4 py-2">Request</th>
+                      <th className="px-4 py-2">Cover Officer</th>
+                      <th className="px-4 py-2">Cover Status</th>
+                      <th className="px-4 py-2">Responded</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {filtered.length === 0 ? (
+                      <tr><td colSpan={8} className="px-4 py-8 text-center text-muted-foreground">No cover assignments match these filters.</td></tr>
+                    ) : filtered.map(({ req, cover }, idx) => {
+                      const sCfg = STATUS_CONFIG[req.status as keyof typeof STATUS_CONFIG] ?? STATUS_CONFIG.pending;
+                      const cCfg =
+                        cover.status === "agreed"   ? "bg-emerald-100 text-emerald-700" :
+                        cover.status === "declined" ? "bg-red-100 text-red-700" :
+                                                      "bg-amber-100 text-amber-700";
+                      return (
+                        <tr key={`${req.id}-${cover.id}-${idx}`} className="border-t border-border hover:bg-secondary/30">
+                          <td className="px-4 py-2 font-medium">{req.employee?.name ?? "Unknown"}</td>
+                          <td className="px-4 py-2 text-muted-foreground">{req.employee?.department ?? "—"}</td>
+                          <td className="px-4 py-2">{leaveLabel(req.leaveType)}</td>
+                          <td className="px-4 py-2 text-muted-foreground whitespace-nowrap">{fmt(req.startDate)} → {fmt(req.endDate)}</td>
+                          <td className="px-4 py-2"><span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${sCfg.color}`}>{sCfg.label}</span></td>
+                          <td className="px-4 py-2 font-medium">{cover.name}</td>
+                          <td className="px-4 py-2"><span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${cCfg}`}>{cover.status}</span></td>
+                          <td className="px-4 py-2 text-xs text-muted-foreground whitespace-nowrap">{cover.respondedAt ? fmt(cover.respondedAt) : "—"}</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </Card>
+          </div>
+        );
+      })()}
+
+      {/* COVER ANALYTICS — aggregated reporting */}
+      {activeTab === "cover-analytics" && isManager && (() => {
+        const allCoverRows = requests.flatMap(r =>
+          (r.coverers ?? []).map(c => ({ req: r, cover: c }))
+        );
+        const filtered = allCoverRows.filter(({ req, cover }) => {
+          if (coverFilter.coverStatus !== "all" && cover.status !== coverFilter.coverStatus) return false;
+          if (coverFilter.requestStatus !== "all" && req.status !== coverFilter.requestStatus) return false;
+          if (coverFilter.department !== "all" && req.employee?.department !== coverFilter.department) return false;
+          if (coverFilter.leaveType !== "all" && req.leaveType !== coverFilter.leaveType) return false;
+          if (coverFilter.coverOfficerId !== "all" && String(cover.id) !== coverFilter.coverOfficerId) return false;
+          if (coverFilter.fromDate && req.endDate < coverFilter.fromDate) return false;
+          if (coverFilter.toDate && req.startDate > coverFilter.toDate) return false;
+          return true;
+        });
+        const total = filtered.length;
+        const agreed = filtered.filter(x => x.cover.status === "agreed").length;
+        const declined = filtered.filter(x => x.cover.status === "declined").length;
+        const pending = filtered.filter(x => x.cover.status === "pending").length;
+        const responded = agreed + declined;
+        const agreeRate = responded > 0 ? Math.round((agreed / responded) * 100) : 0;
+
+        const byOfficer = new Map<number, { name: string; total: number; agreed: number; declined: number; pending: number }>();
+        filtered.forEach(({ cover }) => {
+          const cur = byOfficer.get(cover.id) ?? { name: cover.name, total: 0, agreed: 0, declined: 0, pending: 0 };
+          cur.total += 1;
+          if (cover.status === "agreed") cur.agreed += 1;
+          else if (cover.status === "declined") cur.declined += 1;
+          else cur.pending += 1;
+          byOfficer.set(cover.id, cur);
+        });
+        const topOfficers = Array.from(byOfficer.values()).sort((a, b) => b.total - a.total).slice(0, 8);
+
+        const byDept = new Map<string, { total: number; agreed: number; declined: number; pending: number }>();
+        filtered.forEach(({ req, cover }) => {
+          const d = req.employee?.department ?? "—";
+          const cur = byDept.get(d) ?? { total: 0, agreed: 0, declined: 0, pending: 0 };
+          cur.total += 1;
+          if (cover.status === "agreed") cur.agreed += 1;
+          else if (cover.status === "declined") cur.declined += 1;
+          else cur.pending += 1;
+          byDept.set(d, cur);
+        });
+        const deptRows = Array.from(byDept.entries()).sort((a, b) => b[1].total - a[1].total);
+
+        const byType = new Map<string, number>();
+        filtered.forEach(({ req }) => {
+          byType.set(req.leaveType, (byType.get(req.leaveType) ?? 0) + 1);
+        });
+        const typeRows = Array.from(byType.entries()).sort((a, b) => b[1] - a[1]);
+
+        const departments = Array.from(new Set(requests.map(r => r.employee?.department).filter(Boolean))) as string[];
+        const coverOfficers = Array.from(
+          new Map(allCoverRows.map(({ cover }) => [cover.id, cover])).values()
+        );
+
+        return (
+          <div>
+            <Card className="p-4 mb-4">
+              <div className="flex items-center gap-2 mb-3">
+                <Filter className="w-4 h-4 text-muted-foreground" />
+                <p className="font-semibold text-sm">Filters</p>
+                <Button size="sm" variant="outline" className="ml-auto" onClick={() => setCoverFilter({ coverStatus: "all", requestStatus: "all", department: "all", leaveType: "all", coverOfficerId: "all", fromDate: "", toDate: "" })}>
+                  Clear
+                </Button>
+              </div>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                <div>
+                  <label className="block text-xs font-medium mb-1">Cover status</label>
+                  <select className="w-full px-3 py-2 border border-border rounded-md text-sm bg-background" value={coverFilter.coverStatus} onChange={e => setCoverFilter({ ...coverFilter, coverStatus: e.target.value as any })}>
+                    <option value="all">All</option>
+                    <option value="pending">Pending</option>
+                    <option value="agreed">Agreed</option>
+                    <option value="declined">Declined</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs font-medium mb-1">Request status</label>
+                  <select className="w-full px-3 py-2 border border-border rounded-md text-sm bg-background" value={coverFilter.requestStatus} onChange={e => setCoverFilter({ ...coverFilter, requestStatus: e.target.value as any })}>
+                    <option value="all">All</option>
+                    <option value="pending">Pending</option>
+                    <option value="approved">Approved</option>
+                    <option value="rejected">Rejected</option>
+                    <option value="cancelled">Cancelled</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs font-medium mb-1">Department</label>
+                  <select className="w-full px-3 py-2 border border-border rounded-md text-sm bg-background" value={coverFilter.department} onChange={e => setCoverFilter({ ...coverFilter, department: e.target.value })}>
+                    <option value="all">All</option>
+                    {departments.map(d => <option key={d} value={d}>{d}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs font-medium mb-1">Leave type</label>
+                  <select className="w-full px-3 py-2 border border-border rounded-md text-sm bg-background" value={coverFilter.leaveType} onChange={e => setCoverFilter({ ...coverFilter, leaveType: e.target.value })}>
+                    <option value="all">All</option>
+                    {leaveTypes.map(t => <option key={t.id} value={t.name}>{t.label}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs font-medium mb-1">Cover officer</label>
+                  <select className="w-full px-3 py-2 border border-border rounded-md text-sm bg-background" value={coverFilter.coverOfficerId} onChange={e => setCoverFilter({ ...coverFilter, coverOfficerId: e.target.value })}>
+                    <option value="all">All</option>
+                    {coverOfficers.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs font-medium mb-1">From date</label>
+                  <Input type="date" value={coverFilter.fromDate} onChange={e => setCoverFilter({ ...coverFilter, fromDate: e.target.value })} />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium mb-1">To date</label>
+                  <Input type="date" value={coverFilter.toDate} onChange={e => setCoverFilter({ ...coverFilter, toDate: e.target.value })} />
+                </div>
+              </div>
+            </Card>
+
+            <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-4">
+              <Card className="p-4"><p className="text-xs text-muted-foreground">Total nominations</p><p className="text-2xl font-bold mt-1">{total}</p></Card>
+              <Card className="p-4"><p className="text-xs text-muted-foreground">Agreed</p><p className="text-2xl font-bold text-emerald-600 mt-1">{agreed}</p></Card>
+              <Card className="p-4"><p className="text-xs text-muted-foreground">Declined</p><p className="text-2xl font-bold text-red-600 mt-1">{declined}</p></Card>
+              <Card className="p-4"><p className="text-xs text-muted-foreground">Awaiting reply</p><p className="text-2xl font-bold text-amber-600 mt-1">{pending}</p></Card>
+              <Card className="p-4"><p className="text-xs text-muted-foreground">Agree rate</p><p className="text-2xl font-bold mt-1">{agreeRate}%</p><p className="text-[11px] text-muted-foreground mt-0.5">of {responded} responses</p></Card>
+            </div>
+
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-4">
+              <Card className="p-4">
+                <p className="font-semibold text-sm mb-3">Most-nominated cover officers</p>
+                {topOfficers.length === 0 ? (
+                  <p className="text-sm text-muted-foreground">No data for these filters.</p>
+                ) : (
+                  <table className="w-full text-sm">
+                    <thead><tr className="text-left text-xs text-muted-foreground"><th className="py-1">Officer</th><th className="py-1">Total</th><th className="py-1">Agreed</th><th className="py-1">Declined</th><th className="py-1">Pending</th></tr></thead>
+                    <tbody>
+                      {topOfficers.map(o => (
+                        <tr key={o.name} className="border-t border-border">
+                          <td className="py-1.5 font-medium">{o.name}</td>
+                          <td className="py-1.5">{o.total}</td>
+                          <td className="py-1.5 text-emerald-600">{o.agreed}</td>
+                          <td className="py-1.5 text-red-600">{o.declined}</td>
+                          <td className="py-1.5 text-amber-600">{o.pending}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                )}
+              </Card>
+
+              <Card className="p-4">
+                <p className="font-semibold text-sm mb-3">By department</p>
+                {deptRows.length === 0 ? (
+                  <p className="text-sm text-muted-foreground">No data for these filters.</p>
+                ) : (
+                  <table className="w-full text-sm">
+                    <thead><tr className="text-left text-xs text-muted-foreground"><th className="py-1">Department</th><th className="py-1">Total</th><th className="py-1">Agreed</th><th className="py-1">Declined</th><th className="py-1">Pending</th></tr></thead>
+                    <tbody>
+                      {deptRows.map(([d, v]) => (
+                        <tr key={d} className="border-t border-border">
+                          <td className="py-1.5 font-medium">{d}</td>
+                          <td className="py-1.5">{v.total}</td>
+                          <td className="py-1.5 text-emerald-600">{v.agreed}</td>
+                          <td className="py-1.5 text-red-600">{v.declined}</td>
+                          <td className="py-1.5 text-amber-600">{v.pending}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                )}
+              </Card>
+            </div>
+
+            <Card className="p-4">
+              <p className="font-semibold text-sm mb-3">By leave type</p>
+              {typeRows.length === 0 ? (
+                <p className="text-sm text-muted-foreground">No data for these filters.</p>
+              ) : (
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                  {typeRows.map(([t, n]) => (
+                    <div key={t} className="px-3 py-2 rounded-md bg-secondary/40">
+                      <p className="text-xs text-muted-foreground">{leaveLabel(t)}</p>
+                      <p className="text-lg font-bold">{n}</p>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </Card>
+          </div>
+        );
+      })()}
+
       {activeTab === "balance" && (
         <div className="space-y-6">
           {isManager && teamBalances.length > 0 && (() => {
@@ -1082,6 +1573,52 @@ export default function Leave() {
                   <UserPlus className="w-4 h-4" /> Add another approver
                 </button>
                 <p className="text-xs text-muted-foreground mt-1">Leave blank to use your direct manager by default.</p>
+              </div>
+
+              <div>
+                <Label>Cover Officers <span className="text-muted-foreground text-xs font-normal">(up to 2 colleagues who will cover for you)</span></Label>
+                <div className="mt-2 space-y-2">
+                  {[0, 1].map(idx => {
+                    const otherPicked = coverUserIds[idx === 0 ? 1 : 0];
+                    const available = allUsers.filter(u =>
+                      u.id !== user?.id && String(u.id) !== otherPicked
+                    );
+                    return (
+                      <div key={idx} className="flex items-center gap-2">
+                        <span className="flex items-center justify-center w-6 h-6 rounded-full bg-emerald-100 text-emerald-700 text-xs font-bold shrink-0">{idx + 1}</span>
+                        <select
+                          className="flex-1 px-3 py-2 rounded-xl bg-background border border-border text-sm outline-none focus:ring-2 focus:ring-primary/20"
+                          value={coverUserIds[idx] ?? ""}
+                          onChange={e => setCoverUserIds(prev => {
+                            const next = [...prev];
+                            next[idx] = e.target.value;
+                            return next;
+                          })}
+                        >
+                          <option value="">-- Select cover officer{idx === 1 ? " (optional)" : ""} --</option>
+                          {available.map(u => (
+                            <option key={u.id} value={String(u.id)}>{u.name}{u.department ? ` · ${u.department}` : ""}</option>
+                          ))}
+                        </select>
+                        {coverUserIds[idx] && (
+                          <button
+                            type="button"
+                            onClick={() => setCoverUserIds(prev => {
+                              const next = [...prev];
+                              next[idx] = "";
+                              return next;
+                            })}
+                            className="p-1.5 rounded-lg hover:bg-destructive/10 text-muted-foreground hover:text-destructive"
+                            title="Clear"
+                          >
+                            <X className="w-3.5 h-3.5" />
+                          </button>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+                <p className="text-xs text-muted-foreground mt-1">These colleagues will be listed as covering your duties while you're away.</p>
               </div>
 
               <div className="flex gap-3 pt-2">
