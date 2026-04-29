@@ -5,6 +5,7 @@ class AppSettings extends Model {
   declare id: number;
   declare companyName: string;
   declare logoLetter: string;
+  declare logoUrl: string | null;
   declare primaryHsl: string;
   declare themeName: string;
   declare loginHeadline: string;
@@ -19,6 +20,7 @@ AppSettings.init(
     id: { type: DataTypes.INTEGER, primaryKey: true, defaultValue: 1 },
     companyName: { type: DataTypes.TEXT, allowNull: false, defaultValue: "PerformIQ", field: "company_name" },
     logoLetter: { type: DataTypes.TEXT, allowNull: false, defaultValue: "P", field: "logo_letter" },
+    logoUrl: { type: DataTypes.TEXT, allowNull: true, field: "logo_url" },
     primaryHsl: { type: DataTypes.TEXT, allowNull: false, defaultValue: "221 83% 53%", field: "primary_hsl" },
     themeName: { type: DataTypes.TEXT, allowNull: false, defaultValue: "blue", field: "theme_name" },
     loginHeadline: { type: DataTypes.TEXT, allowNull: false, defaultValue: "Elevate Your Team's Performance.", field: "login_headline" },

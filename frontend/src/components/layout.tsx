@@ -42,6 +42,7 @@ import {
 import { motion, AnimatePresence } from "framer-motion";
 import { User } from "@/lib";
 import { useAppSettings } from "@/hooks/use-app-settings";
+import { BrandMark } from "@/components/brand-mark";
 
 interface NavItem {
   name: string;
@@ -274,9 +275,7 @@ export function AppLayout({ children }: { children: ReactNode }) {
     <div className="min-h-screen bg-background flex">
       <aside className="hidden sm:flex flex-col w-64 shrink-0 border-r border-border bg-card sticky top-0 h-screen">
         <div className="flex items-center gap-3 px-6 py-5 border-b border-border">
-          <div className="w-9 h-9 bg-primary rounded-xl flex items-center justify-center text-primary-foreground font-bold text-lg shrink-0">
-            {settings.logoLetter}
-          </div>
+          <BrandMark logoUrl={settings.logoUrl} letter={settings.logoLetter} companyName={settings.companyName} size="md" />
           <span className="font-bold text-xl tracking-tight">{settings.companyName}</span>
         </div>
 
@@ -329,9 +328,7 @@ export function AppLayout({ children }: { children: ReactNode }) {
             >
               <div className="flex items-center justify-between px-6 py-5 border-b border-border">
                 <div className="flex items-center gap-3">
-                  <div className="w-9 h-9 bg-primary rounded-xl flex items-center justify-center text-primary-foreground font-bold text-lg shrink-0">
-                    {settings.logoLetter}
-                  </div>
+                  <BrandMark logoUrl={settings.logoUrl} letter={settings.logoLetter} companyName={settings.companyName} size="md" />
                   <span className="font-bold text-xl tracking-tight">{settings.companyName}</span>
                 </div>
                 <button onClick={() => setSidebarOpen(false)} className="p-1 text-muted-foreground hover:text-foreground">
@@ -379,9 +376,7 @@ export function AppLayout({ children }: { children: ReactNode }) {
             <Menu className="w-5 h-5" />
           </button>
           <div className="flex items-center gap-2">
-            <div className="w-7 h-7 bg-primary rounded-lg flex items-center justify-center text-primary-foreground font-bold text-sm">
-              {settings.logoLetter}
-            </div>
+            <BrandMark logoUrl={settings.logoUrl} letter={settings.logoLetter} companyName={settings.companyName} size="sm" />
             <span className="font-bold text-base tracking-tight">{settings.companyName}</span>
           </div>
           <Link href="/profile" className="w-8 h-8 rounded-full bg-muted flex items-center justify-center font-bold text-sm border border-border">
