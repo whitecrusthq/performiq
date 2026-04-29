@@ -5,7 +5,8 @@ import { QueryTypes } from "sequelize";
 const ELEVATED_ROLES = ["admin", "super_admin"];
 
 function canAssignRole(actorRole: string, targetRole: string): boolean {
-  if (ELEVATED_ROLES.includes(targetRole)) return actorRole === "super_admin";
+  if (targetRole === "super_admin") return actorRole === "super_admin";
+  if (targetRole === "admin") return actorRole === "admin" || actorRole === "super_admin";
   return true;
 }
 
@@ -55,7 +56,7 @@ export default class UserController {
     const roleMap = new Map<number, CustomRole>(customRoles.map((r: CustomRole) => [r.id, r]));
     const visible = actorRole === "super_admin"
       ? allUsers
-      : allUsers.filter((u: User) => !ELEVATED_ROLES.includes(u.role));
+      : allUsers.filter((u: User) => u.role !== "super_admin");
     return visible.map((u: User) => formatUser(u, u.customRoleId ? roleMap.get(u.customRoleId) ?? null : null));
   }
 
@@ -69,7 +70,7 @@ export default class UserController {
       if (cr) effectiveRole = cr.permissionLevel;
     }
     if (!canAssignRole(actorRole, effectiveRole)) {
-      return { error: "Only a Super Admin can assign admin or super_admin roles", status: 403 };
+      return { error: "Only a Super Admin can assign the Super Admin role", status: 403 };
     }
     const user = await User.create({
       name, email, passwordHash, role: effectiveRole,
@@ -87,8 +88,8 @@ export default class UserController {
 
   static async update(id: number, data: any, actorRole: string) {
     const targetUser = await User.findByPk(id);
-    if (targetUser && ELEVATED_ROLES.includes(targetUser.role) && actorRole !== "super_admin") {
-      return { error: "Only a Super Admin can edit admin or super_admin accounts", status: 403 };
+    if (targetUser && targetUser.role === "super_admin" && actorRole !== "super_admin") {
+      return { error: "Only a Super Admin can edit Super Admin accounts", status: 403 };
     }
 
     const { name, email, password, role, customRoleId, managerId, siteId, department, jobTitle, phone, staffId } = data;
@@ -106,7 +107,7 @@ export default class UserController {
     }
 
     if (!canAssignRole(actorRole, updates.role)) {
-      return { error: "Only a Super Admin can assign admin or super_admin roles", status: 403 };
+      return { error: "Only a Super Admin can assign the Super Admin role", status: 403 };
     }
 
     if (password && password.trim() !== "") {
@@ -159,8 +160,8 @@ export default class UserController {
   static async delete(id: number, actorId: number, actorRole: string) {
     if (id === actorId) return { error: "Cannot delete yourself", status: 400 };
     const targetUser = await User.findByPk(id);
-    if (targetUser && ELEVATED_ROLES.includes(targetUser.role) && actorRole !== "super_admin") {
-      return { error: "Only a Super Admin can delete admin or super_admin accounts", status: 403 };
+    if (targetUser && targetUser.role === "super_admin" && actorRole !== "super_admin") {
+      return { error: "Only a Super Admin can delete Super Admin accounts", status: 403 };
     }
     await User.destroy({ where: { id } });
     return { message: "User deleted" };
