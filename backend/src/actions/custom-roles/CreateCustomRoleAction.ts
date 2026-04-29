@@ -9,8 +9,9 @@ export class CreateCustomRoleAction {
       if (!name || !permissionLevel) {
         res.status(400).json({ error: "name and permissionLevel are required" }); return;
       }
-      const role = await CustomRoleController.create(req.body);
-      res.status(201).json(role);
+      const result: any = await CustomRoleController.create(req.body);
+      if (result?.error) { res.status(result.status ?? 400).json({ error: result.error }); return; }
+      res.status(201).json(result);
     } catch (err: any) {
       if (err.original?.code === "23505") res.status(409).json({ error: "Role name already exists" });
       else res.status(500).json({ error: "Server error" });

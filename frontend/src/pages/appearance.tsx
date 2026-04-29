@@ -8,8 +8,9 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
-import { Paintbrush, Type, Check, Image as ImageIcon, Upload, Trash2 } from "lucide-react";
+import { Paintbrush, Type, Check, Image as ImageIcon, Upload, Trash2, LogIn } from "lucide-react";
 import { BrandMark, resolveLogoUrl } from "@/components/brand-mark";
 
 function authHeader(): HeadersInit {
@@ -40,6 +41,8 @@ export default function Appearance() {
   const [logoLetter, setLogoLetter] = useState(settings.logoLetter);
   const [logoUrl, setLogoUrl] = useState<string | null>(settings.logoUrl);
   const [selectedTheme, setSelectedTheme] = useState(settings.themeName);
+  const [loginHeadline, setLoginHeadline] = useState(settings.loginHeadline);
+  const [loginSubtext, setLoginSubtext] = useState(settings.loginSubtext);
   const [uploading, setUploading] = useState(false);
 
   useEffect(() => {
@@ -47,6 +50,8 @@ export default function Appearance() {
     setLogoLetter(settings.logoLetter);
     setLogoUrl(settings.logoUrl);
     setSelectedTheme(settings.themeName);
+    setLoginHeadline(settings.loginHeadline);
+    setLoginSubtext(settings.loginSubtext);
   }, [settings]);
 
   const previewTheme = THEMES.find(t => t.name === selectedTheme) ?? THEMES[0];
@@ -62,6 +67,8 @@ export default function Appearance() {
           logoUrl: logoUrl,
           primaryHsl: previewTheme.hsl,
           themeName: previewTheme.name,
+          loginHeadline: loginHeadline.slice(0, 200),
+          loginSubtext: loginSubtext.slice(0, 400),
         }),
       }).then(r => r.ok ? r.json() : r.json().then((e: any) => Promise.reject(e.error))),
     onSuccess: () => {
@@ -215,6 +222,42 @@ export default function Appearance() {
                 A square image works best. After uploading, click <strong>Save Appearance</strong> to apply.
               </p>
             </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <LogIn className="h-5 w-5" />
+            Sign-in Page Text
+          </CardTitle>
+          <CardDescription>The headline and subtext shown on the marketing panel of the sign-in page.</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="space-y-1.5">
+            <Label htmlFor="login-headline">Headline</Label>
+            <Textarea
+              id="login-headline"
+              value={loginHeadline}
+              onChange={e => setLoginHeadline(e.target.value)}
+              placeholder="Elevate Your Team's Performance."
+              maxLength={200}
+              rows={2}
+            />
+            <p className="text-xs text-muted-foreground">{loginHeadline.length}/200 characters</p>
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="login-subtext">Subtext</Label>
+            <Textarea
+              id="login-subtext"
+              value={loginSubtext}
+              onChange={e => setLoginSubtext(e.target.value)}
+              placeholder="A short tagline that appears under the headline."
+              maxLength={400}
+              rows={3}
+            />
+            <p className="text-xs text-muted-foreground">{loginSubtext.length}/400 characters</p>
           </div>
         </CardContent>
       </Card>

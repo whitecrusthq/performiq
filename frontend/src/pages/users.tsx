@@ -426,7 +426,7 @@ export default function Users() {
                 <select className="w-full px-4 py-2 border rounded-xl bg-background" value={formData.role} onChange={e=>setFormData({...formData, role: e.target.value as any, customRoleId: ""})}>
                   <option value="employee">Employee</option>
                   <option value="manager">Manager</option>
-                  {user?.role === "super_admin" && <option value="admin">Admin</option>}
+                  {(user?.role === "admin" || user?.role === "super_admin") && <option value="admin">Admin</option>}
                   {user?.role === "super_admin" && <option value="super_admin">Super Admin</option>}
                 </select>
               </div>
