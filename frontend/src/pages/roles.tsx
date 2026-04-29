@@ -165,7 +165,7 @@ export default function Roles() {
             icon={Shield}
           />
         ) : (
-          <table className="w-full text-left border-collapse">
+          <div className="overflow-x-auto"><table className="w-full text-left border-collapse min-w-[640px]">
             <thead>
               <tr className="bg-muted/50 border-b text-sm text-muted-foreground">
                 <th className="p-4 w-10">
@@ -231,7 +231,7 @@ export default function Roles() {
                 );
               })}
             </tbody>
-          </table>
+          </table></div>
         )}
       </Card>
 

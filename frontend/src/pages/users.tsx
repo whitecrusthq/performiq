@@ -222,8 +222,8 @@ export default function Users() {
 
       <BulkActionBar count={selectedIds.size} onDelete={handleBulkDelete} onClear={() => setSelectedIds(new Set())} deleting={bulkDeleting} />
 
-      <Card className="overflow-hidden">
-        <table className="w-full text-left border-collapse">
+      <Card className="overflow-x-auto">
+        <table className="w-full text-left border-collapse min-w-[720px]">
           <thead>
             <tr className="bg-muted/50 border-b text-sm text-muted-foreground">
               <th className="p-4 w-10">

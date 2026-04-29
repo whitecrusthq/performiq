@@ -463,8 +463,8 @@ export default function Anniversaries() {
                 })}
               </div>
 
-              <div className="rounded-xl border border-border overflow-hidden">
-                <table className="w-full text-sm">
+              <div className="rounded-xl border border-border overflow-x-auto">
+                <table className="w-full text-sm min-w-[640px]">
                   <thead className="bg-muted/50">
                     <tr>
                       <th className="text-left px-4 py-2.5 font-semibold text-muted-foreground">#</th>
