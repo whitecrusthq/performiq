@@ -4,6 +4,7 @@ import { apiFetch } from "@/lib/utils";
 export interface AppSettings {
   companyName: string;
   logoLetter: string;
+  logoUrl: string | null;
   primaryHsl: string;
   themeName: string;
 }
@@ -11,6 +12,7 @@ export interface AppSettings {
 const defaults: AppSettings = {
   companyName: "PerformIQ",
   logoLetter: "P",
+  logoUrl: null,
   primaryHsl: "221 83% 53%",
   themeName: "blue",
 };
@@ -36,6 +38,7 @@ export function AppSettingsProvider({ children }: { children: ReactNode }) {
           const s: AppSettings = {
             companyName: data.companyName || defaults.companyName,
             logoLetter: data.logoLetter || defaults.logoLetter,
+            logoUrl: data.logoUrl || null,
             primaryHsl: data.primaryHsl || defaults.primaryHsl,
             themeName: data.themeName || defaults.themeName,
           };

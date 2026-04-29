@@ -9,9 +9,10 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
-import { Paintbrush, Type, Check } from "lucide-react";
+import { Paintbrush, Type, Check, Image as ImageIcon, Upload, Trash2 } from "lucide-react";
+import { BrandMark, resolveLogoUrl } from "@/components/brand-mark";
 
-function authHeader() {
+function authHeader(): HeadersInit {
   const token = localStorage.getItem("token");
   return token ? { Authorization: `Bearer ${token}` } : {};
 }
@@ -37,11 +38,14 @@ export default function Appearance() {
 
   const [companyName, setCompanyName] = useState(settings.companyName);
   const [logoLetter, setLogoLetter] = useState(settings.logoLetter);
+  const [logoUrl, setLogoUrl] = useState<string | null>(settings.logoUrl);
   const [selectedTheme, setSelectedTheme] = useState(settings.themeName);
+  const [uploading, setUploading] = useState(false);
 
   useEffect(() => {
     setCompanyName(settings.companyName);
     setLogoLetter(settings.logoLetter);
+    setLogoUrl(settings.logoUrl);
     setSelectedTheme(settings.themeName);
   }, [settings]);
 
@@ -55,6 +59,7 @@ export default function Appearance() {
         body: JSON.stringify({
           companyName: companyName.trim() || "PerformIQ",
           logoLetter: (logoLetter.trim() || "P").slice(0, 3).toUpperCase(),
+          logoUrl: logoUrl,
           primaryHsl: previewTheme.hsl,
           themeName: previewTheme.name,
         }),
@@ -65,6 +70,39 @@ export default function Appearance() {
     },
     onError: (e: any) => toast({ title: "Error", description: String(e), variant: "destructive" }),
   });
+
+  async function handleLogoFile(file: File) {
+    const allowed = ["image/png", "image/jpeg", "image/jpg", "image/svg+xml", "image/webp"];
+    if (!allowed.includes(file.type)) {
+      toast({ title: "Invalid file", description: "Please choose a PNG, JPG, SVG, or WebP image.", variant: "destructive" });
+      return;
+    }
+    if (file.size > 2 * 1024 * 1024) {
+      toast({ title: "File too large", description: "Logo must be 2 MB or smaller.", variant: "destructive" });
+      return;
+    }
+    setUploading(true);
+    try {
+      const dataUrl = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(String(reader.result || ""));
+        reader.onerror = () => reject(new Error("Could not read file"));
+        reader.readAsDataURL(file);
+      });
+      if (!dataUrl.startsWith("data:image/")) throw new Error("File is not a valid image");
+      setLogoUrl(dataUrl);
+      toast({ title: "Logo loaded", description: "Click \"Save Appearance\" to apply it." });
+    } catch (e: any) {
+      toast({ title: "Upload failed", description: String(e?.message || e), variant: "destructive" });
+    } finally {
+      setUploading(false);
+    }
+  }
+
+  function clearLogo() {
+    setLogoUrl(null);
+    toast({ title: "Logo removed", description: "Click \"Save Appearance\" to apply." });
+  }
 
   if (!isAdmin) {
     return <div className="p-8 text-center text-muted-foreground">You do not have permission to view this page.</div>;
@@ -89,11 +127,14 @@ export default function Appearance() {
         </CardHeader>
         <CardContent className="space-y-5">
           <div className="flex items-center gap-5">
-            <div
-              className="w-14 h-14 rounded-2xl flex items-center justify-center text-white font-bold text-xl shrink-0 shadow-md transition-all"
-              style={{ backgroundColor: previewTheme.preview }}
-            >
-              {logoLetterDisplay}
+            <div className="shadow-md">
+              <BrandMark
+                logoUrl={logoUrl}
+                letter={logoLetterDisplay}
+                companyName={companyName}
+                size="lg"
+                fallbackBg={previewTheme.preview}
+              />
             </div>
             <div className="flex-1 space-y-3">
               <div className="space-y-1">
@@ -116,8 +157,63 @@ export default function Appearance() {
                   maxLength={3}
                   className="w-24"
                 />
-                <p className="text-xs text-muted-foreground">1–3 characters shown in the sidebar icon</p>
+                <p className="text-xs text-muted-foreground">1–3 characters shown when no logo image is uploaded</p>
               </div>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <ImageIcon className="h-5 w-5" />
+            Logo Image
+          </CardTitle>
+          <CardDescription>Upload a square logo (PNG, JPG, SVG or WebP, up to 2&nbsp;MB). Replaces the letter in the sidebar.</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="flex items-center gap-4">
+            <div className="w-20 h-20 rounded-2xl bg-muted flex items-center justify-center overflow-hidden shrink-0 border border-border">
+              {(() => {
+                const resolved = resolveLogoUrl(logoUrl);
+                return resolved ? (
+                  <img src={resolved} alt="Current logo" className="w-full h-full object-cover" onError={e => { (e.target as HTMLImageElement).style.display = "none"; }} />
+                ) : (
+                  <ImageIcon className="h-7 w-7 text-muted-foreground" />
+                );
+              })()}
+            </div>
+            <div className="flex-1 space-y-2">
+              <div className="flex items-center gap-2 flex-wrap">
+                <Label htmlFor="logo-file" className="cursor-pointer">
+                  <span className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-primary text-primary-foreground text-sm font-medium hover:opacity-90 transition-opacity">
+                    <Upload className="h-4 w-4" />
+                    {uploading ? "Uploading…" : logoUrl ? "Replace logo" : "Upload logo"}
+                  </span>
+                  <input
+                    id="logo-file"
+                    type="file"
+                    accept="image/png,image/jpeg,image/svg+xml,image/webp"
+                    className="hidden"
+                    disabled={uploading}
+                    onChange={e => {
+                      const f = e.target.files?.[0];
+                      if (f) handleLogoFile(f);
+                      e.target.value = "";
+                    }}
+                  />
+                </Label>
+                {logoUrl && (
+                  <Button variant="outline" size="sm" onClick={clearLogo} disabled={uploading}>
+                    <Trash2 className="h-4 w-4 mr-1.5" />
+                    Remove
+                  </Button>
+                )}
+              </div>
+              <p className="text-xs text-muted-foreground">
+                A square image works best. After uploading, click <strong>Save Appearance</strong> to apply.
+              </p>
             </div>
           </div>
         </CardContent>
@@ -161,8 +257,8 @@ export default function Appearance() {
         <p className="text-sm text-muted-foreground">
           Preview: sidebar icon will show <strong>{logoLetterDisplay}</strong> in <strong>{previewTheme.label}</strong>
         </p>
-        <Button onClick={() => save.mutate()} disabled={save.isPending}>
-          {save.isPending ? "Saving…" : "Save Appearance"}
+        <Button onClick={() => save.mutate()} disabled={save.isPending || uploading}>
+          {save.isPending ? "Saving…" : uploading ? "Waiting for upload…" : "Save Appearance"}
         </Button>
       </div>
     </div>
