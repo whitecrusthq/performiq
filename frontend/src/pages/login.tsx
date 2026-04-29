@@ -3,19 +3,22 @@ import { useLocation } from "wouter";
 import { useAuth } from "@/hooks/use-auth";
 import { useLogin } from "../lib";
 import { Button, Input, Label } from "@/components/shared";
-import { AlertCircle, ShieldCheck, ArrowLeft } from "lucide-react";
+import { AlertCircle, ShieldCheck, ArrowLeft, Smartphone } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { apiFetch } from "@/lib/utils";
 import { useAppSettings } from "@/hooks/use-app-settings";
 import { BrandMark } from "@/components/brand-mark";
 
+type Step = "login" | "email-otp" | "totp";
+
 export default function Login() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [otpStep, setOtpStep] = useState(false);
-  const [otp, setOtp] = useState("");
-  const [otpLoading, setOtpLoading] = useState(false);
-  const [otpError, setOtpError] = useState<string | null>(null);
+  const [step, setStep] = useState<Step>("login");
+  const [code, setCode] = useState("");
+  const [pendingToken, setPendingToken] = useState<string>("");
+  const [verifyLoading, setVerifyLoading] = useState(false);
+  const [verifyError, setVerifyError] = useState<string | null>(null);
   const { login } = useAuth();
   const [, setLocation] = useLocation();
   const loginMutation = useLogin();
@@ -27,41 +30,64 @@ export default function Login() {
       { data: { email, password } },
       {
         onSuccess: (data: any) => {
-          if (data.status === "otp_required") {
-            setOtpStep(true);
-            setOtp("");
-            setOtpError(null);
-          } else {
-            login(data.token, data.user);
-            setLocation("/dashboard");
+          if (data.requires2FASetup && data.pendingToken) {
+            sessionStorage.setItem("pending2FAToken", data.pendingToken);
+            sessionStorage.setItem("pending2FAEmail", data.email || email);
+            setLocation("/setup-2fa");
+            return;
           }
+          if (data.requires2FA && data.pendingToken) {
+            setPendingToken(data.pendingToken);
+            setStep("totp");
+            setCode("");
+            setVerifyError(null);
+            return;
+          }
+          if (data.status === "otp_required" || data.otpRequired) {
+            setStep("email-otp");
+            setCode("");
+            setVerifyError(null);
+            return;
+          }
+          login(data.token, data.user);
+          setLocation("/dashboard");
         }
       }
     );
   };
 
-  const handleVerifyOtp = async (e: React.FormEvent) => {
+  const handleVerify = async (e: React.FormEvent) => {
     e.preventDefault();
-    setOtpError(null);
-    setOtpLoading(true);
+    setVerifyError(null);
+    setVerifyLoading(true);
     try {
-      const r = await apiFetch("/api/auth/verify-otp", {
+      const url = step === "totp" ? "/api/auth/2fa/verify" : "/api/auth/verify-otp";
+      const body = step === "totp" ? { pendingToken, code } : { email, otp: code };
+      const r = await apiFetch(url, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, otp }),
+        body: JSON.stringify(body),
       });
       const data = await r.json();
       if (!r.ok) {
-        setOtpError(data.error || "Verification failed.");
+        setVerifyError(data.error || "Verification failed.");
         return;
       }
       login(data.token, data.user);
       setLocation("/dashboard");
     } catch {
-      setOtpError("Network error. Please try again.");
+      setVerifyError("Network error. Please try again.");
     } finally {
-      setOtpLoading(false);
+      setVerifyLoading(false);
     }
+  };
+
+  const goBack = () => {
+    setStep("login");
+    setVerifyError(null);
+    setCode("");
+    setPendingToken("");
+    loginMutation.reset();
   };
 
   const leftPanel = (
@@ -90,7 +116,7 @@ export default function Login() {
 
       <div className="flex-1 flex flex-col justify-center px-4 sm:px-12 lg:px-24 xl:px-32">
         <AnimatePresence mode="wait">
-          {!otpStep ? (
+          {step === "login" ? (
             <motion.div
               key="login"
               initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -20 }}
@@ -135,52 +161,60 @@ export default function Login() {
             </motion.div>
           ) : (
             <motion.div
-              key="otp"
+              key={step}
               initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -20 }}
               transition={{ duration: 0.35 }}
               className="w-full max-w-md mx-auto"
             >
               <div className="w-16 h-16 bg-primary/10 rounded-2xl flex items-center justify-center mx-auto mb-6">
-                <ShieldCheck className="w-8 h-8 text-primary" />
+                {step === "totp"
+                  ? <Smartphone className="w-8 h-8 text-primary" />
+                  : <ShieldCheck className="w-8 h-8 text-primary" />}
               </div>
 
-              <h2 className="text-3xl font-bold font-display tracking-tight text-foreground mb-2 text-center">Check your email</h2>
+              <h2 className="text-3xl font-bold font-display tracking-tight text-foreground mb-2 text-center">
+                {step === "totp" ? "Authenticator code" : "Check your email"}
+              </h2>
               <p className="text-muted-foreground mb-8 text-center">
-                We sent a 6-digit code to <span className="font-medium text-foreground">{email}</span>. Enter it below to sign in.
+                {step === "totp"
+                  ? <>Open your authenticator app and enter the 6-digit code for <span className="font-medium text-foreground">{email}</span>. You can also use a backup code.</>
+                  : <>We sent a 6-digit code to <span className="font-medium text-foreground">{email}</span>. Enter it below to sign in.</>}
               </p>
 
-              {otpError && (
+              {verifyError && (
                 <div className="bg-destructive/10 border-l-4 border-destructive text-destructive p-4 rounded-r-xl mb-6 flex items-start gap-3">
                   <AlertCircle className="w-5 h-5 shrink-0 mt-0.5" />
-                  <p className="text-sm font-medium">{otpError}</p>
+                  <p className="text-sm font-medium">{verifyError}</p>
                 </div>
               )}
 
-              <form onSubmit={handleVerifyOtp} className="space-y-5">
+              <form onSubmit={handleVerify} className="space-y-5">
                 <div>
-                  <Label>Verification code</Label>
+                  <Label>{step === "totp" ? "Code or backup code" : "Verification code"}</Label>
                   <Input
                     type="text"
-                    inputMode="numeric"
-                    pattern="[0-9]{6}"
-                    maxLength={6}
-                    placeholder="000000"
-                    value={otp}
-                    onChange={e => setOtp(e.target.value.replace(/\D/g, ""))}
-                    className="text-center text-2xl tracking-[0.5em] font-mono"
+                    inputMode={step === "totp" ? "text" : "numeric"}
+                    maxLength={step === "totp" ? 12 : 6}
+                    placeholder={step === "totp" ? "000000" : "000000"}
+                    value={code}
+                    onChange={e => setCode(step === "totp" ? e.target.value.replace(/\s/g, "").toUpperCase() : e.target.value.replace(/\D/g, ""))}
+                    className="text-center text-2xl tracking-[0.4em] font-mono"
                     required
                     autoFocus
                   />
-                  <p className="text-xs text-muted-foreground mt-2 text-center">Code expires in 10 minutes.</p>
+                  <p className="text-xs text-muted-foreground mt-2 text-center">
+                    {step === "totp" ? "Codes refresh every 30 seconds." : "Code expires in 10 minutes."}
+                  </p>
                 </div>
-                <Button type="submit" className="w-full" size="lg" isLoading={otpLoading}>
+                <Button type="submit" className="w-full" size="lg" isLoading={verifyLoading}>
                   Verify &amp; Sign In
                 </Button>
               </form>
 
               <button
+                type="button"
                 className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground mt-6 mx-auto transition-colors"
-                onClick={() => { setOtpStep(false); setOtpError(null); loginMutation.reset(); }}
+                onClick={goBack}
               >
                 <ArrowLeft className="w-4 h-4" /> Back to sign in
               </button>

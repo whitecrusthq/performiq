@@ -5,9 +5,9 @@ import SiteController from "../../controllers/SiteController.js";
 export class UpdateSiteAction {
   static async handle(req: AuthRequest, res: Response) {
     try {
-      const { name, address, city, region, country, description } = req.body;
+      const { name, address, city, region, country, description, require2Fa } = req.body;
       if (!name?.trim()) { res.status(400).json({ error: "Site name is required" }); return; }
-      const site = await SiteController.update(Number(req.params.id), { name, address, city, region, country, description });
+      const site = await SiteController.update(Number(req.params.id), { name, address, city, region, country, description, require2Fa });
       if (!site) { res.status(404).json({ error: "Site not found" }); return; }
       res.json(site);
     } catch (err: any) {

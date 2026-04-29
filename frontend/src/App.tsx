@@ -9,6 +9,7 @@ import { FullPageLoader } from "@/components/shared";
 import NotFound from "@/pages/not-found";
 
 import Login from "@/pages/login";
+import SetupTwoFactor from "@/pages/setup-2fa";
 import Dashboard from "@/pages/dashboard";
 import Appraisals from "@/pages/appraisals";
 import AppraisalDetail from "@/pages/appraisal-detail";
@@ -62,6 +63,7 @@ function Router() {
         {user ? <Redirect to="/dashboard" /> : <Redirect to="/login" />}
       </Route>
       <Route path="/login" component={Login} />
+      <Route path="/setup-2fa" component={SetupTwoFactor} />
       <Route path="/careers" component={Careers} />
       <Route path="/careers/track/:token" component={Careers} />
       

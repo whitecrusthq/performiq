@@ -9,6 +9,7 @@ class Site extends Model {
   declare region: string | null;
   declare country: string | null;
   declare description: string | null;
+  declare require2Fa: boolean;
   declare createdAt: Date;
 }
 
@@ -21,6 +22,7 @@ Site.init(
     region: { type: DataTypes.TEXT },
     country: { type: DataTypes.TEXT },
     description: { type: DataTypes.TEXT },
+    require2Fa: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: false, field: "require_2fa" },
     createdAt: { type: DataTypes.DATE, allowNull: false, defaultValue: DataTypes.NOW, field: "created_at" },
   },
   { sequelize, tableName: "sites", timestamps: false }
