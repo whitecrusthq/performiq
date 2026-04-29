@@ -1,8 +1,9 @@
 import bcrypt from "bcryptjs";
-import { User, CustomRole } from "../models/index.js";
-import { generateToken } from "../middlewares/auth.js";
+import { User, CustomRole, Site } from "../models/index.js";
+import { generateToken, generate2FAPendingToken } from "../middlewares/auth.js";
 import { sendOtpEmail } from "../lib/mailgun.js";
 import { generateOtp, storeOtp, verifyOtp } from "../lib/otp-store.js";
+import { verifyToken as verifyTotpToken, consumeBackupCode } from "../lib/totp.js";
 import SecurityController from "./SecurityController.js";
 
 const OTP_ENABLED = !!(process.env.MAILGUN_API_KEY && process.env.MAILGUN_DOMAIN);
@@ -12,6 +13,7 @@ function formatAuthUser(user: User, customRole?: CustomRole | null) {
     id: user.id, name: user.name, email: user.email, role: user.role,
     managerId: user.managerId, siteId: user.siteId, department: user.department,
     jobTitle: user.jobTitle, phone: user.phone, staffId: user.staffId, createdAt: user.createdAt,
+    twoFactorEnabled: !!user.twoFactorEnabled,
     customRoleId: user.customRoleId ?? null,
     customRole: customRole ? {
       id: customRole.id,
@@ -20,6 +22,22 @@ function formatAuthUser(user: User, customRole?: CustomRole | null) {
       menuPermissions: (() => { try { return JSON.parse(customRole.menuPermissions ?? "[]"); } catch { return []; } })(),
     } : null,
   };
+}
+
+async function is2FAEnforcedForUser(user: User, settings: { enforce2faAll: boolean; enforce2faRoles: string | null }): Promise<boolean> {
+  if (settings.enforce2faAll) return true;
+  if (user.require2Fa) return true;
+  if (user.siteId) {
+    const site = await Site.findByPk(user.siteId);
+    if (site && site.require2Fa) return true;
+  }
+  if (settings.enforce2faRoles) {
+    try {
+      const roles: string[] = JSON.parse(settings.enforce2faRoles);
+      if (Array.isArray(roles) && roles.includes(user.role)) return true;
+    } catch {}
+  }
+  return false;
 }
 
 async function getCustomRole(user: User) {
@@ -68,6 +86,16 @@ export default class AuthController {
 
     await User.update({ failedLoginAttempts: 0, isLocked: false, lockedAt: null }, { where: { id: user.id } });
 
+    if (user.twoFactorEnabled && user.twoFactorSecret) {
+      const pendingToken = generate2FAPendingToken({ id: user.id, email: user.email, purpose: "2fa-verify" });
+      return { requires2FA: true, pendingToken, email: user.email };
+    }
+
+    if (await is2FAEnforcedForUser(user, settings)) {
+      const pendingToken = generate2FAPendingToken({ id: user.id, email: user.email, purpose: "2fa-setup" });
+      return { requires2FASetup: true, pendingToken, email: user.email };
+    }
+
     if (OTP_ENABLED) {
       const otp = generateOtp();
       storeOtp(email, otp);
@@ -93,6 +121,33 @@ export default class AuthController {
 
     const user = await User.findOne({ where: { email: email.toLowerCase().trim() } });
     if (!user) return { error: "User not found", status: 404 };
+    const customRole = await getCustomRole(user);
+    const token = generateToken({ id: user.id, role: user.role, email: user.email, customRoleName: customRole?.name ?? null });
+    return { token, user: formatAuthUser(user, customRole) };
+  }
+
+  static async verify2FA(userId: number, code: string) {
+    const user = await User.findByPk(userId);
+    if (!user || !user.twoFactorEnabled || !user.twoFactorSecret) {
+      return { error: "Two-factor authentication is not enabled for this account.", status: 400 };
+    }
+    const codeStr = String(code).trim();
+    const isTotpValid = /^\d{6}$/.test(codeStr) && verifyTotpToken(user.twoFactorSecret, codeStr);
+
+    if (!isTotpValid) {
+      const stored: string[] = (() => { try { return JSON.parse(user.twoFactorBackupCodes ?? "[]"); } catch { return []; } })();
+      if (Array.isArray(stored) && stored.length > 0) {
+        const { ok, remaining } = await consumeBackupCode(stored, codeStr);
+        if (ok) {
+          await User.update({ twoFactorBackupCodes: JSON.stringify(remaining) }, { where: { id: userId } });
+        } else {
+          return { error: "Invalid verification code.", status: 401 };
+        }
+      } else {
+        return { error: "Invalid verification code.", status: 401 };
+      }
+    }
+
     const customRole = await getCustomRole(user);
     const token = generateToken({ id: user.id, role: user.role, email: user.email, customRoleName: customRole?.name ?? null });
     return { token, user: formatAuthUser(user, customRole) };

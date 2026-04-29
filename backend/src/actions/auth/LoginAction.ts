@@ -19,6 +19,14 @@ export class LoginAction {
         res.json({ status: "otp_required", message: "A verification code has been sent to your email." });
         return;
       }
+      if ("requires2FA" in result) {
+        res.json({ requires2FA: true, pendingToken: result.pendingToken, email: result.email });
+        return;
+      }
+      if ("requires2FASetup" in result) {
+        res.json({ requires2FASetup: true, pendingToken: result.pendingToken, email: result.email });
+        return;
+      }
       res.json({ token: result.token, user: result.user });
     } catch (err) {
       console.error("Login error:", err);
