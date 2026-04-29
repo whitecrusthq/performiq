@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { PageHeader, Card, Button, Input, Label, EmptyState } from "@/components/shared";
-import { Shield, Plus, Edit, Trash2, X, LayoutDashboard, ClipboardList, Target, RefreshCcw, ListChecks, Users, BarChart3, Building2, MapPin, CalendarDays, Clock, ClipboardCheck, UserPlus } from "lucide-react";
+import { Shield, Plus, Edit, Trash2, X, LayoutDashboard, ClipboardList, Target, RefreshCcw, ListChecks, Users, BarChart3, Building2, MapPin, CalendarDays, Clock, ClipboardCheck, UserPlus, TrendingUp, CalendarClock, UserCog, Settings, BookOpen, IdCard, Briefcase, ArrowRightLeft, MessageSquareWarning, Award, ShieldAlert, Bell, Paintbrush, Sparkles, Brain } from "lucide-react";
 import { BulkActionBar } from "@/components/bulk-action-bar";
 import { useAuth } from "@/hooks/use-auth";
 import { apiFetch } from "@/lib/utils";
@@ -12,22 +12,51 @@ const PERMISSION_LEVELS = [
   { value: "admin",    label: "Admin",    desc: "Full access including approvals and user management", color: "bg-purple-100 text-purple-700" },
 ];
 
-const ALL_MENUS = [
-  { key: "dashboard",   label: "Dashboard",   icon: LayoutDashboard },
-  { key: "appraisals",  label: "Appraisals",  icon: ClipboardList },
-  { key: "goals",       label: "Goals",       icon: Target },
-  { key: "cycles",      label: "Cycles",      icon: RefreshCcw },
-  { key: "criteria",    label: "Criteria",    icon: ListChecks },
-  { key: "leave",       label: "Leave",       icon: CalendarDays },
-  { key: "attendance",  label: "Attendance",  icon: Clock },
-  { key: "timesheets",  label: "Timesheets",  icon: ClipboardCheck },
-  { key: "reports",     label: "Reports",     icon: BarChart3 },
-  { key: "users",       label: "Users",       icon: Users },
-  { key: "departments", label: "Departments", icon: Building2 },
-  { key: "sites",       label: "Sites",       icon: MapPin },
-  { key: "roles",       label: "Roles",       icon: Shield },
-  { key: "onboarding",  label: "Onboarding",  icon: UserPlus },
+type MenuItem = { key: string; label: string; icon: any };
+type MenuGroup = { label: string; icon: any; items: MenuItem[] };
+type MenuEntry = MenuItem | MenuGroup;
+const isMenuGroup = (e: MenuEntry): e is MenuGroup => "items" in e;
+
+const MENU_STRUCTURE: MenuEntry[] = [
+  { key: "dashboard", label: "Dashboard", icon: LayoutDashboard },
+  { label: "Performance", icon: TrendingUp, items: [
+    { key: "appraisals", label: "Appraisals", icon: ClipboardList },
+    { key: "goals",      label: "Goals",      icon: Target },
+    { key: "cycles",     label: "Cycles",     icon: RefreshCcw },
+    { key: "criteria",   label: "Criteria",   icon: ListChecks },
+  ]},
+  { label: "Time & Attendance", icon: CalendarClock, items: [
+    { key: "leave",      label: "Leave",      icon: CalendarDays },
+    { key: "attendance", label: "Attendance", icon: Clock },
+    { key: "timesheets", label: "Timesheets", icon: ClipboardCheck },
+  ]},
+  { label: "People", icon: UserCog, items: [
+    { key: "staff",         label: "Staff",          icon: IdCard },
+    { key: "recruitment",   label: "Recruitment",    icon: Briefcase },
+    { key: "onboarding",    label: "Onboarding",     icon: UserPlus },
+    { key: "transfers",     label: "Staff Transfer", icon: ArrowRightLeft },
+    { key: "hr-queries",    label: "HR Support",     icon: MessageSquareWarning },
+    { key: "anniversaries", label: "Anniversaries",  icon: Award },
+  ]},
+  { key: "reports", label: "Reports", icon: BarChart3 },
+  { label: "Settings", icon: Settings, items: [
+    { key: "users",         label: "Users",         icon: Users },
+    { key: "departments",   label: "Departments",   icon: Building2 },
+    { key: "sites",         label: "Sites",         icon: MapPin },
+    { key: "roles",         label: "Roles",         icon: Shield },
+    { key: "security",      label: "Security",      icon: ShieldAlert },
+    { key: "notifications", label: "Notifications", icon: Bell },
+    { key: "appearance",    label: "Appearance",    icon: Paintbrush },
+    { key: "ai-settings",   label: "AI Assistant",  icon: Sparkles },
+  ]},
+  { label: "Knowledge", icon: BookOpen, items: [
+    { key: "handbook",     label: "Handbook",     icon: BookOpen },
+    { key: "quiz",         label: "Quiz",         icon: Brain },
+    { key: "quiz-results", label: "Quiz Results", icon: BarChart3 },
+  ]},
 ];
+
+const ALL_MENU_ITEMS: MenuItem[] = MENU_STRUCTURE.flatMap(e => isMenuGroup(e) ? e.items : [e]);
 
 type CustomRole = { id: number; name: string; permissionLevel: string; description: string | null; menuPermissions: string[]; createdAt: string };
 
@@ -81,8 +110,16 @@ export default function Roles() {
     }));
   };
 
-  const selectAllMenus = () => setFormData(fd => ({ ...fd, menuPermissions: ALL_MENUS.map(m => m.key) }));
+  const selectAllMenus = () => setFormData(fd => ({ ...fd, menuPermissions: ALL_MENU_ITEMS.map(m => m.key) }));
   const clearAllMenus = () => setFormData(fd => ({ ...fd, menuPermissions: [] }));
+
+  const setGroupSelection = (items: MenuItem[], select: boolean) => {
+    setFormData(fd => {
+      const groupKeys = new Set(items.map(i => i.key));
+      const without = fd.menuPermissions.filter(k => !groupKeys.has(k));
+      return { ...fd, menuPermissions: select ? [...without, ...items.map(i => i.key)] : without };
+    });
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -209,7 +246,7 @@ export default function Roles() {
                       ) : (
                         <div className="flex flex-wrap gap-1">
                           {r.menuPermissions.slice(0, 4).map(k => {
-                            const m = ALL_MENUS.find(m => m.key === k);
+                            const m = ALL_MENU_ITEMS.find(m => m.key === k);
                             return m ? <span key={k} className="px-1.5 py-0.5 bg-primary/10 text-primary rounded text-xs font-medium">{m.label}</span> : null;
                           })}
                           {menuCount > 4 && <span className="px-1.5 py-0.5 bg-muted rounded text-xs text-muted-foreground">+{menuCount - 4} more</span>}
@@ -288,25 +325,64 @@ export default function Roles() {
                     <button type="button" className="text-xs text-muted-foreground underline" onClick={clearAllMenus}>None</button>
                   </div>
                 </div>
-                <div className="grid grid-cols-2 gap-1.5 p-3 border rounded-xl bg-muted/20">
-                  {ALL_MENUS.map(m => {
-                    const checked = formData.menuPermissions.includes(m.key);
+                <div className="space-y-3 p-3 border rounded-xl bg-muted/20 max-h-[360px] overflow-y-auto">
+                  {MENU_STRUCTURE.map((entry, idx) => {
+                    if (!isMenuGroup(entry)) {
+                      const checked = formData.menuPermissions.includes(entry.key);
+                      return (
+                        <label key={entry.key} className={`flex items-center gap-2 p-2 rounded-lg cursor-pointer transition-colors ${checked ? 'bg-primary/10 text-primary' : 'hover:bg-muted/50 text-foreground'}`}>
+                          <input
+                            type="checkbox"
+                            checked={checked}
+                            onChange={() => toggleMenu(entry.key)}
+                            className="accent-primary"
+                          />
+                          <entry.icon className="w-3.5 h-3.5 shrink-0" />
+                          <span className="text-xs font-medium">{entry.label}</span>
+                        </label>
+                      );
+                    }
+                    const allChecked = entry.items.every(i => formData.menuPermissions.includes(i.key));
+                    const someChecked = entry.items.some(i => formData.menuPermissions.includes(i.key));
                     return (
-                      <label key={m.key} className={`flex items-center gap-2 p-2 rounded-lg cursor-pointer transition-colors ${checked ? 'bg-primary/10 text-primary' : 'hover:bg-muted/50 text-foreground'}`}>
-                        <input
-                          type="checkbox"
-                          checked={checked}
-                          onChange={() => toggleMenu(m.key)}
-                          className="accent-primary"
-                        />
-                        <m.icon className="w-3.5 h-3.5 shrink-0" />
-                        <span className="text-xs font-medium">{m.label}</span>
-                      </label>
+                      <div key={entry.label} className="space-y-1.5">
+                        <div className="flex items-center justify-between px-1">
+                          <div className="flex items-center gap-1.5">
+                            <entry.icon className="w-3.5 h-3.5 text-muted-foreground" />
+                            <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{entry.label}</span>
+                            {someChecked && <span className="text-[10px] text-primary font-medium">({entry.items.filter(i => formData.menuPermissions.includes(i.key)).length}/{entry.items.length})</span>}
+                          </div>
+                          <button
+                            type="button"
+                            className="text-[11px] text-primary underline"
+                            onClick={() => setGroupSelection(entry.items, !allChecked)}
+                          >
+                            {allChecked ? "Clear group" : "Select all"}
+                          </button>
+                        </div>
+                        <div className="grid grid-cols-2 gap-1.5 pl-2 border-l-2 border-border">
+                          {entry.items.map(m => {
+                            const checked = formData.menuPermissions.includes(m.key);
+                            return (
+                              <label key={m.key} className={`flex items-center gap-2 p-2 rounded-lg cursor-pointer transition-colors ${checked ? 'bg-primary/10 text-primary' : 'hover:bg-muted/50 text-foreground'}`}>
+                                <input
+                                  type="checkbox"
+                                  checked={checked}
+                                  onChange={() => toggleMenu(m.key)}
+                                  className="accent-primary"
+                                />
+                                <m.icon className="w-3.5 h-3.5 shrink-0" />
+                                <span className="text-xs font-medium">{m.label}</span>
+                              </label>
+                            );
+                          })}
+                        </div>
+                      </div>
                     );
                   })}
                 </div>
                 {formData.menuPermissions.length > 0 && (
-                  <p className="text-xs text-primary mt-1.5 font-medium">{formData.menuPermissions.length} of {ALL_MENUS.length} menus selected</p>
+                  <p className="text-xs text-primary mt-1.5 font-medium">{formData.menuPermissions.length} of {ALL_MENU_ITEMS.length} menus selected</p>
                 )}
                 {formData.menuPermissions.length === 0 && (
                   <p className="text-xs text-muted-foreground mt-1.5">No menus selected — user will see all menus allowed by their permission level.</p>
