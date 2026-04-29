@@ -18,8 +18,19 @@ export function requireAuth(req: AuthRequest, res: Response, next: NextFunction)
   }
   const token = authHeader.slice(7);
   try {
-    const payload = jwt.verify(token, JWT_SECRET) as { id: number; role: string; email: string; customRoleName?: string | null };
-    req.user = payload;
+    const payload = jwt.verify(token, JWT_SECRET) as any;
+    // Reject 2FA pending tokens (have a `purpose` claim and no `role`) so they cannot
+    // be used as full session tokens to call protected endpoints like /auth/2fa/*.
+    if (payload?.purpose || typeof payload?.role !== "string") {
+      res.status(401).json({ error: "Invalid token" });
+      return;
+    }
+    req.user = {
+      id: payload.id,
+      role: payload.role,
+      email: payload.email,
+      customRoleName: payload.customRoleName ?? null,
+    };
     next();
   } catch {
     res.status(401).json({ error: "Invalid token" });
@@ -57,4 +68,19 @@ export function requireHRAccess(req: AuthRequest, res: Response, next: NextFunct
 
 export function generateToken(user: { id: number; role: string; email: string; customRoleName?: string | null }) {
   return jwt.sign(user, JWT_SECRET, { expiresIn: "7d" });
+}
+
+export function generate2FAPendingToken(payload: { id: number; email: string; purpose: "2fa-verify" | "2fa-setup" }) {
+  return jwt.sign(payload, JWT_SECRET, { expiresIn: "10m" });
+}
+
+export function verify2FAPendingToken(token: string): { id: number; email: string; purpose: "2fa-verify" | "2fa-setup" } | null {
+  try {
+    const payload = jwt.verify(token, JWT_SECRET) as any;
+    if (payload?.purpose !== "2fa-verify" && payload?.purpose !== "2fa-setup") return null;
+    if (typeof payload.id !== "number" || typeof payload.email !== "string") return null;
+    return payload;
+  } catch {
+    return null;
+  }
 }

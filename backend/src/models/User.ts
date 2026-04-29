@@ -67,6 +67,10 @@ class User extends Model {
   declare rsaPin: string | null;
   declare hmo: string | null;
   declare notes: string | null;
+  declare twoFactorSecret: string | null;
+  declare twoFactorPendingSecret: string | null;
+  declare twoFactorEnabled: boolean;
+  declare twoFactorBackupCodes: string | null;
 }
 
 User.init(
@@ -136,6 +140,10 @@ User.init(
     rsaPin: { type: DataTypes.TEXT, field: "rsa_pin" },
     hmo: { type: DataTypes.TEXT },
     notes: { type: DataTypes.TEXT },
+    twoFactorSecret: { type: DataTypes.TEXT, field: "two_factor_secret" },
+    twoFactorPendingSecret: { type: DataTypes.TEXT, field: "two_factor_pending_secret" },
+    twoFactorEnabled: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: false, field: "two_factor_enabled" },
+    twoFactorBackupCodes: { type: DataTypes.TEXT, field: "two_factor_backup_codes" },
   },
   {
     sequelize,
