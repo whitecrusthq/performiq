@@ -71,6 +71,7 @@ class User extends Model {
   declare twoFactorPendingSecret: string | null;
   declare twoFactorEnabled: boolean;
   declare twoFactorBackupCodes: string | null;
+  declare require2Fa: boolean;
 }
 
 User.init(
@@ -144,6 +145,7 @@ User.init(
     twoFactorPendingSecret: { type: DataTypes.TEXT, field: "two_factor_pending_secret" },
     twoFactorEnabled: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: false, field: "two_factor_enabled" },
     twoFactorBackupCodes: { type: DataTypes.TEXT, field: "two_factor_backup_codes" },
+    require2Fa: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: false, field: "require_2fa" },
   },
   {
     sequelize,

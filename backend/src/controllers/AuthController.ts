@@ -1,5 +1,5 @@
 import bcrypt from "bcryptjs";
-import { User, CustomRole } from "../models/index.js";
+import { User, CustomRole, Site } from "../models/index.js";
 import { generateToken, generate2FAPendingToken } from "../middlewares/auth.js";
 import { sendOtpEmail } from "../lib/mailgun.js";
 import { generateOtp, storeOtp, verifyOtp } from "../lib/otp-store.js";
@@ -24,15 +24,20 @@ function formatAuthUser(user: User, customRole?: CustomRole | null) {
   };
 }
 
-function is2FAEnforcedForUser(user: User, settings: { enforce2faAll: boolean; enforce2faRoles: string | null }): boolean {
+async function is2FAEnforcedForUser(user: User, settings: { enforce2faAll: boolean; enforce2faRoles: string | null }): Promise<boolean> {
   if (settings.enforce2faAll) return true;
-  if (!settings.enforce2faRoles) return false;
-  try {
-    const roles: string[] = JSON.parse(settings.enforce2faRoles);
-    return Array.isArray(roles) && roles.includes(user.role);
-  } catch {
-    return false;
+  if (user.require2Fa) return true;
+  if (user.siteId) {
+    const site = await Site.findByPk(user.siteId);
+    if (site && site.require2Fa) return true;
   }
+  if (settings.enforce2faRoles) {
+    try {
+      const roles: string[] = JSON.parse(settings.enforce2faRoles);
+      if (Array.isArray(roles) && roles.includes(user.role)) return true;
+    } catch {}
+  }
+  return false;
 }
 
 async function getCustomRole(user: User) {
@@ -86,7 +91,7 @@ export default class AuthController {
       return { requires2FA: true, pendingToken, email: user.email };
     }
 
-    if (is2FAEnforcedForUser(user, settings)) {
+    if (await is2FAEnforcedForUser(user, settings)) {
       const pendingToken = generate2FAPendingToken({ id: user.id, email: user.email, purpose: "2fa-setup" });
       return { requires2FASetup: true, pendingToken, email: user.email };
     }

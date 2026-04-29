@@ -34,6 +34,7 @@ function formatUser(u: User, customRole?: CustomRole | null) {
     bankName: u.bankName, bankBranch: u.bankBranch, bankAccountNumber: u.bankAccountNumber,
     bankAccountName: u.bankAccountName, taxId: u.taxId, pensionId: u.pensionId, pfaName: u.pfaName,
     rsaPin: u.rsaPin, hmo: u.hmo, notes: u.notes,
+    require2Fa: !!u.require2Fa, twoFactorEnabled: !!u.twoFactorEnabled,
   };
 }
 
@@ -92,12 +93,13 @@ export default class UserController {
       return { error: "Only a Super Admin can edit Super Admin accounts", status: 403 };
     }
 
-    const { name, email, password, role, customRoleId, managerId, siteId, department, jobTitle, phone, staffId } = data;
+    const { name, email, password, role, customRoleId, managerId, siteId, department, jobTitle, phone, staffId, require2Fa } = data;
     const updates: Record<string, any> = {
       name, email, managerId, siteId: siteId ? Number(siteId) : null,
       department, jobTitle, phone: phone || null, staffId: staffId || null,
     };
     updates.customRoleId = customRoleId ? Number(customRoleId) : null;
+    if (typeof require2Fa === "boolean") updates.require2Fa = require2Fa;
 
     if (customRoleId) {
       const cr = await CustomRole.findByPk(Number(customRoleId));

@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { PageHeader, Card, Button, Input, Label } from "@/components/shared";
-import { MapPin, Plus, Edit, Trash2, X, AlertCircle, Globe } from "lucide-react";
+import { MapPin, Plus, Edit, Trash2, X, AlertCircle, Globe, ShieldCheck } from "lucide-react";
 import { BulkActionBar } from "@/components/bulk-action-bar";
 import { useAuth } from "@/hooks/use-auth";
 import { apiFetch } from "@/lib/utils";
@@ -14,6 +14,7 @@ interface Site {
   region?: string | null;
   country?: string | null;
   description?: string | null;
+  require2Fa?: boolean;
   createdAt: string;
 }
 
@@ -37,7 +38,7 @@ function useSites() {
   return { sites, isLoading, refresh };
 }
 
-const EMPTY_FORM = { name: "", address: "", city: "", region: "", country: "", description: "" };
+const EMPTY_FORM = { name: "", address: "", city: "", region: "", country: "", description: "", require2Fa: false };
 
 export default function Sites() {
   const { user } = useAuth();
@@ -58,7 +59,7 @@ export default function Sites() {
   };
 
   const openEdit = (site: Site) => {
-    setFormData({ name: site.name, address: site.address || "", city: site.city || "", region: site.region || "", country: site.country || "", description: site.description || "" });
+    setFormData({ name: site.name, address: site.address || "", city: site.city || "", region: site.region || "", country: site.country || "", description: site.description || "", require2Fa: !!site.require2Fa });
     setEditingId(site.id);
     setError(null);
     setIsDialogOpen(true);
@@ -180,6 +181,11 @@ export default function Sites() {
                 </div>
                 {site.address && <p className="text-sm text-muted-foreground">{site.address}</p>}
                 {site.description && <p className="text-sm text-muted-foreground italic">{site.description}</p>}
+                {site.require2Fa && (
+                  <div className="inline-flex items-center gap-1.5 self-start rounded-full bg-primary/10 text-primary text-xs font-medium px-2.5 py-1">
+                    <ShieldCheck className="w-3.5 h-3.5" /> 2FA required
+                  </div>
+                )}
               </Card>
             ))}
           </div>
@@ -202,6 +208,18 @@ export default function Sites() {
               </div>
               <div><Label>Country</Label><Input value={formData.country} onChange={e => setFormData({ ...formData, country: e.target.value })} placeholder="Country" /></div>
               <div><Label>Description</Label><Input value={formData.description} onChange={e => setFormData({ ...formData, description: e.target.value })} placeholder="Optional notes" /></div>
+              <label className="flex items-start gap-3 rounded-xl border border-border bg-muted/30 p-3 cursor-pointer hover:bg-muted/50 transition-colors">
+                <input
+                  type="checkbox"
+                  className="mt-1 h-4 w-4 rounded border-border accent-primary cursor-pointer"
+                  checked={!!formData.require2Fa}
+                  onChange={e => setFormData({ ...formData, require2Fa: e.target.checked })}
+                />
+                <div className="flex-1">
+                  <div className="flex items-center gap-1.5 text-sm font-medium"><ShieldCheck className="w-4 h-4 text-primary" /> Require two-factor authentication for users at this site</div>
+                  <div className="text-xs text-muted-foreground mt-0.5">Every user assigned to this site will be forced to set up an authenticator app on their next sign-in.</div>
+                </div>
+              </label>
               {error && (
                 <div className="flex items-start gap-2 rounded-xl bg-destructive/10 border border-destructive/20 text-destructive px-4 py-3 text-sm">
                   <AlertCircle className="w-4 h-4 mt-0.5 shrink-0" /><span>{error}</span>

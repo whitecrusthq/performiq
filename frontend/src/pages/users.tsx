@@ -3,7 +3,7 @@ import { useLocation } from "wouter";
 import { useListUsers, useCreateUser, useUpdateUser, useDeleteUser } from "../lib";
 import { useQueryClient } from "@tanstack/react-query";
 import { PageHeader, Card, Button, Input, Label } from "@/components/shared";
-import { Users as UsersIcon, Plus, Edit, Trash2, X, Search, ChevronDown, AlertCircle, Camera, UserCircle2, ExternalLink } from "lucide-react";
+import { Users as UsersIcon, Plus, Edit, Trash2, X, Search, ChevronDown, AlertCircle, Camera, UserCircle2, ExternalLink, ShieldCheck } from "lucide-react";
 import { BulkActionBar } from "@/components/bulk-action-bar";
 import { useAuth } from "@/hooks/use-auth";
 import { apiFetch } from "@/lib/utils";
@@ -37,7 +37,7 @@ export default function Users() {
   const [sites, setSites] = useState<Site[]>([]);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
-  const [formData, setFormData] = useState({ name: "", email: "", password: "", role: "employee" as any, customRoleId: "", siteId: "", department: "", jobTitle: "", phone: "", staffId: "" });
+  const [formData, setFormData] = useState({ name: "", email: "", password: "", role: "employee" as any, customRoleId: "", siteId: "", department: "", jobTitle: "", phone: "", staffId: "", require2Fa: false });
   const [isNewDept, setIsNewDept] = useState(false);
   const [mutationError, setMutationError] = useState<string | null>(null);
 
@@ -85,6 +85,7 @@ export default function Users() {
       jobTitle: formData.jobTitle || null,
       phone: formData.phone || null,
       staffId: formData.staffId || null,
+      require2Fa: !!formData.require2Fa,
     };
     if (editingId) {
       const updateData = formData.password.trim() !== "" ? { ...base, password: formData.password } : base;
@@ -169,7 +170,7 @@ export default function Users() {
   return (
     <div>
       <PageHeader title="User Management" description="Manage platform access and organizational structure.">
-        <Button onClick={() => { setMutationError(null); setFormData({ name: "", email: "", password: "", role: "employee", customRoleId: "", siteId: "", department: "", jobTitle: "", phone: "", staffId: "" }); setEditingId(null); setIsNewDept(false); setIsDialogOpen(true); }}>
+        <Button onClick={() => { setMutationError(null); setFormData({ name: "", email: "", password: "", role: "employee", customRoleId: "", siteId: "", department: "", jobTitle: "", phone: "", staffId: "", require2Fa: false }); setEditingId(null); setIsNewDept(false); setIsDialogOpen(true); }}>
           <Plus className="w-4 h-4 mr-2" /> Add User
         </Button>
       </PageHeader>
@@ -265,6 +266,14 @@ export default function Users() {
                       <span className="font-medium text-sm">{u.customRole.name}</span>
                     ) : null}
                     <span className={`px-2 py-0.5 rounded text-xs font-medium w-fit capitalize ${u.role==='super_admin'?'bg-violet-100 text-violet-700':u.role==='admin'?'bg-purple-100 text-purple-700':u.role==='manager'?'bg-blue-100 text-blue-700':'bg-slate-100 text-slate-700'}`}>{u.role === 'super_admin' ? 'Super Admin' : u.role}</span>
+                    {((u as any).require2Fa || (u as any).twoFactorEnabled) && (
+                      <span
+                        className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium w-fit ${(u as any).twoFactorEnabled ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'}`}
+                        title={(u as any).twoFactorEnabled ? "Two-factor authentication is set up" : "Two-factor authentication is required but not yet set up"}
+                      >
+                        <ShieldCheck className="w-3 h-3" /> {(u as any).twoFactorEnabled ? '2FA on' : '2FA required'}
+                      </span>
+                    )}
                   </div>
                 </td>
                 <td className="p-4 hidden md:table-cell text-sm">
@@ -300,7 +309,7 @@ export default function Users() {
                         variant="outline"
                         size="sm"
                         className="gap-1.5"
-                        onClick={() => { setMutationError(null); setFormData({ name: u.name, email: u.email, password: "", role: u.role, customRoleId: u.customRole?.id?.toString() || "", siteId: (u as any).siteId?.toString() || "", department: u.department||"", jobTitle: u.jobTitle||"", phone: u.phone||"", staffId: u.staffId||"" }); setEditingId(u.id); setIsNewDept(false); setIsDialogOpen(true); }}
+                        onClick={() => { setMutationError(null); setFormData({ name: u.name, email: u.email, password: "", role: u.role, customRoleId: u.customRole?.id?.toString() || "", siteId: (u as any).siteId?.toString() || "", department: u.department||"", jobTitle: u.jobTitle||"", phone: u.phone||"", staffId: u.staffId||"", require2Fa: !!(u as any).require2Fa }); setEditingId(u.id); setIsNewDept(false); setIsDialogOpen(true); }}
                       >
                         <Edit className="w-3.5 h-3.5" /> Edit
                       </Button>
@@ -476,6 +485,18 @@ export default function Users() {
                 <div><Label>Phone Number</Label><Input type="tel" placeholder="e.g. +1 555 000 0000" value={formData.phone} onChange={e=>setFormData({...formData, phone: e.target.value})} /></div>
                 <div><Label>Staff ID</Label><Input placeholder="e.g. EMP-0042" value={formData.staffId} onChange={e=>setFormData({...formData, staffId: e.target.value})} /></div>
               </div>
+              <label className="flex items-start gap-3 rounded-xl border border-border bg-muted/30 p-3 cursor-pointer hover:bg-muted/50 transition-colors">
+                <input
+                  type="checkbox"
+                  className="mt-1 h-4 w-4 rounded border-border accent-primary cursor-pointer"
+                  checked={!!formData.require2Fa}
+                  onChange={e => setFormData({ ...formData, require2Fa: e.target.checked })}
+                />
+                <div className="flex-1">
+                  <div className="flex items-center gap-1.5 text-sm font-medium"><ShieldCheck className="w-4 h-4 text-primary" /> Require two-factor authentication for this user</div>
+                  <div className="text-xs text-muted-foreground mt-0.5">Recommended for admins and other privileged accounts. They'll be forced to set up an authenticator app on their next sign-in.</div>
+                </div>
+              </label>
               {mutationError && (
                 <div className="flex items-start gap-2 rounded-xl bg-destructive/10 border border-destructive/20 text-destructive px-4 py-3 text-sm">
                   <AlertCircle className="w-4 h-4 mt-0.5 shrink-0" />
