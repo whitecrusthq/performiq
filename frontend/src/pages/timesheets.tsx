@@ -508,8 +508,8 @@ export default function Timesheets() {
       {isManager && pendingTeam.length > 0 && (
         <div className="space-y-3">
           <h2 className="text-base font-semibold">Pending Your Approval</h2>
-          <div className="rounded-xl border border-border overflow-hidden">
-            <table className="w-full text-sm">
+          <div className="rounded-xl border border-border overflow-x-auto">
+            <table className="w-full text-sm min-w-[640px]">
               <thead className="bg-muted/50">
                 <tr>
                   <th className="text-left px-4 py-3 font-medium text-muted-foreground">Employee</th>
@@ -553,8 +553,8 @@ export default function Timesheets() {
       {/* History */}
       <div className="space-y-3">
         <h2 className="text-base font-semibold">{isManager ? "All Timesheets" : "History"}</h2>
-        <div className="rounded-xl border border-border overflow-hidden">
-          <table className="w-full text-sm">
+        <div className="rounded-xl border border-border overflow-x-auto">
+          <table className="w-full text-sm min-w-[640px]">
             <thead className="bg-muted/50">
               <tr>
                 {isManager && <th className="text-left px-4 py-3 font-medium text-muted-foreground">Employee</th>}
