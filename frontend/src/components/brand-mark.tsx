@@ -14,7 +14,7 @@ interface BrandMarkProps {
   logoUrl: string | null;
   letter: string;
   companyName?: string;
-  size: "sm" | "md" | "lg";
+  size: "sm" | "md" | "lg" | "xl";
   fallbackBg?: string;
 }
 
@@ -22,6 +22,7 @@ const SIZE_MAP: Record<BrandMarkProps["size"], { box: string; text: string; roun
   sm: { box: "w-7 h-7", text: "text-sm", rounded: "rounded-lg" },
   md: { box: "w-9 h-9", text: "text-lg", rounded: "rounded-xl" },
   lg: { box: "w-14 h-14", text: "text-xl", rounded: "rounded-2xl" },
+  xl: { box: "w-24 h-24", text: "text-5xl font-display", rounded: "rounded-3xl" },
 };
 
 export function BrandMark({ logoUrl, letter, companyName, size, fallbackBg }: BrandMarkProps) {

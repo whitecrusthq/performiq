@@ -7,6 +7,8 @@ export interface AppSettings {
   logoUrl: string | null;
   primaryHsl: string;
   themeName: string;
+  loginHeadline: string;
+  loginSubtext: string;
 }
 
 const defaults: AppSettings = {
@@ -15,6 +17,8 @@ const defaults: AppSettings = {
   logoUrl: null,
   primaryHsl: "221 83% 53%",
   themeName: "blue",
+  loginHeadline: "Elevate Your Team's Performance.",
+  loginSubtext: "PerformIQ streamlines appraisals, goals, and feedback into one elegant platform.",
 };
 
 const AppSettingsContext = createContext<{
@@ -41,6 +45,8 @@ export function AppSettingsProvider({ children }: { children: ReactNode }) {
             logoUrl: data.logoUrl || null,
             primaryHsl: data.primaryHsl || defaults.primaryHsl,
             themeName: data.themeName || defaults.themeName,
+            loginHeadline: typeof data.loginHeadline === "string" ? data.loginHeadline : defaults.loginHeadline,
+            loginSubtext: typeof data.loginSubtext === "string" ? data.loginSubtext : defaults.loginSubtext,
           };
           setSettings(s);
           applyTheme(s.primaryHsl);

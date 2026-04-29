@@ -6,6 +6,8 @@ import { Button, Input, Label } from "@/components/shared";
 import { AlertCircle, ShieldCheck, ArrowLeft } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { apiFetch } from "@/lib/utils";
+import { useAppSettings } from "@/hooks/use-app-settings";
+import { BrandMark } from "@/components/brand-mark";
 
 export default function Login() {
   const [email, setEmail] = useState("");
@@ -17,6 +19,7 @@ export default function Login() {
   const { login } = useAuth();
   const [, setLocation] = useLocation();
   const loginMutation = useLogin();
+  const { settings } = useAppSettings();
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -67,11 +70,16 @@ export default function Login() {
       <div className="absolute -top-40 -right-40 w-96 h-96 bg-primary/20 rounded-full blur-3xl" />
       <div className="absolute bottom-10 -left-20 w-80 h-80 bg-accent/50 rounded-full blur-3xl" />
       <div className="relative z-10 max-w-lg text-center">
-        <div className="w-24 h-24 bg-gradient-to-br from-primary to-primary/80 rounded-3xl flex items-center justify-center text-primary-foreground font-bold text-5xl font-display shadow-2xl shadow-primary/30 mx-auto mb-8 transform -rotate-6">
-          P
+        <div className="mx-auto mb-8 transform -rotate-6 inline-block shadow-2xl shadow-primary/30 rounded-3xl">
+          <BrandMark
+            logoUrl={settings.logoUrl}
+            letter={settings.logoLetter}
+            companyName={settings.companyName}
+            size="xl"
+          />
         </div>
-        <h1 className="text-5xl font-display font-bold text-foreground mb-6 leading-tight">Elevate Your Team's Performance.</h1>
-        <p className="text-xl text-muted-foreground">PerformIQ streamlines appraisals, goals, and feedback into one elegant platform.</p>
+        <h1 className="text-5xl font-display font-bold text-foreground mb-6 leading-tight whitespace-pre-line">{settings.loginHeadline}</h1>
+        <p className="text-xl text-muted-foreground whitespace-pre-line">{settings.loginSubtext}</p>
       </div>
     </div>
   );
@@ -89,7 +97,14 @@ export default function Login() {
               transition={{ duration: 0.35 }}
               className="w-full max-w-md mx-auto"
             >
-              <div className="lg:hidden w-16 h-16 bg-primary rounded-2xl flex items-center justify-center text-primary-foreground font-bold text-3xl font-display shadow-lg shadow-primary/20 mb-8">P</div>
+              <div className="lg:hidden mb-8 inline-block shadow-lg shadow-primary/20 rounded-2xl">
+                <BrandMark
+                  logoUrl={settings.logoUrl}
+                  letter={settings.logoLetter}
+                  companyName={settings.companyName}
+                  size="lg"
+                />
+              </div>
 
               <h2 className="text-3xl font-bold font-display tracking-tight text-foreground mb-2">Welcome back</h2>
               <p className="text-muted-foreground mb-8">Please enter your details to sign in.</p>
