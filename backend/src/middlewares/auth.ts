@@ -56,6 +56,30 @@ export function requireRole(...roles: Array<string | string[]>) {
 }
 
 /**
+ * Allows: super_admin/admin always, plus any user whose custom role grants the
+ * "view_audit_log" permission via the menuPermissions JSON list. Used to gate
+ * access to the login activity audit log.
+ */
+export async function requireAuditLogAccess(req: AuthRequest, res: Response, next: NextFunction) {
+  if (!req.user) { res.status(403).json({ error: "Forbidden" }); return; }
+  if (req.user.role === "super_admin" || req.user.role === "admin") { next(); return; }
+  try {
+    const { User, CustomRole } = await import("../models/index.js");
+    const u: any = await User.findByPk(req.user.id);
+    if (u?.customRoleId) {
+      const cr: any = await CustomRole.findByPk(u.customRoleId);
+      if (cr) {
+        try {
+          const perms = JSON.parse(cr.menuPermissions ?? "[]");
+          if (Array.isArray(perms) && perms.includes("audit-log")) { next(); return; }
+        } catch {}
+      }
+    }
+  } catch {}
+  res.status(403).json({ error: "Forbidden" });
+}
+
+/**
  * Allows: super_admin, admin, OR any user whose custom role name is "hr manager" (case-insensitive).
  */
 export function requireHRAccess(req: AuthRequest, res: Response, next: NextFunction) {

@@ -1,6 +1,7 @@
 import { Response } from "express";
 import { AuthRequest, verify2FAPendingToken } from "../../middlewares/auth.js";
 import AuthController from "../../controllers/AuthController.js";
+import { recordAuthEvent } from "../../lib/auth-audit.js";
 
 export class Verify2FAAction {
   static async handle(req: AuthRequest, res: Response) {
@@ -17,9 +18,22 @@ export class Verify2FAAction {
       }
       const result = await AuthController.verify2FA(payload.id, String(code));
       if ("error" in result) {
+        if (result.status && result.status >= 400 && result.status < 500) {
+          recordAuthEvent(req, {
+            userId: payload.id,
+            email: payload.email,
+            event: "login_failed",
+            failureReason: `2FA: ${result.error}`,
+          });
+        }
         res.status(result.status!).json({ error: result.error });
         return;
       }
+      recordAuthEvent(req, {
+        userId: result.user?.id ?? payload.id,
+        email: result.user?.email ?? payload.email,
+        event: "login_success",
+      });
       res.json({ token: result.token, user: result.user });
     } catch (err) {
       console.error("Verify2FA error:", err);

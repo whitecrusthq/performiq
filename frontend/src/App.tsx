@@ -29,6 +29,7 @@ import Staff from "@/pages/staff";
 import HrQueries from "@/pages/hr-queries";
 import Profile from "@/pages/profile";
 import Security from "@/pages/security";
+import AuditLog from "@/pages/audit-log";
 import Appearance from "@/pages/appearance";
 import Transfers from "@/pages/transfers";
 import Anniversaries from "@/pages/anniversaries";
@@ -124,6 +125,9 @@ function Router() {
       </Route>
       <Route path="/security">
         <AppLayout><ProtectedRoute component={Security} /></AppLayout>
+      </Route>
+      <Route path="/audit-log">
+        <AppLayout><ProtectedRoute component={AuditLog} /></AppLayout>
       </Route>
       <Route path="/appearance">
         <AppLayout><ProtectedRoute component={Appearance} /></AppLayout>

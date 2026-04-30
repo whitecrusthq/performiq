@@ -2,6 +2,7 @@ import { Response } from "express";
 import { AuthRequest, verify2FAPendingToken, generateToken } from "../../middlewares/auth.js";
 import { User, CustomRole } from "../../models/index.js";
 import { verifyToken, generateBackupCodes, hashBackupCodes } from "../../lib/totp.js";
+import { recordAuthEvent } from "../../lib/auth-audit.js";
 
 export class ForcedEnable2FAAction {
   static async handle(req: AuthRequest, res: Response) {
@@ -43,6 +44,11 @@ export class ForcedEnable2FAAction {
       const token = generateToken({ id: user.id, role: user.role, email: user.email, customRoleName: customRole?.name ?? null });
 
       const reloaded = await User.findByPk(user.id);
+      recordAuthEvent(req, {
+        userId: user.id,
+        email: user.email,
+        event: "login_success",
+      });
       res.json({
         token,
         backupCodes,
