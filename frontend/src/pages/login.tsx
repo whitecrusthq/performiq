@@ -135,12 +135,30 @@ export default function Login() {
               <h2 className="text-3xl font-bold font-display tracking-tight text-foreground mb-2">Welcome back</h2>
               <p className="text-muted-foreground mb-8">Please enter your details to sign in.</p>
 
-              {loginMutation.isError && (
-                <div className="bg-destructive/10 border-l-4 border-destructive text-destructive p-4 rounded-r-xl mb-6 flex items-start gap-3">
-                  <AlertCircle className="w-5 h-5 shrink-0 mt-0.5" />
-                  <p className="text-sm font-medium">Invalid email or password. Please try again.</p>
-                </div>
-              )}
+              {loginMutation.isError && (() => {
+                const err = loginMutation.error as any;
+                const serverMsg =
+                  err?.data?.error ||
+                  err?.data?.detail ||
+                  err?.data?.message ||
+                  err?.message ||
+                  "Invalid email or password. Please try again.";
+                const stack = err?.data?.stack || err?.stack;
+                return (
+                  <div className="bg-destructive/10 border-l-4 border-destructive text-destructive p-4 rounded-r-xl mb-6 flex items-start gap-3">
+                    <AlertCircle className="w-5 h-5 shrink-0 mt-0.5" />
+                    <div className="text-sm font-medium space-y-2 min-w-0 flex-1">
+                      <p>{serverMsg}</p>
+                      {stack && (
+                        <details className="text-xs font-normal opacity-80">
+                          <summary className="cursor-pointer">Show error details</summary>
+                          <pre className="mt-1 whitespace-pre-wrap break-all max-h-48 overflow-auto">{stack}</pre>
+                        </details>
+                      )}
+                    </div>
+                  </div>
+                );
+              })()}
 
               <form onSubmit={handleSubmit} className="space-y-5">
                 <div>
