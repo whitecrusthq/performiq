@@ -38,6 +38,7 @@ import {
   BookOpen,
   Brain,
   Sparkles,
+  ScrollText,
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { User } from "@/lib";
@@ -107,6 +108,7 @@ const NAV_STRUCTURE: NavEntry[] = [
       { name: "Sites", path: "/sites", icon: MapPin, roles: ["super_admin", "admin"] },
       { name: "Roles", path: "/roles", icon: Shield, roles: ["super_admin", "admin"] },
       { name: "Security", path: "/security", icon: ShieldAlert, roles: ["super_admin", "admin"] },
+      { name: "Login Activity", path: "/audit-log", icon: ScrollText, roles: ["super_admin", "admin"] },
       { name: "Notifications", path: "/notifications", icon: Bell, roles: ["super_admin", "admin"] },
       { name: "Appearance", path: "/appearance", icon: Paintbrush, roles: ["super_admin", "admin"] },
       { name: "AI Assistant", path: "/ai-settings", icon: Sparkles, roles: ["super_admin", "admin"] },
