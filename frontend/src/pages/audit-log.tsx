@@ -23,6 +23,9 @@ interface AuditRow {
   userId: number | null;
   userName: string | null;
   userRole: string | null;
+  userSiteId: number | null;
+  userSiteName: string | null;
+  userDepartment: string | null;
   email: string;
   event: "login_success" | "login_failed" | "logout";
   failureReason: string | null;
@@ -43,6 +46,10 @@ interface AuditResponse {
   total: number;
   totalPages: number;
 }
+
+interface SiteOpt { id: number; name: string }
+interface DeptOpt { id: number; name: string }
+interface UserOpt { id: number; name: string; email: string; department?: string | null; siteId?: number | null }
 
 function formatDate(s: string) {
   try {
@@ -65,7 +72,6 @@ function locationOf(r: AuditRow) {
 
 function shortUA(ua: string | null) {
   if (!ua) return "—";
-  // Pull just the browser/os hint
   const browserMatch = ua.match(/(Chrome|Firefox|Safari|Edge|Opera|Postman|curl)[\/\s]([0-9.]+)/i);
   const osMatch = ua.match(/\(([^)]+)\)/);
   const browser = browserMatch ? `${browserMatch[1]} ${browserMatch[2]}` : "Unknown";
@@ -79,8 +85,50 @@ export default function AuditLog() {
   const [event, setEvent] = useState<Event>("");
   const [emailFilter, setEmailFilter] = useState("");
   const [emailFilterDraft, setEmailFilterDraft] = useState("");
+  const [siteId, setSiteId] = useState<string>("");
+  const [department, setDepartment] = useState<string>("");
+  const [userId, setUserId] = useState<string>("");
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
+
+  // Lookup data for the dropdowns
+  const sitesQ = useQuery<SiteOpt[]>({
+    queryKey: ["/api/sites"],
+    queryFn: async () => {
+      const r = await apiFetch("/api/sites");
+      if (!r.ok) return [];
+      return r.json();
+    },
+  });
+  const deptsQ = useQuery<DeptOpt[]>({
+    queryKey: ["/api/departments"],
+    queryFn: async () => {
+      const r = await apiFetch("/api/departments");
+      if (!r.ok) return [];
+      return r.json();
+    },
+  });
+  const usersQ = useQuery<UserOpt[]>({
+    queryKey: ["/api/users"],
+    queryFn: async () => {
+      const r = await apiFetch("/api/users");
+      if (!r.ok) return [];
+      return r.json();
+    },
+  });
+
+  const sortedSites = useMemo(
+    () => (sitesQ.data ?? []).slice().sort((a, b) => a.name.localeCompare(b.name)),
+    [sitesQ.data]
+  );
+  const sortedDepts = useMemo(
+    () => (deptsQ.data ?? []).slice().sort((a, b) => a.name.localeCompare(b.name)),
+    [deptsQ.data]
+  );
+  const sortedUsers = useMemo(
+    () => (usersQ.data ?? []).slice().sort((a, b) => (a.name || a.email).localeCompare(b.name || b.email)),
+    [usersQ.data]
+  );
 
   const queryString = useMemo(() => {
     const p = new URLSearchParams();
@@ -88,10 +136,13 @@ export default function AuditLog() {
     p.set("pageSize", String(pageSize));
     if (event) p.set("event", event);
     if (emailFilter) p.set("email", emailFilter);
+    if (siteId) p.set("siteId", siteId);
+    if (department) p.set("department", department);
+    if (userId) p.set("userId", userId);
     if (from) p.set("from", new Date(from).toISOString());
     if (to) p.set("to", new Date(to).toISOString());
     return p.toString();
-  }, [page, pageSize, event, emailFilter, from, to]);
+  }, [page, pageSize, event, emailFilter, siteId, department, userId, from, to]);
 
   const { data, isLoading, isError, error, refetch, isFetching } = useQuery<AuditResponse>({
     queryKey: ["audit-logs", queryString],
@@ -114,6 +165,9 @@ export default function AuditLog() {
     setEvent("");
     setEmailFilter("");
     setEmailFilterDraft("");
+    setSiteId("");
+    setDepartment("");
+    setUserId("");
     setFrom("");
     setTo("");
     setPage(1);
@@ -135,7 +189,7 @@ export default function AuditLog() {
           <CardTitle className="text-base">Filters</CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
             <div className="space-y-1.5">
               <Label htmlFor="event-filter">Event</Label>
               <Select value={event || "all"} onValueChange={(v) => { setEvent((v === "all" ? "" : v) as Event); setPage(1); }}>
@@ -150,6 +204,58 @@ export default function AuditLog() {
                 </SelectContent>
               </Select>
             </div>
+
+            <div className="space-y-1.5">
+              <Label htmlFor="user-filter">User</Label>
+              <Select value={userId || "all"} onValueChange={(v) => { setUserId(v === "all" ? "" : v); setPage(1); }}>
+                <SelectTrigger id="user-filter">
+                  <SelectValue placeholder="All users" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All users</SelectItem>
+                  {sortedUsers.map((u) => (
+                    <SelectItem key={u.id} value={String(u.id)}>
+                      {u.name || u.email}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-1.5">
+              <Label htmlFor="site-filter">Site</Label>
+              <Select value={siteId || "all"} onValueChange={(v) => { setSiteId(v === "all" ? "" : v); setPage(1); }}>
+                <SelectTrigger id="site-filter">
+                  <SelectValue placeholder="All sites" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All sites</SelectItem>
+                  {sortedSites.map((s) => (
+                    <SelectItem key={s.id} value={String(s.id)}>
+                      {s.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-1.5">
+              <Label htmlFor="dept-filter">Department</Label>
+              <Select value={department || "all"} onValueChange={(v) => { setDepartment(v === "all" ? "" : v); setPage(1); }}>
+                <SelectTrigger id="dept-filter">
+                  <SelectValue placeholder="All departments" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All departments</SelectItem>
+                  {sortedDepts.map((d) => (
+                    <SelectItem key={d.id} value={d.name}>
+                      {d.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
             <div className="space-y-1.5">
               <Label htmlFor="email-filter">Email contains</Label>
               <div className="flex gap-2">
@@ -165,21 +271,32 @@ export default function AuditLog() {
                 </Button>
               </div>
             </div>
+
             <div className="space-y-1.5">
               <Label htmlFor="from">From</Label>
               <Input id="from" type="datetime-local" value={from} onChange={(e) => { setFrom(e.target.value); setPage(1); }} />
             </div>
+
             <div className="space-y-1.5">
               <Label htmlFor="to">To</Label>
               <Input id="to" type="datetime-local" value={to} onChange={(e) => { setTo(e.target.value); setPage(1); }} />
             </div>
           </div>
+
           <div className="flex items-center justify-between">
             <Button variant="outline" size="sm" onClick={resetFilters}>Clear filters</Button>
-            <Button variant="outline" size="sm" onClick={() => refetch()} disabled={isFetching}>
-              <RefreshCw className={`h-4 w-4 mr-2 ${isFetching ? "animate-spin" : ""}`} />
-              Refresh
-            </Button>
+            <div className="flex items-center gap-2 text-xs text-muted-foreground">
+              {(siteId || department || userId) && (
+                <span className="italic">
+                  Note: site/department/user filters exclude rows with no matched account
+                  (e.g. failed logins for unknown emails).
+                </span>
+              )}
+              <Button variant="outline" size="sm" onClick={() => refetch()} disabled={isFetching}>
+                <RefreshCw className={`h-4 w-4 mr-2 ${isFetching ? "animate-spin" : ""}`} />
+                Refresh
+              </Button>
+            </div>
           </div>
         </CardContent>
       </Card>
@@ -206,6 +323,8 @@ export default function AuditLog() {
                     <th className="text-left px-4 py-2 whitespace-nowrap">Time</th>
                     <th className="text-left px-4 py-2 whitespace-nowrap">Event</th>
                     <th className="text-left px-4 py-2 whitespace-nowrap">User</th>
+                    <th className="text-left px-4 py-2 whitespace-nowrap">Site</th>
+                    <th className="text-left px-4 py-2 whitespace-nowrap">Department</th>
                     <th className="text-left px-4 py-2 whitespace-nowrap">Reason</th>
                     <th className="text-left px-4 py-2 whitespace-nowrap">IP</th>
                     <th className="text-left px-4 py-2 whitespace-nowrap">Location</th>
@@ -215,7 +334,7 @@ export default function AuditLog() {
                 <tbody>
                   {rows.length === 0 && !isLoading ? (
                     <tr>
-                      <td colSpan={7} className="px-4 py-12 text-center text-muted-foreground">
+                      <td colSpan={9} className="px-4 py-12 text-center text-muted-foreground">
                         No events match these filters.
                       </td>
                     </tr>
@@ -227,6 +346,12 @@ export default function AuditLog() {
                         <td className="px-4 py-2">
                           <div className="font-medium">{r.userName ?? <span className="text-muted-foreground italic">unknown</span>}</div>
                           <div className="text-xs text-muted-foreground">{r.email}</div>
+                        </td>
+                        <td className="px-4 py-2 whitespace-nowrap">
+                          {r.userSiteName ?? <span className="text-muted-foreground">—</span>}
+                        </td>
+                        <td className="px-4 py-2 whitespace-nowrap">
+                          {r.userDepartment ?? <span className="text-muted-foreground">—</span>}
                         </td>
                         <td className="px-4 py-2 max-w-[260px]">
                           {r.failureReason ? (
