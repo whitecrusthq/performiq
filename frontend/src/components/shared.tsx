@@ -1,7 +1,7 @@
-import { ReactNode } from "react";
+import { ReactNode, useState } from "react";
 import { motion } from "framer-motion";
 import { Link } from "wouter";
-import { Loader2 } from "lucide-react";
+import { Loader2, Eye, EyeOff } from "lucide-react";
 
 export function PageHeader({ title, description, action, children }: { title: string, description?: string, action?: ReactNode, children?: ReactNode }) {
   const actions = action ?? children;
@@ -101,6 +101,33 @@ export function Input({ className = "", error, ...props }: React.InputHTMLAttrib
         className={`w-full px-4 py-2.5 rounded-xl bg-background border ${error ? 'border-destructive focus:ring-destructive/20' : 'border-border focus:border-primary focus:ring-primary/20'} focus:outline-none focus:ring-4 transition-all duration-200 text-foreground placeholder:text-muted-foreground ${className}`}
         {...props} 
       />
+      {error && <p className="mt-1.5 text-sm text-destructive font-medium">{error}</p>}
+    </div>
+  );
+}
+
+export function PasswordInput({ className = "", error, ...props }: Omit<React.InputHTMLAttributes<HTMLInputElement>, "type"> & { error?: string }) {
+  const [show, setShow] = useState(false);
+  return (
+    <div className="w-full">
+      <div className="relative">
+        <input
+          type={show ? "text" : "password"}
+          className={`w-full px-4 py-2.5 pr-11 rounded-xl bg-background border ${error ? 'border-destructive focus:ring-destructive/20' : 'border-border focus:border-primary focus:ring-primary/20'} focus:outline-none focus:ring-4 transition-all duration-200 text-foreground placeholder:text-muted-foreground ${className}`}
+          {...props}
+        />
+        <button
+          type="button"
+          tabIndex={-1}
+          onClick={() => setShow(s => !s)}
+          aria-label={show ? "Hide password" : "Show password"}
+          aria-pressed={show}
+          disabled={props.disabled}
+          className="absolute right-3 top-1/2 -translate-y-1/2 inline-flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground hover:text-foreground hover:bg-muted/50 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/30 disabled:opacity-50"
+        >
+          {show ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+        </button>
+      </div>
       {error && <p className="mt-1.5 text-sm text-destructive font-medium">{error}</p>}
     </div>
   );

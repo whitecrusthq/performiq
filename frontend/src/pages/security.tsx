@@ -9,6 +9,7 @@ import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
+import { PasswordInput } from "@/components/ui/password-input";
 import { Checkbox } from "@/components/ui/checkbox";
 import { useToast } from "@/hooks/use-toast";
 import {
@@ -298,7 +299,7 @@ function PersonalTwoFactorCard() {
           <form onSubmit={confirmDisable} className="space-y-3">
             <div>
               <Label>Password</Label>
-              <Input type="password" value={disablePw} onChange={e => setDisablePw(e.target.value)} required />
+              <PasswordInput value={disablePw} onChange={e => setDisablePw(e.target.value)} required />
             </div>
             <div>
               <Label>6-digit code</Label>

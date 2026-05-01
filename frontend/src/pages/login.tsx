@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useLocation } from "wouter";
 import { useAuth } from "@/hooks/use-auth";
 import { useLogin } from "../lib";
-import { Button, Input, Label } from "@/components/shared";
+import { Button, Input, PasswordInput, Label } from "@/components/shared";
 import { AlertCircle, ShieldCheck, ArrowLeft, Smartphone } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { apiFetch } from "@/lib/utils";
@@ -169,7 +169,7 @@ export default function Login() {
                   <div className="flex items-center justify-between mb-1.5">
                     <Label className="mb-0">Password</Label>
                   </div>
-                  <Input type="password" placeholder="••••••••" value={password} onChange={e => setPassword(e.target.value)} required />
+                  <PasswordInput placeholder="••••••••" value={password} onChange={e => setPassword(e.target.value)} required />
                 </div>
                 <Button type="submit" className="w-full mt-8" size="lg" isLoading={loginMutation.isPending}>
                   Sign In
