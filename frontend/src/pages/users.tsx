@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo, useRef } from "react";
 import { useLocation } from "wouter";
 import { useListUsers, useCreateUser, useUpdateUser, useDeleteUser } from "../lib";
 import { useQueryClient } from "@tanstack/react-query";
-import { PageHeader, Card, Button, Input, Label } from "@/components/shared";
+import { PageHeader, Card, Button, Input, PasswordInput, Label } from "@/components/shared";
 import { Users as UsersIcon, Plus, Edit, Trash2, X, Search, ChevronDown, AlertCircle, Camera, UserCircle2, ExternalLink, ShieldCheck } from "lucide-react";
 import { BulkActionBar } from "@/components/bulk-action-bar";
 import { useAuth } from "@/hooks/use-auth";
@@ -392,7 +392,7 @@ export default function Users() {
               <div><Label>Email</Label><Input type="email" value={formData.email} onChange={e=>setFormData({...formData, email: e.target.value})} required /></div>
               <div>
                 <Label>{editingId ? "New Password" : "Password"}</Label>
-                <Input type="password" placeholder={editingId ? "Leave blank to keep unchanged" : ""} value={formData.password} onChange={e=>setFormData({...formData, password: e.target.value})} required={!editingId} />
+                <PasswordInput placeholder={editingId ? "Leave blank to keep unchanged" : ""} value={formData.password} onChange={e=>setFormData({...formData, password: e.target.value})} required={!editingId} />
               </div>
               <div>
                 <Label>Site <span className="text-destructive">*</span></Label>

@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { PageHeader, Card, Button, Input, Label } from "@/components/shared";
+import { PageHeader, Card, Button, Input, PasswordInput, Label } from "@/components/shared";
 import { useAuth } from "@/hooks/use-auth";
 import { User, Lock, CheckCircle } from "lucide-react";
 import { apiFetch } from "@/lib/utils";
@@ -99,8 +99,7 @@ export default function Profile() {
         <form onSubmit={handleChangePassword} className="space-y-4">
           <div>
             <Label>Current Password</Label>
-            <Input
-              type="password"
+            <PasswordInput
               value={pwForm.currentPassword}
               onChange={e => { setPwForm({ ...pwForm, currentPassword: e.target.value }); setStatus("idle"); setErrorMsg(""); }}
               required
@@ -108,8 +107,7 @@ export default function Profile() {
           </div>
           <div>
             <Label>New Password</Label>
-            <Input
-              type="password"
+            <PasswordInput
               placeholder="Minimum 6 characters"
               value={pwForm.newPassword}
               onChange={e => { setPwForm({ ...pwForm, newPassword: e.target.value }); setStatus("idle"); setErrorMsg(""); }}
@@ -118,8 +116,7 @@ export default function Profile() {
           </div>
           <div>
             <Label>Confirm New Password</Label>
-            <Input
-              type="password"
+            <PasswordInput
               value={pwForm.confirmPassword}
               onChange={e => { setPwForm({ ...pwForm, confirmPassword: e.target.value }); setStatus("idle"); setErrorMsg(""); }}
               required
