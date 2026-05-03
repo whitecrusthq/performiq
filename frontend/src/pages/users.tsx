@@ -150,9 +150,12 @@ export default function Users() {
     return next;
   });
 
+  const isProtectedRow = (role: string) => role === "admin" || role === "super_admin";
+  const selectableUsers = useMemo(() => filteredUsers.filter(u => !isProtectedRow(u.role)), [filteredUsers]);
+
   const toggleAll = () => {
-    if (selectedIds.size === filteredUsers.length) setSelectedIds(new Set());
-    else setSelectedIds(new Set(filteredUsers.map(u => u.id)));
+    if (selectableUsers.length > 0 && selectedIds.size === selectableUsers.length) setSelectedIds(new Set());
+    else setSelectedIds(new Set(selectableUsers.map(u => u.id)));
   };
 
   const handleBulkDelete = async () => {
@@ -230,9 +233,10 @@ export default function Users() {
               <th className="p-4 w-10">
                 <input
                   type="checkbox"
-                  checked={filteredUsers.length > 0 && selectedIds.size === filteredUsers.length}
+                  checked={selectableUsers.length > 0 && selectedIds.size === selectableUsers.length}
                   onChange={toggleAll}
-                  className="w-4 h-4 accent-primary cursor-pointer"
+                  disabled={selectableUsers.length === 0}
+                  className="w-4 h-4 accent-primary cursor-pointer disabled:cursor-not-allowed disabled:opacity-40"
                 />
               </th>
               <th className="p-4">Name</th>
@@ -253,7 +257,9 @@ export default function Users() {
                     type="checkbox"
                     checked={selectedIds.has(u.id)}
                     onChange={() => toggleSelect(u.id)}
-                    className="w-4 h-4 accent-primary cursor-pointer"
+                    disabled={isProtectedRow(u.role)}
+                    title={isProtectedRow(u.role) ? "Admin and Super Admin accounts can't be bulk-selected" : undefined}
+                    className="w-4 h-4 accent-primary cursor-pointer disabled:cursor-not-allowed disabled:opacity-40"
                   />
                 </td>
                 <td className="p-4">
