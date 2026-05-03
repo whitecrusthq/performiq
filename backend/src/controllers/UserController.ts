@@ -51,14 +51,11 @@ async function getUserWithRole(userId: number) {
 export default class UserController {
   static ELEVATED_ROLES = ELEVATED_ROLES;
 
-  static async getAll(actorRole: string) {
+  static async getAll(_actorRole: string) {
     const allUsers = await User.findAll({ order: [["name", "ASC"]] });
     const customRoles = await CustomRole.findAll();
     const roleMap = new Map<number, CustomRole>(customRoles.map((r: CustomRole) => [r.id, r]));
-    const visible = actorRole === "super_admin"
-      ? allUsers
-      : allUsers.filter((u: User) => u.role !== "super_admin");
-    return visible.map((u: User) => formatUser(u, u.customRoleId ? roleMap.get(u.customRoleId) ?? null : null));
+    return allUsers.map((u: User) => formatUser(u, u.customRoleId ? roleMap.get(u.customRoleId) ?? null : null));
   }
 
   static async create(data: any, actorRole: string) {

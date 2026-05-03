@@ -442,21 +442,23 @@ export default function Leave() {
       </PageHeader>
 
       {/* Tabs */}
-      <div className="flex gap-1 mb-6 bg-secondary/50 p-1 rounded-xl w-fit">
-        {tabs.map(t => (
-          <button
-            key={t.key}
-            onClick={() => setActiveTab(t.key)}
-            className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${activeTab === t.key ? "bg-blue-600 text-white shadow-sm" : "text-muted-foreground hover:text-foreground"}`}
-          >
-            {t.icon}{t.label}
-            {t.badge !== undefined && t.badge > 0 && (
-              <span className={`ml-1 min-w-[20px] h-5 flex items-center justify-center rounded-full text-[11px] font-bold ${activeTab === t.key ? "bg-white/20 text-white" : "bg-blue-100 text-blue-700"}`}>
-                {t.badge}
-              </span>
-            )}
-          </button>
-        ))}
+      <div className="mb-6 -mx-4 sm:mx-0 overflow-x-auto">
+        <div className="flex gap-1 bg-secondary/50 p-1 rounded-none sm:rounded-xl w-max min-w-full sm:w-fit sm:min-w-0 px-4 sm:px-1">
+          {tabs.map(t => (
+            <button
+              key={t.key}
+              onClick={() => setActiveTab(t.key)}
+              className={`flex items-center gap-2 px-3 sm:px-4 py-2 rounded-lg text-sm font-medium transition-colors whitespace-nowrap shrink-0 ${activeTab === t.key ? "bg-blue-600 text-white shadow-sm" : "text-muted-foreground hover:text-foreground"}`}
+            >
+              {t.icon}{t.label}
+              {t.badge !== undefined && t.badge > 0 && (
+                <span className={`ml-1 min-w-[20px] h-5 flex items-center justify-center rounded-full text-[11px] font-bold ${activeTab === t.key ? "bg-white/20 text-white" : "bg-blue-100 text-blue-700"}`}>
+                  {t.badge}
+                </span>
+              )}
+            </button>
+          ))}
+        </div>
       </div>
 
       {/* Balance Cards - always visible at top when on requests or balance tab */}
@@ -687,7 +689,7 @@ export default function Leave() {
                 {returningDaysFilter === "all" ? "Showing all upcoming returns" : `Returning within ${returningDaysFilter} day${returningDaysFilter === "1" ? "" : "s"}`}
               </span>
             </div>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 flex-wrap">
               <Filter className="w-4 h-4 text-muted-foreground" />
               <select
                 value={returningDaysFilter}
@@ -734,22 +736,22 @@ export default function Leave() {
 
                 return (
                   <Card key={r.id} className="p-4">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-4">
-                        <div className="w-10 h-10 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center font-bold text-sm">
+                    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                      <div className="flex items-center gap-4 min-w-0">
+                        <div className="w-10 h-10 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center font-bold text-sm shrink-0">
                           {(r.employee?.name ?? "?").charAt(0).toUpperCase()}
                         </div>
-                        <div>
-                          <p className="font-semibold text-sm">{r.employee?.name ?? "Unknown"}</p>
-                          <p className="text-xs text-muted-foreground">{r.employee?.department ?? "—"}</p>
+                        <div className="min-w-0">
+                          <p className="font-semibold text-sm truncate">{r.employee?.name ?? "Unknown"}</p>
+                          <p className="text-xs text-muted-foreground truncate">{r.employee?.department ?? "—"}</p>
                         </div>
                       </div>
-                      <div className="flex items-center gap-3">
-                        <div className="text-right">
+                      <div className="flex items-center gap-3 flex-wrap sm:flex-nowrap sm:justify-end">
+                        <div className="sm:text-right">
                           <p className="text-xs text-muted-foreground">{leaveLabel(r.leaveType)}</p>
-                          <p className="text-xs text-muted-foreground">{fmt(r.startDate)} — {fmt(r.endDate)}</p>
+                          <p className="text-xs text-muted-foreground whitespace-nowrap">{fmt(r.startDate)} — {fmt(r.endDate)}</p>
                         </div>
-                        <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold border ${urgencyColor}`}>
+                        <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold border whitespace-nowrap ${urgencyColor}`}>
                           {urgencyLabel}
                         </span>
                       </div>
@@ -1099,20 +1101,22 @@ export default function Leave() {
                 {topOfficers.length === 0 ? (
                   <p className="text-sm text-muted-foreground">No data for these filters.</p>
                 ) : (
-                  <table className="w-full text-sm">
-                    <thead><tr className="text-left text-xs text-muted-foreground"><th className="py-1">Officer</th><th className="py-1">Total</th><th className="py-1">Agreed</th><th className="py-1">Declined</th><th className="py-1">Pending</th></tr></thead>
-                    <tbody>
-                      {topOfficers.map(o => (
-                        <tr key={o.name} className="border-t border-border">
-                          <td className="py-1.5 font-medium">{o.name}</td>
-                          <td className="py-1.5">{o.total}</td>
-                          <td className="py-1.5 text-emerald-600">{o.agreed}</td>
-                          <td className="py-1.5 text-red-600">{o.declined}</td>
-                          <td className="py-1.5 text-amber-600">{o.pending}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-sm">
+                      <thead><tr className="text-left text-xs text-muted-foreground"><th className="py-1 pr-3">Officer</th><th className="py-1 pr-3">Total</th><th className="py-1 pr-3">Agreed</th><th className="py-1 pr-3">Declined</th><th className="py-1">Pending</th></tr></thead>
+                      <tbody>
+                        {topOfficers.map(o => (
+                          <tr key={o.name} className="border-t border-border">
+                            <td className="py-1.5 pr-3 font-medium whitespace-nowrap">{o.name}</td>
+                            <td className="py-1.5 pr-3">{o.total}</td>
+                            <td className="py-1.5 pr-3 text-emerald-600">{o.agreed}</td>
+                            <td className="py-1.5 pr-3 text-red-600">{o.declined}</td>
+                            <td className="py-1.5 text-amber-600">{o.pending}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
                 )}
               </Card>
 
@@ -1121,20 +1125,22 @@ export default function Leave() {
                 {deptRows.length === 0 ? (
                   <p className="text-sm text-muted-foreground">No data for these filters.</p>
                 ) : (
-                  <table className="w-full text-sm">
-                    <thead><tr className="text-left text-xs text-muted-foreground"><th className="py-1">Department</th><th className="py-1">Total</th><th className="py-1">Agreed</th><th className="py-1">Declined</th><th className="py-1">Pending</th></tr></thead>
-                    <tbody>
-                      {deptRows.map(([d, v]) => (
-                        <tr key={d} className="border-t border-border">
-                          <td className="py-1.5 font-medium">{d}</td>
-                          <td className="py-1.5">{v.total}</td>
-                          <td className="py-1.5 text-emerald-600">{v.agreed}</td>
-                          <td className="py-1.5 text-red-600">{v.declined}</td>
-                          <td className="py-1.5 text-amber-600">{v.pending}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-sm">
+                      <thead><tr className="text-left text-xs text-muted-foreground"><th className="py-1 pr-3">Department</th><th className="py-1 pr-3">Total</th><th className="py-1 pr-3">Agreed</th><th className="py-1 pr-3">Declined</th><th className="py-1">Pending</th></tr></thead>
+                      <tbody>
+                        {deptRows.map(([d, v]) => (
+                          <tr key={d} className="border-t border-border">
+                            <td className="py-1.5 pr-3 font-medium whitespace-nowrap">{d}</td>
+                            <td className="py-1.5 pr-3">{v.total}</td>
+                            <td className="py-1.5 pr-3 text-emerald-600">{v.agreed}</td>
+                            <td className="py-1.5 pr-3 text-red-600">{v.declined}</td>
+                            <td className="py-1.5 text-amber-600">{v.pending}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
                 )}
               </Card>
             </div>
