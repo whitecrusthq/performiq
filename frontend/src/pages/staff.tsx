@@ -191,6 +191,12 @@ function StaffPanel({ staffId, canEdit, onClose, onUpdated }: {
     queryFn: () => apiFetchJson(`/api/users/${staffId}`),
   });
 
+  const { data: sites = [] } = useQuery<any[]>({
+    queryKey: ["sites-list"],
+    queryFn: () => apiFetchJson("/api/sites"),
+    enabled: canEdit,
+  });
+
   const { data: confirmationData, refetch: refetchConfirmation } = useQuery({
     queryKey: ["confirmation-review", staffId],
     queryFn: () => apiFetchJson(`/api/confirmation-reviews/${staffId}`),
@@ -404,6 +410,11 @@ function StaffPanel({ staffId, canEdit, onClose, onUpdated }: {
   const startEdit = () => {
     if (!staff) return;
     setDraft({
+      department: staff.department ?? "",
+      jobTitle: staff.jobTitle ?? "",
+      staffId: staff.staffId ?? "",
+      phone: staff.phone ?? "",
+      siteId: staff.siteId ? String(staff.siteId) : "",
       address: staff.address ?? "",
       permanentAddress: staff.permanentAddress ?? "",
       permanentCity: staff.permanentCity ?? "",
@@ -657,36 +668,33 @@ function StaffPanel({ staffId, canEdit, onClose, onUpdated }: {
                   <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-widest flex items-center gap-2">
                     <Briefcase className="w-3.5 h-3.5" /> Employment Details
                   </h3>
-                  <div className="bg-muted/30 rounded-xl p-4 space-y-3">
-                    <div className="grid grid-cols-2 gap-3 text-sm">
+                  <div className="grid grid-cols-2 gap-4">
+                    <Field label="Department" value={d.department} editing={editing} placeholder="e.g. Engineering" onChange={set("department")} />
+                    <Field label="Job Title" value={d.jobTitle} editing={editing} placeholder="e.g. Senior Developer" onChange={set("jobTitle")} />
+                    <Field label="Staff ID" value={d.staffId} editing={editing} placeholder="e.g. EMP001" onChange={set("staffId")} />
+                    <Field label="Phone" value={d.phone} editing={editing} placeholder="e.g. +234..." onChange={set("phone")} />
+                    <Field label="Start Date" value={d.startDate} editing={editing} type="date" onChange={set("startDate")} />
+                    {editing && sites.length > 0 ? (
+                      <SelectField label="Site" value={d.siteId} editing={editing}
+                        options={sites.map((s: any) => ({ value: String(s.id), label: s.name }))}
+                        onChange={set("siteId")} />
+                    ) : (
                       <div>
-                        <p className="text-xs text-muted-foreground uppercase tracking-wide mb-0.5">Department</p>
-                        <p className="font-medium">{staff?.department ?? "—"}</p>
-                      </div>
-                      <div>
-                        <p className="text-xs text-muted-foreground uppercase tracking-wide mb-0.5">Job Title</p>
-                        <p className="font-medium">{staff?.jobTitle ?? "—"}</p>
-                      </div>
-                      <div>
-                        <p className="text-xs text-muted-foreground uppercase tracking-wide mb-0.5">Staff ID</p>
-                        <p className="font-mono text-xs font-medium">{staff?.staffId ?? "—"}</p>
-                      </div>
-                      <div>
-                        <p className="text-xs text-muted-foreground uppercase tracking-wide mb-0.5">Role / Access</p>
-                        <p className="font-medium capitalize">{staff?.role?.replace("_", " ") ?? "—"}</p>
-                      </div>
-                      <div>
-                        <p className="text-xs text-muted-foreground uppercase tracking-wide mb-0.5">Member Since</p>
-                        <p className="font-medium">
-                          {staff?.createdAt ? new Date(staff.createdAt).toLocaleDateString([], { year: "numeric", month: "long", day: "numeric" }) : "—"}
+                        <label className="block text-xs font-semibold text-muted-foreground mb-1 uppercase tracking-wide">Site</label>
+                        <p className={`text-sm py-1.5 ${staff?.site?.name ? "text-foreground" : "text-muted-foreground/60 italic"}`}>
+                          {staff?.site?.name || "Not set"}
                         </p>
                       </div>
-                      {staff?.site && (
-                        <div>
-                          <p className="text-xs text-muted-foreground uppercase tracking-wide mb-0.5">Site</p>
-                          <p className="font-medium">{staff.site.name}</p>
-                        </div>
-                      )}
+                    )}
+                    <div>
+                      <label className="block text-xs font-semibold text-muted-foreground mb-1 uppercase tracking-wide">Role / Access</label>
+                      <p className="text-sm py-1.5 capitalize">{staff?.role?.replace("_", " ") ?? "—"}</p>
+                    </div>
+                    <div>
+                      <label className="block text-xs font-semibold text-muted-foreground mb-1 uppercase tracking-wide">Member Since</label>
+                      <p className="text-sm py-1.5">
+                        {staff?.createdAt ? new Date(staff.createdAt).toLocaleDateString([], { year: "numeric", month: "long", day: "numeric" }) : "—"}
+                      </p>
                     </div>
                   </div>
                   {staff?.probationEndDate && (
@@ -940,7 +948,7 @@ function StaffPanel({ staffId, canEdit, onClose, onUpdated }: {
                     </div>
                   )}
                   <p className="text-xs text-muted-foreground italic">
-                    To update name, email, department, job title or access level — use the User Management page.
+                    To update name, email, or change access level / role — use the User Management page.
                   </p>
                 </div>
               )}
