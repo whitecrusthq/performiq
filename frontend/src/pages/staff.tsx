@@ -505,6 +505,7 @@ function StaffPanel({ staffId, canEdit, onClose, onUpdated }: {
                 const s = staff;
                 const headers = ["Field", "Value"];
                 const rows: string[][] = [
+                  ["Surname", (s as any).surname ?? ""], ["First Name", (s as any).firstName ?? ""], ["Middle Name", (s as any).middleName ?? ""],
                   ["Name", s.name ?? ""], ["Email", s.email ?? ""], ["Phone", s.phone ?? ""],
                   ["Staff ID", s.staffId ?? ""], ["Department", s.department ?? ""], ["Job Title", s.jobTitle ?? ""],
                   ["Role", s.role?.replace("_", " ") ?? ""], ["Site", s.site?.name ?? ""],
@@ -1977,10 +1978,12 @@ export default function Staff() {
     }
   };
 
-  const EXPORT_HEADERS = ["Staff ID", "Name", "Email", "Phone", "Department", "Job Title", "Role", "Site", "Start Date", "Date of Birth", "Gender", "Marital Status", "Religion", "Nationality", "State of Origin", "Address", "City", "State/Province", "Country", "Postal Code", "National ID", "Bank Name", "Bank Account Name", "Bank Account Number", "Bank Branch", "Emergency Contact", "Emergency Phone", "Emergency Relationship"];
+  const EXPORT_HEADERS = ["Staff ID", "Surname", "First Name", "Middle Name", "Name", "Email", "Phone", "Department", "Job Title", "Role", "Site", "Start Date", "Date of Birth", "Gender", "Marital Status", "Religion", "Nationality", "State of Origin", "Address", "City", "State/Province", "Country", "Postal Code", "National ID", "Bank Name", "Bank Account Name", "Bank Account Number", "Bank Branch", "Emergency Contact", "Emergency Phone", "Emergency Relationship"];
 
   const staffToRow = (u: any) => [
-    u.staffId ?? "", u.name ?? "", u.email ?? "", u.phone ?? "",
+    u.staffId ?? "",
+    u.surname ?? "", u.firstName ?? "", u.middleName ?? "",
+    u.name ?? "", u.email ?? "", u.phone ?? "",
     u.department ?? "", u.jobTitle ?? "", u.role?.replace("_", " ") ?? "",
     u.site?.name ?? u.siteName ?? "", u.startDate ?? "", u.dateOfBirth ?? "",
     u.gender ?? "", u.maritalStatus ?? "", u.religion ?? "", u.nationality ?? "",
