@@ -10,7 +10,8 @@ export class UpdateHrProfileAction {
       if (role === "employee" && actorId !== targetId) {
         res.status(403).json({ error: "Forbidden" }); return;
       }
-      const result = await UserController.updateHrProfile(targetId, req.body);
+      const allowEmploymentFields = role === "admin" || role === "super_admin" || role === "manager";
+      const result = await UserController.updateHrProfile(targetId, req.body, { allowEmploymentFields });
       if (!result) { res.status(404).json({ error: "User not found" }); return; }
       res.json(result);
     } catch (err) {
