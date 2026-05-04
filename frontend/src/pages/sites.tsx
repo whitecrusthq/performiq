@@ -412,7 +412,8 @@ export default function Sites() {
     setBulkDeleting(false);
   };
 
-  if (user?.role !== "admin" && user?.role !== "super_admin") {
+  const effectiveLevel = (user as any)?.customRole?.permissionLevel ?? user?.role;
+  if (effectiveLevel !== "admin" && effectiveLevel !== "super_admin") {
     return <div className="p-8 text-destructive">Unauthorized</div>;
   }
 
