@@ -181,7 +181,8 @@ function StaffPanel({ staffId, canEdit, onClose, onUpdated }: {
   const [tab, setTab] = useState<Tab>("personal");
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState<any>({});
-  const isAdminUser = currentUser?.role === "admin" || currentUser?.role === "super_admin";
+  const currentLevel = (currentUser as any)?.customRole?.permissionLevel ?? currentUser?.role;
+  const isAdminUser = currentLevel === "admin" || currentLevel === "super_admin";
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
   const [uploadingReviewDoc, setUploadingReviewDoc] = useState(false);
 
@@ -1926,7 +1927,8 @@ export default function Staff() {
   const [search, setSearch] = useState("");
   const [filterDept, setFilterDept] = useState("");
   const [filterRole, setFilterRole] = useState("");
-  const isAdmin = user?.role === "admin" || user?.role === "super_admin";
+  const effectiveLevel = (user as any)?.customRole?.permissionLevel ?? user?.role;
+  const isAdmin = effectiveLevel === "admin" || effectiveLevel === "super_admin";
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
   const [showBulkImport, setShowBulkImport] = useState(false);
   const [selectedId, setSelectedId] = useState<number | null>(() => {
@@ -1935,7 +1937,7 @@ export default function Staff() {
     return id ? Number(id) : null;
   });
 
-  const canEdit = user?.role === "admin" || user?.role === "super_admin" || user?.role === "manager";
+  const canEdit = effectiveLevel === "admin" || effectiveLevel === "super_admin" || effectiveLevel === "manager";
 
   const { data: users = [], isLoading } = useQuery<any[]>({
     queryKey: ["staff-list"],
