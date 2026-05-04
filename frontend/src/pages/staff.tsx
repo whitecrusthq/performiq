@@ -1673,14 +1673,113 @@ function mapCsvRow(raw: Record<string, string>): Record<string, string> {
   return mapped;
 }
 
+// ── Date normalization ────────────────────────────────────────────────────────
+type DateFormat = "auto" | "iso" | "dmy" | "mdy";
+
+const DATE_FORMAT_OPTIONS: { value: DateFormat; label: string; example: string }[] = [
+  { value: "auto", label: "Auto-detect", example: "Tries ISO first, then day-first" },
+  { value: "iso", label: "YYYY-MM-DD (ISO)", example: "1990-01-15" },
+  { value: "dmy", label: "DD/MM/YYYY (Day first)", example: "15/01/1990" },
+  { value: "mdy", label: "MM/DD/YYYY (Month first)", example: "01/15/1990" },
+];
+
+const DATE_FIELDS = ["dateOfBirth", "startDate"];
+
+const pad2 = (n: number) => (n < 10 ? "0" + n : "" + n);
+
+function normalizeDateValue(raw: string, format: DateFormat): { iso: string | null; error?: string } {
+  const v = (raw ?? "").trim();
+  if (!v) return { iso: null };
+
+  if (/^\d{5,6}$/.test(v)) {
+    const serial = parseInt(v, 10);
+    if (serial > 20000 && serial < 80000) {
+      const epoch = Date.UTC(1899, 11, 30);
+      const d = new Date(epoch + serial * 86400000);
+      if (!isNaN(d.getTime())) {
+        return { iso: `${d.getUTCFullYear()}-${pad2(d.getUTCMonth() + 1)}-${pad2(d.getUTCDate())}` };
+      }
+    }
+  }
+
+  let m = v.match(/^(\d{4})[-/.](\d{1,2})[-/.](\d{1,2})$/);
+  if (m) {
+    const y = Number(m[1]), mo = Number(m[2]), d = Number(m[3]);
+    const dt = new Date(y, mo - 1, d);
+    if (dt.getFullYear() === y && dt.getMonth() === mo - 1 && dt.getDate() === d) {
+      return { iso: `${y}-${pad2(mo)}-${pad2(d)}` };
+    }
+    return { iso: null, error: `Invalid date "${raw}"` };
+  }
+
+  m = v.match(/^(\d{1,2})[-/.](\d{1,2})[-/.](\d{2,4})$/);
+  if (m) {
+    let a = Number(m[1]), b = Number(m[2]);
+    let yStr = m[3];
+    if (yStr.length === 2) yStr = (Number(yStr) > 70 ? "19" : "20") + yStr;
+    const y = Number(yStr);
+
+    let day: number, mon: number;
+    if (format === "dmy") { day = a; mon = b; }
+    else if (format === "mdy") { day = b; mon = a; }
+    else {
+      if (a > 12 && b <= 12) { day = a; mon = b; }
+      else if (b > 12 && a <= 12) { day = b; mon = a; }
+      else { day = a; mon = b; }
+    }
+
+    if (mon < 1 || mon > 12 || day < 1 || day > 31) return { iso: null, error: `Invalid date "${raw}"` };
+    const dt = new Date(y, mon - 1, day);
+    if (dt.getFullYear() === y && dt.getMonth() === mon - 1 && dt.getDate() === day) {
+      return { iso: `${y}-${pad2(mon)}-${pad2(day)}` };
+    }
+    return { iso: null, error: `Invalid date "${raw}"` };
+  }
+
+  const dt = new Date(v);
+  if (!isNaN(dt.getTime())) {
+    return { iso: `${dt.getFullYear()}-${pad2(dt.getMonth() + 1)}-${pad2(dt.getDate())}` };
+  }
+
+  return { iso: null, error: `Could not parse date "${raw}" — try a different format` };
+}
+
+function applyDateFormat(rows: Record<string, string>[], format: DateFormat): { rows: Record<string, string>[]; rowDateErrors: Record<number, string[]> } {
+  const rowDateErrors: Record<number, string[]> = {};
+  const out = rows.map((r, idx) => {
+    const next = { ...r };
+    for (const field of DATE_FIELDS) {
+      const raw = r[field];
+      if (!raw) continue;
+      const { iso, error } = normalizeDateValue(raw, format);
+      if (error) {
+        (rowDateErrors[idx] ||= []).push(`${field}: ${error}`);
+        delete next[field];
+      } else if (iso) {
+        next[field] = iso;
+      } else {
+        delete next[field];
+      }
+    }
+    return next;
+  });
+  return { rows: out, rowDateErrors };
+}
+
 // ── Bulk Import Modal ─────────────────────────────────────────────────────────
 function BulkImportModal({ onClose, onComplete }: { onClose: () => void; onComplete: () => void }) {
   const { toast } = useToast();
   const [step, setStep] = useState<"upload" | "preview" | "results">("upload");
-  const [rows, setRows] = useState<Record<string, string>[]>([]);
+  const [rawRows, setRawRows] = useState<Record<string, string>[]>([]);
+  const [dateFormat, setDateFormat] = useState<DateFormat>("auto");
   const [importing, setImporting] = useState(false);
   const [results, setResults] = useState<any>(null);
   const [fileName, setFileName] = useState("");
+
+  const { rows, rowDateErrors } = useMemo(() => {
+    const { rows: normalized, rowDateErrors } = applyDateFormat(rawRows, dateFormat);
+    return { rows: normalized, rowDateErrors };
+  }, [rawRows, dateFormat]);
 
   const downloadTemplate = () => {
     const csv = IMPORT_TEMPLATE_HEADERS.join(",") + "\nDoe,John,Michael,john@example.com,,employee,Head Office,Engineering,Developer,+234000000,EMP001,Male,1990-01-15,2024-01-01,,,,,,,,,,,,,,\n";
@@ -1706,7 +1805,7 @@ function BulkImportModal({ onClose, onComplete }: { onClose: () => void; onCompl
         return;
       }
       const mapped = parsed.map(mapCsvRow);
-      setRows(mapped);
+      setRawRows(mapped);
       setStep("preview");
     };
     reader.readAsText(file);
@@ -1717,7 +1816,7 @@ function BulkImportModal({ onClose, onComplete }: { onClose: () => void; onCompl
     try {
       const res = await apiFetchJson("/api/users/bulk-import", {
         method: "POST",
-        body: JSON.stringify({ users: rows }),
+        body: JSON.stringify({ users: validRows }),
       });
       setResults(res);
       setStep("results");
@@ -1729,8 +1828,11 @@ function BulkImportModal({ onClose, onComplete }: { onClose: () => void; onCompl
     }
   };
 
-  const validRows = rows.filter(r => (r.name || (r.surname && r.firstName)) && r.email && r.site);
-  const invalidRows = rows.filter(r => !(r.name || (r.surname && r.firstName)) || !r.email || !r.site);
+  const isRowValid = (r: Record<string, string>, idx: number) =>
+    (r.name || (r.surname && r.firstName)) && r.email && r.site && !(rowDateErrors[idx]?.length);
+  const validRows = rows.filter((r, i) => isRowValid(r, i));
+  const invalidRows = rows.filter((r, i) => !isRowValid(r, i));
+  const dateErrorCount = Object.keys(rowDateErrors).length;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={onClose}>
@@ -1769,6 +1871,23 @@ function BulkImportModal({ onClose, onComplete }: { onClose: () => void; onCompl
               </label>
 
               <div className="bg-muted/30 rounded-xl p-4 space-y-2">
+                <h4 className="text-sm font-semibold flex items-center gap-1.5"><Clock className="w-3.5 h-3.5" /> Date format in your file</h4>
+                <p className="text-xs text-muted-foreground">
+                  Choose how dates like Date of Birth and Start Date are written in your CSV.
+                  We'll convert them to the database format automatically.
+                </p>
+                <select
+                  value={dateFormat}
+                  onChange={e => setDateFormat(e.target.value as DateFormat)}
+                  className="w-full mt-1 rounded-lg border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
+                >
+                  {DATE_FORMAT_OPTIONS.map(opt => (
+                    <option key={opt.value} value={opt.value}>{opt.label} — e.g. {opt.example}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="bg-muted/30 rounded-xl p-4 space-y-2">
                 <h4 className="text-sm font-semibold">Need a template?</h4>
                 <p className="text-xs text-muted-foreground">
                   Download our CSV template with all supported columns pre-filled.
@@ -1789,19 +1908,45 @@ function BulkImportModal({ onClose, onComplete }: { onClose: () => void; onCompl
                   <h3 className="font-semibold">Preview Import — {fileName}</h3>
                   <p className="text-sm text-muted-foreground mt-0.5">
                     {rows.length} row{rows.length !== 1 ? "s" : ""} found —
-                    <span className="text-green-600 font-medium"> {validRows.length} valid</span>
-                    {invalidRows.length > 0 && <span className="text-red-600 font-medium">, {invalidRows.length} missing required fields</span>}
+                    <span className="text-green-600 font-medium"> {validRows.length} ready to import</span>
+                    {invalidRows.length > 0 && <span className="text-red-600 font-medium">, {invalidRows.length} need attention</span>}
                   </p>
                 </div>
-                <button onClick={() => { setStep("upload"); setRows([]); }}
+                <button onClick={() => { setStep("upload"); setRawRows([]); }}
                   className="text-xs text-muted-foreground hover:text-foreground underline">
                   Choose different file
                 </button>
               </div>
 
-              {invalidRows.length > 0 && (
+              <div className="flex flex-wrap items-center gap-3 rounded-xl border border-border bg-muted/30 p-3">
+                <Clock className="w-4 h-4 text-muted-foreground shrink-0" />
+                <div className="text-xs">
+                  <span className="font-semibold">Date format:</span>
+                  <span className="text-muted-foreground"> change this if dates aren't reading correctly</span>
+                </div>
+                <select
+                  value={dateFormat}
+                  onChange={e => setDateFormat(e.target.value as DateFormat)}
+                  className="ml-auto rounded-lg border border-border bg-background px-2.5 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-primary/30"
+                >
+                  {DATE_FORMAT_OPTIONS.map(opt => (
+                    <option key={opt.value} value={opt.value}>{opt.label}</option>
+                  ))}
+                </select>
+              </div>
+
+              {dateErrorCount > 0 && (
+                <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 text-xs text-amber-800">
+                  <p className="font-semibold flex items-center gap-1">
+                    <AlertCircle className="w-3.5 h-3.5" /> {dateErrorCount} row(s) have unreadable dates with the current format.
+                  </p>
+                  <p className="mt-1">Try changing the date format above. If your file uses <code className="bg-amber-100 px-1 rounded">DD/MM/YYYY</code> or <code className="bg-amber-100 px-1 rounded">MM/DD/YYYY</code>, pick that explicitly.</p>
+                </div>
+              )}
+
+              {invalidRows.length - dateErrorCount > 0 && (
                 <div className="bg-red-50 border border-red-200 rounded-xl p-3 text-xs text-red-700">
-                  <p className="font-semibold flex items-center gap-1"><AlertCircle className="w-3.5 h-3.5" /> {invalidRows.length} row(s) are missing required fields (surname + first name or name, email, or site) and will fail.</p>
+                  <p className="font-semibold flex items-center gap-1"><AlertCircle className="w-3.5 h-3.5" /> {invalidRows.length - dateErrorCount} row(s) are missing required fields (surname + first name or name, email, or site) and will be skipped.</p>
                 </div>
               )}
 
@@ -1813,10 +1958,10 @@ function BulkImportModal({ onClose, onComplete }: { onClose: () => void; onCompl
                         <th className="px-3 py-2 text-left font-medium text-muted-foreground">#</th>
                         <th className="px-3 py-2 text-left font-medium text-muted-foreground">Surname</th>
                         <th className="px-3 py-2 text-left font-medium text-muted-foreground">First Name</th>
-                        <th className="px-3 py-2 text-left font-medium text-muted-foreground">Middle Name</th>
                         <th className="px-3 py-2 text-left font-medium text-muted-foreground">Email</th>
                         <th className="px-3 py-2 text-left font-medium text-muted-foreground">Site</th>
-                        <th className="px-3 py-2 text-left font-medium text-muted-foreground">Department</th>
+                        <th className="px-3 py-2 text-left font-medium text-muted-foreground">DOB</th>
+                        <th className="px-3 py-2 text-left font-medium text-muted-foreground">Start Date</th>
                         <th className="px-3 py-2 text-left font-medium text-muted-foreground">Role</th>
                         <th className="px-3 py-2 text-left font-medium text-muted-foreground">Status</th>
                       </tr>
@@ -1824,23 +1969,37 @@ function BulkImportModal({ onClose, onComplete }: { onClose: () => void; onCompl
                     <tbody className="divide-y divide-border">
                       {rows.map((r, i) => {
                         const hasName = r.name || (r.surname && r.firstName);
-                        const valid = hasName && r.email && r.site;
-                        const displayName = r.name || [r.surname, r.firstName, r.middleName].filter(Boolean).join(" ");
+                        const dateErrs = rowDateErrors[i] || [];
+                        const hasDateErr = dateErrs.length > 0;
+                        const missingFields = !hasName || !r.email || !r.site;
+                        const valid = !missingFields && !hasDateErr;
+                        const rawRow = rawRows[i] || {};
+                        const dobError = dateErrs.find(e => e.startsWith("dateOfBirth"));
+                        const sdError = dateErrs.find(e => e.startsWith("startDate"));
                         return (
-                          <tr key={i} className={valid ? "" : "bg-red-50/50"}>
+                          <tr key={i} className={valid ? "" : hasDateErr ? "bg-amber-50/50" : "bg-red-50/50"}>
                             <td className="px-3 py-2 text-muted-foreground">{i + 1}</td>
                             <td className="px-3 py-2 font-medium">{r.surname || (r.name ? <span className="text-muted-foreground italic">—</span> : <span className="text-red-500">Missing</span>)}</td>
                             <td className="px-3 py-2">{r.firstName || (r.name ? <span className="text-muted-foreground italic">—</span> : <span className="text-red-500">Missing</span>)}</td>
-                            <td className="px-3 py-2">{r.middleName || "—"}</td>
                             <td className="px-3 py-2">{r.email || <span className="text-red-500">Missing</span>}</td>
                             <td className="px-3 py-2">{r.site || <span className="text-red-500">Missing</span>}</td>
-                            <td className="px-3 py-2">{r.department || "—"}</td>
-                            <td className="px-3 py-2">{r.jobTitle || "—"}</td>
+                            <td className="px-3 py-2">
+                              {dobError
+                                ? <span className="text-amber-700" title={dobError}>{rawRow.dateOfBirth} ⚠</span>
+                                : (r.dateOfBirth || <span className="text-muted-foreground">—</span>)}
+                            </td>
+                            <td className="px-3 py-2">
+                              {sdError
+                                ? <span className="text-amber-700" title={sdError}>{rawRow.startDate} ⚠</span>
+                                : (r.startDate || <span className="text-muted-foreground">—</span>)}
+                            </td>
                             <td className="px-3 py-2">{r.role || "employee"}</td>
                             <td className="px-3 py-2">
                               {valid
                                 ? <span className="text-green-600 flex items-center gap-1"><Check className="w-3 h-3" /> Ready</span>
-                                : <span className="text-red-500 flex items-center gap-1"><AlertCircle className="w-3 h-3" /> Invalid</span>
+                                : hasDateErr && !missingFields
+                                  ? <span className="text-amber-700 flex items-center gap-1"><AlertCircle className="w-3 h-3" /> Date issue</span>
+                                  : <span className="text-red-500 flex items-center gap-1"><AlertCircle className="w-3 h-3" /> Invalid</span>
                               }
                             </td>
                           </tr>
