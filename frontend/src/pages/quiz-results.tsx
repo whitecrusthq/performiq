@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { PageHeader, Card, Button, Input, Label } from "@/components/shared";
 import { apiFetch } from "@/lib/utils";
 import { useAuth } from "@/hooks/use-auth";
-import { BarChart3, Filter, RefreshCw, Trophy, X } from "lucide-react";
+import { BarChart3, Filter, RefreshCw, Trophy, X, Search, Download } from "lucide-react";
 
 interface AttemptRow {
   id: number;
@@ -59,6 +59,7 @@ export default function QuizResults() {
   const [filterDept, setFilterDept] = useState("");
   const [filterFrom, setFilterFrom] = useState("");
   const [filterTo, setFilterTo] = useState("");
+  const [search, setSearch] = useState("");
 
   const [sites, setSites] = useState<{ id: number; name: string }[]>([]);
   const [departments, setDepartments] = useState<{ id: number; name: string }[]>([]);
@@ -114,8 +115,61 @@ export default function QuizResults() {
 
   function clearFilters() {
     setFilterDoc(""); setFilterUser(""); setFilterSite(""); setFilterDept("");
-    setFilterFrom(""); setFilterTo("");
+    setFilterFrom(""); setFilterTo(""); setSearch("");
     setReloadKey(k => k + 1);
+  }
+
+  const filteredRows = useMemo(() => {
+    if (!resp?.data) return [];
+    const q = search.trim().toLowerCase();
+    if (!q) return resp.data;
+    return resp.data.filter(a =>
+      (a.user?.name ?? "").toLowerCase().includes(q) ||
+      (a.user?.email ?? "").toLowerCase().includes(q) ||
+      (a.document?.title ?? "").toLowerCase().includes(q) ||
+      (a.document?.category ?? "").toLowerCase().includes(q) ||
+      (a.site ?? "").toLowerCase().includes(q) ||
+      (a.department ?? "").toLowerCase().includes(q)
+    );
+  }, [resp, search]);
+
+  const activeFilterCount =
+    (filterDoc ? 1 : 0) + (filterUser ? 1 : 0) + (filterSite ? 1 : 0) +
+    (filterDept ? 1 : 0) + (filterFrom ? 1 : 0) + (filterTo ? 1 : 0);
+
+  function exportCSV() {
+    if (!filteredRows.length) return;
+    const headers = isAdmin
+      ? ["User", "Email", "Site", "Department", "Document", "Category", "Score", "Total", "Percent", "Passed", "Completed"]
+      : ["Document", "Category", "Score", "Total", "Percent", "Passed", "Completed"];
+    const rows = filteredRows.map(a => {
+      const base = [
+        a.document?.title ?? `#${a.documentId}`,
+        a.document?.category ?? "",
+        String(a.score),
+        String(a.total),
+        `${a.percent}%`,
+        a.passed ? "Yes" : "No",
+        new Date(a.completedAt).toISOString(),
+      ];
+      if (!isAdmin) return base;
+      return [
+        a.user?.name ?? "",
+        a.user?.email ?? "",
+        a.site ?? "",
+        a.department ?? "",
+        ...base,
+      ];
+    });
+    const escape = (v: string) => /[",\n]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v;
+    const csv = [headers, ...rows].map(r => r.map(escape).join(",")).join("\n");
+    const blob = new Blob(["\uFEFF" + csv], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `quiz-results-${new Date().toISOString().slice(0, 10)}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
   }
 
   return (
@@ -125,7 +179,16 @@ export default function QuizResults() {
         description={isAdmin
           ? "Every quiz attempt across the company. Use the filters to drill in by user, document, or date."
           : "All your past quiz attempts and scores."}
-        action={<Button variant="outline" onClick={() => setReloadKey(k => k + 1)} disabled={loading}><RefreshCw className="h-4 w-4 mr-1.5" /> Refresh</Button>}
+        action={
+          <div className="flex items-center gap-2">
+            <Button variant="outline" onClick={exportCSV} disabled={!filteredRows.length}>
+              <Download className="h-4 w-4 mr-1.5" /> Export CSV
+            </Button>
+            <Button variant="outline" onClick={() => setReloadKey(k => k + 1)} disabled={loading}>
+              <RefreshCw className="h-4 w-4 mr-1.5" /> Refresh
+            </Button>
+          </div>
+        }
       />
 
       {resp?.summary && (
@@ -160,8 +223,37 @@ export default function QuizResults() {
         </div>
       )}
 
+      <div className="mb-4 relative max-w-xl">
+        <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none" />
+        <input
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          placeholder="Search results by user, document, category, site or department…"
+          className="w-full pl-9 pr-9 py-2 rounded-xl border border-border bg-background text-sm outline-none focus:ring-2 focus:ring-primary/20"
+        />
+        {search && (
+          <button onClick={() => setSearch("")} className="absolute right-2 top-1/2 -translate-y-1/2 p-1 rounded-md text-muted-foreground hover:bg-muted">
+            <X className="w-3.5 h-3.5" />
+          </button>
+        )}
+      </div>
+
       <Card className="mb-4">
-        <div className="flex items-center gap-2 mb-3 text-sm font-medium"><Filter className="h-4 w-4" /> Filters</div>
+        <div className="flex items-center justify-between mb-3">
+          <div className="flex items-center gap-2 text-sm font-medium">
+            <Filter className="h-4 w-4" /> Filters
+            {activeFilterCount > 0 && (
+              <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-primary/10 text-primary">
+                {activeFilterCount} active
+              </span>
+            )}
+          </div>
+          {activeFilterCount > 0 && (
+            <button onClick={clearFilters} className="text-xs text-muted-foreground hover:text-foreground hover:underline">
+              Clear all
+            </button>
+          )}
+        </div>
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
           {isAdmin && (
             <div>
@@ -199,9 +291,8 @@ export default function QuizResults() {
           </div>
           <div><Label>From</Label><Input type="date" value={filterFrom} onChange={e => setFilterFrom(e.target.value)} className="mt-1" /></div>
           <div><Label>To</Label><Input type="date" value={filterTo} onChange={e => setFilterTo(e.target.value)} className="mt-1" /></div>
-          <div className="flex items-end gap-2">
-            <Button onClick={() => setReloadKey(k => k + 1)} disabled={loading}>Apply</Button>
-            <Button variant="outline" onClick={clearFilters}>Clear</Button>
+          <div className="flex items-end gap-2 sm:col-span-2 lg:col-span-1">
+            <Button onClick={() => setReloadKey(k => k + 1)} disabled={loading} className="flex-1">Apply filters</Button>
           </div>
         </div>
       </Card>
@@ -212,7 +303,19 @@ export default function QuizResults() {
         ) : error ? (
           <div className="p-6 text-sm text-destructive">{error}</div>
         ) : !resp?.data.length ? (
-          <div className="p-6 text-sm text-muted-foreground">No quiz attempts found.</div>
+          <div className="p-12 text-center text-sm text-muted-foreground">
+            <BarChart3 className="h-10 w-10 mx-auto text-muted-foreground/40 mb-3" />
+            <p className="font-medium">No quiz attempts found</p>
+            <p className="text-xs mt-1">Try adjusting your filters above.</p>
+          </div>
+        ) : !filteredRows.length ? (
+          <div className="p-12 text-center text-sm text-muted-foreground">
+            <Search className="h-10 w-10 mx-auto text-muted-foreground/40 mb-3" />
+            <p className="font-medium">No results match "{search}"</p>
+            <button onClick={() => setSearch("")} className="text-xs text-primary hover:underline mt-2">
+              Clear search
+            </button>
+          </div>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
@@ -231,7 +334,7 @@ export default function QuizResults() {
                 </tr>
               </thead>
               <tbody>
-                {resp.data.map(a => (
+                {filteredRows.map(a => (
                   <tr key={a.id} className="border-b last:border-0 hover:bg-muted/20">
                     {isAdmin && (
                       <td className="px-4 py-2">

@@ -120,102 +120,127 @@ export default function Handbook() {
         }
       />
 
-      <Card className="mb-6">
-        <div className="flex flex-col sm:flex-row gap-3">
-          <div className="relative flex-1">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-            <Input
-              className="pl-9"
-              placeholder="Search by title, description or category…"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-            />
-          </div>
-          <div className="flex items-center gap-2">
-            <Filter className="h-4 w-4 text-muted-foreground" />
-            <select
-              className="h-9 rounded-md border border-input bg-background px-3 text-sm"
-              value={filterCategory}
-              onChange={(e) => setFilterCategory(e.target.value)}
-            >
-              <option value="all">All categories</option>
-              {categories.map(c => <option key={c} value={c}>{c}</option>)}
-            </select>
-          </div>
+      <div className="mb-6 flex flex-col sm:flex-row gap-3">
+        <div className="relative flex-1 max-w-xl">
+          <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none" />
+          <input
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search documents by title, description or category…"
+            className="w-full pl-9 pr-9 py-2 rounded-xl border border-border bg-background text-sm outline-none focus:ring-2 focus:ring-primary/20"
+          />
+          {search && (
+            <button onClick={() => setSearch("")} className="absolute right-2 top-1/2 -translate-y-1/2 p-1 rounded-md text-muted-foreground hover:bg-muted">
+              <X className="w-3.5 h-3.5" />
+            </button>
+          )}
         </div>
-      </Card>
+        <div className="flex items-center gap-2 rounded-xl border border-border bg-background pl-3 pr-1 h-10">
+          <Filter className="h-4 w-4 text-muted-foreground" />
+          <select
+            className="h-full bg-transparent pr-2 text-sm outline-none cursor-pointer"
+            value={filterCategory}
+            onChange={(e) => setFilterCategory(e.target.value)}
+          >
+            <option value="all">All categories</option>
+            {categories.map(c => <option key={c} value={c}>{c}</option>)}
+          </select>
+        </div>
+      </div>
 
       {loading ? (
         <Card><p className="text-sm text-muted-foreground">Loading…</p></Card>
       ) : grouped.length === 0 ? (
-        <Card>
-          <div className="text-center py-12">
-            <BookOpen className="h-10 w-10 mx-auto text-muted-foreground mb-3" />
-            <p className="font-medium">No documents yet</p>
-            <p className="text-sm text-muted-foreground">
-              {isAdmin ? "Upload your first policy document to get started." : "Check back soon."}
-            </p>
-          </div>
+        <Card className="p-12 text-center">
+          {(search || filterCategory !== "all") ? (
+            <>
+              <Search className="h-10 w-10 mx-auto text-muted-foreground/40 mb-3" />
+              <p className="font-medium text-muted-foreground">No documents match your filters</p>
+              <button
+                onClick={() => { setSearch(""); setFilterCategory("all"); }}
+                className="text-sm text-primary hover:underline mt-2"
+              >
+                Clear filters
+              </button>
+            </>
+          ) : (
+            <>
+              <BookOpen className="h-10 w-10 mx-auto text-muted-foreground/40 mb-3" />
+              <p className="font-medium">No documents yet</p>
+              <p className="text-sm text-muted-foreground mt-1">
+                {isAdmin ? "Upload your first policy document to get started." : "Check back soon."}
+              </p>
+            </>
+          )}
         </Card>
       ) : (
         <div className="space-y-6">
           {grouped.map(([cat, list]) => (
             <div key={cat}>
-              <div className="flex items-center gap-2 mb-3">
-                <FolderOpen className="h-4 w-4 text-muted-foreground" />
-                <h2 className="font-semibold">{cat}</h2>
-                <span className={`text-xs px-2 py-0.5 rounded-full ${CATEGORY_COLORS[cat] ?? CATEGORY_COLORS.Other}`}>
-                  {list.length}
+              <div className="flex items-center gap-2.5 mb-3">
+                <div className={`h-8 w-8 rounded-lg flex items-center justify-center ${CATEGORY_COLORS[cat] ?? CATEGORY_COLORS.Other}`}>
+                  <FolderOpen className="h-4 w-4" />
+                </div>
+                <h2 className="font-semibold text-base">{cat}</h2>
+                <span className="text-xs px-2 py-0.5 rounded-full bg-muted text-muted-foreground">
+                  {list.length} {list.length === 1 ? "document" : "documents"}
                 </span>
               </div>
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                 {list.map(d => (
-                  <Card key={d.id} className="flex flex-col">
-                    <div className="flex items-start justify-between gap-3 mb-2">
-                      <div className="flex items-start gap-2 min-w-0">
-                        <FileText className="h-5 w-5 text-primary shrink-0 mt-0.5" />
+                  <Card key={d.id} className="p-5 flex flex-col gap-3 hover:border-primary/40 transition-colors">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="flex items-start gap-2.5 min-w-0">
+                        <div className="w-9 h-9 rounded-xl bg-primary/10 flex items-center justify-center shrink-0">
+                          <FileText className="h-4 w-4 text-primary" />
+                        </div>
                         <div className="min-w-0">
-                          <h3 className="font-medium truncate">{d.title}</h3>
-                          <p className="text-xs text-muted-foreground">
+                          <h3 className="font-semibold truncate">{d.title}</h3>
+                          <p className="text-xs text-muted-foreground truncate">
                             {d.originalFilename ?? "document"} · {formatBytes(d.fileSize)}
                           </p>
                         </div>
                       </div>
-                      <span className={`text-[10px] px-1.5 py-0.5 rounded shrink-0 ${CATEGORY_COLORS[d.category] ?? CATEGORY_COLORS.Other}`}>
+                      <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded shrink-0 ${CATEGORY_COLORS[d.category] ?? CATEGORY_COLORS.Other}`}>
                         {d.category}
                       </span>
                     </div>
                     {d.description && (
-                      <p className="text-sm text-muted-foreground mb-3 line-clamp-3">{d.description}</p>
+                      <p className="text-sm text-muted-foreground line-clamp-3">{d.description}</p>
                     )}
-                    <div className="text-xs text-muted-foreground mb-3">
-                      Uploaded {new Date(d.createdAt).toLocaleDateString()} by {d.uploader?.name ?? "—"}
+                    <div className="text-xs text-muted-foreground flex flex-wrap items-center gap-x-2 gap-y-1">
+                      <span>Uploaded {new Date(d.createdAt).toLocaleDateString()}</span>
+                      {d.uploader?.name && <span>by {d.uploader.name}</span>}
                       {typeof d.questionCount === "number" && d.questionCount > 0 && (
-                        <> · <span className="inline-flex items-center gap-1"><HelpCircle className="h-3 w-3" />{d.questionCount} quiz Q</span></>
+                        <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-muted text-foreground">
+                          <HelpCircle className="h-3 w-3" />{d.questionCount} quiz Q
+                        </span>
                       )}
                     </div>
-                    <div className="mt-auto flex flex-wrap gap-2">
+                    <div className="mt-auto flex items-center justify-between gap-2 pt-1 border-t border-border/60">
                       <a
                         href={fileURL(d.objectPath)}
                         target="_blank"
                         rel="noreferrer"
-                        className="inline-flex items-center gap-1 text-xs px-2 py-1 rounded border hover:bg-accent"
+                        className="inline-flex items-center gap-1.5 text-sm font-medium text-primary hover:underline"
                       >
-                        <ExternalLink className="h-3 w-3" /> Open
+                        <ExternalLink className="h-3.5 w-3.5" /> Open
                       </a>
                       {isAdmin && (
-                        <>
+                        <div className="flex items-center gap-1">
                           <button
                             onClick={() => setEditing(d)}
-                            className="inline-flex items-center gap-1 text-xs px-2 py-1 rounded border hover:bg-accent"
+                            title="Edit document"
+                            className="p-1.5 rounded-md text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
                           >
-                            <Edit2 className="h-3 w-3" /> Edit
+                            <Edit2 className="h-3.5 w-3.5" />
                           </button>
                           <button
                             onClick={() => setManaging(d)}
-                            className="inline-flex items-center gap-1 text-xs px-2 py-1 rounded border hover:bg-accent"
+                            title="Manage quiz questions"
+                            className="p-1.5 rounded-md text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
                           >
-                            <HelpCircle className="h-3 w-3" /> Quiz Q
+                            <HelpCircle className="h-3.5 w-3.5" />
                           </button>
                           <button
                             onClick={async () => {
@@ -223,11 +248,12 @@ export default function Handbook() {
                               const r = await apiFetch(`/api/documents/${d.id}`, { method: "DELETE" });
                               if (r.ok) refresh(); else alert((await r.json()).error ?? "Delete failed");
                             }}
-                            className="inline-flex items-center gap-1 text-xs px-2 py-1 rounded border text-destructive hover:bg-destructive/10"
+                            title="Delete document"
+                            className="p-1.5 rounded-md text-muted-foreground hover:bg-destructive/10 hover:text-destructive transition-colors"
                           >
-                            <Trash2 className="h-3 w-3" /> Delete
+                            <Trash2 className="h-3.5 w-3.5" />
                           </button>
-                        </>
+                        </div>
                       )}
                     </div>
                   </Card>

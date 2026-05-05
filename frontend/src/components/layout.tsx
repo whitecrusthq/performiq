@@ -39,6 +39,8 @@ import {
   Brain,
   Sparkles,
   ScrollText,
+  GraduationCap,
+  Trophy,
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { User } from "@/lib";
@@ -116,11 +118,11 @@ const NAV_STRUCTURE: NavEntry[] = [
   },
   {
     label: "Knowledge",
-    icon: BookOpen,
+    icon: GraduationCap,
     items: [
       { name: "Handbook", path: "/handbook", icon: BookOpen, roles: ["super_admin", "admin", "manager", "employee"] },
       { name: "Quiz", path: "/quiz", icon: Brain, roles: ["super_admin", "admin", "manager", "employee"] },
-      { name: "Quiz Results", path: "/quiz-results", icon: BarChart3, roles: ["super_admin", "admin", "manager", "employee"] },
+      { name: "Quiz Results", path: "/quiz-results", icon: Trophy, roles: ["super_admin", "admin", "manager", "employee"] },
     ],
   },
 ];

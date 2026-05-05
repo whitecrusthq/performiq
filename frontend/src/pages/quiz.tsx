@@ -189,16 +189,19 @@ export default function Quiz() {
           description="Complete each handbook quiz in order. You'll see your score after each one before moving on."
         />
 
-        <Card className="mb-4">
-          <div className="flex items-center gap-4">
-            <div className="h-12 w-12 rounded-full bg-primary/10 flex items-center justify-center">
-              {allDone ? <Trophy className="h-6 w-6 text-primary" /> : <Brain className="h-6 w-6 text-primary" />}
+        <Card className="mb-5 p-5">
+          <div className="flex items-center gap-4 flex-wrap">
+            <div className={`h-14 w-14 rounded-2xl flex items-center justify-center shrink-0 ${allDone ? "bg-emerald-100 dark:bg-emerald-900/30" : "bg-primary/10"}`}>
+              {allDone ? <Trophy className="h-7 w-7 text-emerald-600" /> : <Brain className="h-7 w-7 text-primary" />}
             </div>
-            <div className="flex-1">
-              <p className="font-semibold">{completed} of {overview.length} quizzes completed</p>
-              <div className="h-2 bg-muted rounded-full overflow-hidden mt-2 max-w-md">
+            <div className="flex-1 min-w-[220px]">
+              <div className="flex items-baseline gap-2">
+                <p className="text-2xl font-bold">{completed}</p>
+                <p className="text-sm text-muted-foreground">of {overview.length} quizzes completed</p>
+              </div>
+              <div className="h-2 bg-muted rounded-full overflow-hidden mt-2">
                 <div
-                  className="h-full bg-primary transition-all"
+                  className="h-full bg-primary transition-all duration-500"
                   style={{ width: `${overview.length ? (completed / overview.length) * 100 : 0}%` }}
                 />
               </div>
@@ -210,7 +213,7 @@ export default function Quiz() {
               </Button>
             )}
             {allDone && (
-              <span className="text-sm text-emerald-600 font-medium flex items-center gap-1">
+              <span className="text-sm text-emerald-600 font-medium flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-emerald-100 dark:bg-emerald-900/30">
                 <CheckCircle2 className="h-4 w-4" /> All done!
               </span>
             )}
@@ -219,28 +222,33 @@ export default function Quiz() {
 
         {takeError && <Card className="mb-3 border-destructive/40"><p className="text-sm text-destructive flex items-center gap-2"><AlertCircle className="h-4 w-4" /> {takeError}</p></Card>}
 
-        <div className="space-y-2">
+        <div className="space-y-2.5">
           {overview.map((d, idx) => {
             const a = d.latestAttempt;
             const done = !!a;
             return (
-              <Card key={d.documentId} className="hover:border-primary/40 transition-colors">
-                <div className="flex items-center gap-3">
-                  <div className="flex flex-col items-center w-8">
+              <Card key={d.documentId} className={`p-4 hover:border-primary/40 transition-colors ${done ? "" : "border-l-4 border-l-primary/60"}`}>
+                <div className="flex items-center gap-4">
+                  <div className="flex flex-col items-center w-10 shrink-0">
                     {done
-                      ? <CheckCircle2 className="h-6 w-6 text-emerald-600" />
-                      : <Circle className="h-6 w-6 text-muted-foreground" />}
-                    <span className="text-xs text-muted-foreground mt-1">#{idx + 1}</span>
+                      ? <CheckCircle2 className="h-7 w-7 text-emerald-600" />
+                      : <Circle className="h-7 w-7 text-muted-foreground/50" />}
+                    <span className="text-[10px] font-mono text-muted-foreground mt-0.5">#{String(idx + 1).padStart(2, "0")}</span>
                   </div>
                   <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2">
-                      <span className="text-xs px-1.5 py-0.5 rounded bg-muted">{d.category}</span>
+                    <div className="flex items-center gap-2 flex-wrap">
                       <h3 className="font-semibold truncate">{d.title}</h3>
+                      <span className="text-[10px] font-medium px-1.5 py-0.5 rounded bg-muted text-muted-foreground shrink-0">{d.category}</span>
                     </div>
-                    <p className="text-xs text-muted-foreground mt-0.5">
-                      {d.questionCount} question{d.questionCount === 1 ? "" : "s"}
+                    <p className="text-xs text-muted-foreground mt-1 flex items-center gap-1.5 flex-wrap">
+                      <span>{d.questionCount} question{d.questionCount === 1 ? "" : "s"}</span>
                       {a && (
-                        <> · last score <span className={a.passed ? "text-emerald-600 font-medium" : "text-amber-600 font-medium"}>{a.percent}%</span> on {new Date(a.completedAt).toLocaleDateString()}</>
+                        <>
+                          <span>·</span>
+                          <span>Last score</span>
+                          <span className={`font-semibold px-1.5 py-0.5 rounded ${a.passed ? "text-emerald-700 bg-emerald-100 dark:text-emerald-300 dark:bg-emerald-900/40" : "text-amber-700 bg-amber-100 dark:text-amber-300 dark:bg-amber-900/40"}`}>{a.percent}%</span>
+                          <span>on {new Date(a.completedAt).toLocaleDateString()}</span>
+                        </>
                       )}
                     </p>
                   </div>
