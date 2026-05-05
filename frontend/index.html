@@ -8,6 +8,21 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <script>
+      // Apply cached brand colour synchronously so the page never flashes the
+      // default blue before the user's saved theme loads from /api/app-settings.
+      (function () {
+        try {
+          var raw = localStorage.getItem("performiq.appSettings");
+          if (!raw) return;
+          var s = JSON.parse(raw);
+          if (s && typeof s.primaryHsl === "string" && s.primaryHsl) {
+            document.documentElement.style.setProperty("--primary", s.primaryHsl);
+            document.documentElement.style.setProperty("--ring", s.primaryHsl);
+          }
+        } catch (e) { /* ignore */ }
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>
