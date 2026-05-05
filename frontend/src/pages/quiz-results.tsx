@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { PageHeader, Card, Button, Input, Label } from "@/components/shared";
 import { apiFetch } from "@/lib/utils";
 import { useAuth } from "@/hooks/use-auth";
-import { BarChart3, Filter, RefreshCw, Trophy, X, Search, Download } from "lucide-react";
+import { BarChart3, Filter, RefreshCw, Trophy, X, Search, Download, CheckCircle2, XCircle, FileText, Calendar, Eye } from "lucide-react";
 
 interface AttemptRow {
   id: number;
@@ -202,33 +202,21 @@ export default function QuizResults() {
           ? (filteredRows.length ? Math.round((passCount / filteredRows.length) * 100) : 0)
           : resp.summary.passRate;
         return (
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-4">
-            <Card>
-              <div className="flex items-center gap-3">
-                <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center"><BarChart3 className="h-5 w-5 text-primary" /></div>
-                <div>
-                  <p className="text-2xl font-bold">{count}</p>
-                  <p className="text-xs text-muted-foreground">{useFiltered ? "Matching attempts" : "Total attempts"}</p>
-                </div>
-              </div>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
+            <Card className="p-4 text-center">
+              <BarChart3 className="w-6 h-6 text-blue-600 mx-auto mb-1" />
+              <p className="text-2xl font-bold">{count}</p>
+              <p className="text-xs text-muted-foreground">{useFiltered ? "Matching attempts" : "Total attempts"}</p>
             </Card>
-            <Card>
-              <div className="flex items-center gap-3">
-                <div className="h-10 w-10 rounded-full bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center"><BarChart3 className="h-5 w-5 text-blue-600" /></div>
-                <div>
-                  <p className="text-2xl font-bold">{avg}%</p>
-                  <p className="text-xs text-muted-foreground">Average score</p>
-                </div>
-              </div>
+            <Card className="p-4 text-center">
+              <Trophy className="w-6 h-6 text-amber-600 mx-auto mb-1" />
+              <p className="text-2xl font-bold">{avg}%</p>
+              <p className="text-xs text-muted-foreground">Average score</p>
             </Card>
-            <Card>
-              <div className="flex items-center gap-3">
-                <div className="h-10 w-10 rounded-full bg-emerald-100 dark:bg-emerald-900/30 flex items-center justify-center"><Trophy className="h-5 w-5 text-emerald-600" /></div>
-                <div>
-                  <p className="text-2xl font-bold">{passRate}%</p>
-                  <p className="text-xs text-muted-foreground">Pass rate ({passCount} passed)</p>
-                </div>
-              </div>
+            <Card className="p-4 text-center">
+              <CheckCircle2 className="w-6 h-6 text-emerald-600 mx-auto mb-1" />
+              <p className="text-2xl font-bold">{passRate}%</p>
+              <p className="text-xs text-muted-foreground">Pass rate ({passCount} passed)</p>
             </Card>
           </div>
         );
@@ -309,73 +297,106 @@ export default function QuizResults() {
         </div>
       </Card>
 
-      <Card className="p-0 overflow-hidden">
-        {loading ? (
-          <div className="p-6 text-sm text-muted-foreground">Loading…</div>
-        ) : error ? (
-          <div className="p-6 text-sm text-destructive">{error}</div>
-        ) : !resp?.data.length ? (
-          <div className="p-12 text-center text-sm text-muted-foreground">
-            <BarChart3 className="h-10 w-10 mx-auto text-muted-foreground/40 mb-3" />
-            <p className="font-medium">No quiz attempts found</p>
-            <p className="text-xs mt-1">Try adjusting your filters above.</p>
-          </div>
-        ) : !filteredRows.length ? (
-          <div className="p-12 text-center text-sm text-muted-foreground">
-            <Search className="h-10 w-10 mx-auto text-muted-foreground/40 mb-3" />
-            <p className="font-medium">No results match "{search}"</p>
-            <button onClick={() => setSearch("")} className="text-xs text-primary hover:underline mt-2">
-              Clear search
-            </button>
-          </div>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead className="bg-muted/40 border-b">
-                <tr className="text-left">
-                  {isAdmin && <th className="px-4 py-2 font-medium">User</th>}
-                  {isAdmin && <th className="px-4 py-2 font-medium hidden md:table-cell">Site</th>}
-                  {isAdmin && <th className="px-4 py-2 font-medium hidden md:table-cell">Department</th>}
-                  <th className="px-4 py-2 font-medium">Document</th>
-                  <th className="px-4 py-2 font-medium">Category</th>
-                  <th className="px-4 py-2 font-medium text-right">Score</th>
-                  <th className="px-4 py-2 font-medium text-right">%</th>
-                  <th className="px-4 py-2 font-medium">Status</th>
-                  <th className="px-4 py-2 font-medium">Completed</th>
-                  <th className="px-4 py-2 font-medium"></th>
-                </tr>
-              </thead>
-              <tbody>
-                {filteredRows.map(a => (
-                  <tr key={a.id} className="border-b last:border-0 hover:bg-muted/20">
-                    {isAdmin && (
-                      <td className="px-4 py-2">
-                        <div className="font-medium">{a.user?.name ?? "—"}</div>
-                        <div className="text-xs text-muted-foreground">{a.user?.email ?? ""}</div>
-                      </td>
+      {loading ? (
+        <Card className="p-12 flex justify-center">
+          <div className="animate-spin w-6 h-6 border-3 border-primary border-t-transparent rounded-full" />
+        </Card>
+      ) : error ? (
+        <Card className="p-6 text-sm text-destructive">{error}</Card>
+      ) : !resp?.data.length ? (
+        <Card className="p-12 text-center">
+          <BarChart3 className="h-10 w-10 mx-auto text-muted-foreground/40 mb-3" />
+          <p className="font-medium text-sm">No quiz attempts found</p>
+          <p className="text-xs text-muted-foreground mt-1">Try adjusting your filters above.</p>
+        </Card>
+      ) : !filteredRows.length ? (
+        <Card className="p-12 text-center">
+          <Search className="h-10 w-10 mx-auto text-muted-foreground/40 mb-3" />
+          <p className="font-medium text-sm">No results match "{search}"</p>
+          <button onClick={() => setSearch("")} className="text-xs text-primary hover:underline mt-2">
+            Clear search
+          </button>
+        </Card>
+      ) : (
+        <div className="space-y-2">
+          {filteredRows.map(a => {
+            const initials = a.user?.name
+              ? a.user.name.split(/\s+/).map(p => p[0]).filter(Boolean).slice(0, 2).join("").toUpperCase()
+              : "—";
+            const accent = a.passed
+              ? "bg-emerald-100 text-emerald-700"
+              : "bg-rose-100 text-rose-700";
+            return (
+              <Card
+                key={a.id}
+                className="p-3 cursor-pointer hover:shadow-md transition-all"
+                onClick={() => openDetail(a.id)}
+              >
+                <div className="flex items-center justify-between gap-3 flex-wrap">
+                  <div className="flex items-center gap-3 min-w-0 flex-1">
+                    {isAdmin ? (
+                      <div className="w-9 h-9 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center font-bold text-xs shrink-0">
+                        {initials}
+                      </div>
+                    ) : (
+                      <div className="w-9 h-9 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center shrink-0">
+                        <FileText className="w-4 h-4" />
+                      </div>
                     )}
-                    {isAdmin && <td className="px-4 py-2 text-muted-foreground hidden md:table-cell">{a.site ?? "—"}</td>}
-                    {isAdmin && <td className="px-4 py-2 text-muted-foreground hidden md:table-cell">{a.department ?? "—"}</td>}
-                    <td className="px-4 py-2">{a.document?.title ?? `#${a.documentId}`}</td>
-                    <td className="px-4 py-2"><span className="text-xs px-1.5 py-0.5 rounded bg-muted">{a.document?.category ?? "—"}</span></td>
-                    <td className="px-4 py-2 text-right font-mono">{a.score}/{a.total}</td>
-                    <td className="px-4 py-2 text-right font-mono">{a.percent}%</td>
-                    <td className="px-4 py-2">
-                      <span className={`text-xs px-2 py-0.5 rounded-full ${a.passed ? "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-400" : "bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-400"}`}>
-                        {a.passed ? "Passed" : "Below pass"}
+                    <div className="min-w-0">
+                      {isAdmin && (
+                        <p className="font-semibold text-sm truncate">{a.user?.name ?? "—"}</p>
+                      )}
+                      <p className={`${isAdmin ? "text-xs text-muted-foreground" : "font-semibold text-sm"} truncate flex items-center gap-1.5`}>
+                        {!isAdmin && <FileText className="w-3.5 h-3.5 text-muted-foreground shrink-0" />}
+                        {isAdmin ? (a.user?.email ?? "") : (a.document?.title ?? `#${a.documentId}`)}
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="hidden md:flex items-center gap-2 min-w-0 flex-1">
+                    {isAdmin && (
+                      <div className="min-w-0">
+                        <p className="text-xs text-muted-foreground">Document</p>
+                        <p className="text-sm font-medium truncate">{a.document?.title ?? `#${a.documentId}`}</p>
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="flex items-center gap-2 flex-wrap">
+                    {a.document?.category && (
+                      <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-muted text-muted-foreground">
+                        {a.document.category}
                       </span>
-                    </td>
-                    <td className="px-4 py-2 text-muted-foreground">{new Date(a.completedAt).toLocaleString()}</td>
-                    <td className="px-4 py-2 text-right">
-                      <Button size="sm" variant="outline" onClick={() => openDetail(a.id)}>View</Button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </Card>
+                    )}
+                    {isAdmin && a.site && (
+                      <span className="hidden lg:inline text-[10px] font-medium px-2 py-0.5 rounded-full bg-purple-100 text-purple-700">
+                        {a.site}
+                      </span>
+                    )}
+                    <div className="flex items-center gap-1 text-xs text-muted-foreground">
+                      <Calendar className="w-3 h-3" />
+                      <span className="hidden sm:inline">{new Date(a.completedAt).toLocaleDateString()}</span>
+                    </div>
+                    <div className="text-sm font-mono font-semibold w-14 text-right">{a.percent}%</div>
+                    <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold ${accent}`}>
+                      {a.passed ? <CheckCircle2 className="w-3.5 h-3.5" /> : <XCircle className="w-3.5 h-3.5" />}
+                      {a.passed ? "Passed" : "Failed"}
+                    </span>
+                    <button
+                      onClick={(e) => { e.stopPropagation(); openDetail(a.id); }}
+                      className="p-1.5 rounded-md text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+                      title="View details"
+                    >
+                      <Eye className="w-4 h-4" />
+                    </button>
+                  </div>
+                </div>
+              </Card>
+            );
+          })}
+        </div>
+      )}
 
       {detail && (
         <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={() => setDetail(null)}>
