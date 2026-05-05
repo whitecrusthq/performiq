@@ -191,37 +191,48 @@ export default function QuizResults() {
         }
       />
 
-      {resp?.summary && (
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-4">
-          <Card>
-            <div className="flex items-center gap-3">
-              <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center"><BarChart3 className="h-5 w-5 text-primary" /></div>
-              <div>
-                <p className="text-2xl font-bold">{resp.summary.count}</p>
-                <p className="text-xs text-muted-foreground">Total attempts</p>
+      {resp?.summary && (() => {
+        const useFiltered = !!search.trim();
+        const count = useFiltered ? filteredRows.length : resp.summary.count;
+        const avg = useFiltered
+          ? (filteredRows.length ? Math.round(filteredRows.reduce((s, a) => s + a.percent, 0) / filteredRows.length) : 0)
+          : resp.summary.avgPercent;
+        const passCount = useFiltered ? filteredRows.filter(a => a.passed).length : resp.summary.passCount;
+        const passRate = useFiltered
+          ? (filteredRows.length ? Math.round((passCount / filteredRows.length) * 100) : 0)
+          : resp.summary.passRate;
+        return (
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-4">
+            <Card>
+              <div className="flex items-center gap-3">
+                <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center"><BarChart3 className="h-5 w-5 text-primary" /></div>
+                <div>
+                  <p className="text-2xl font-bold">{count}</p>
+                  <p className="text-xs text-muted-foreground">{useFiltered ? "Matching attempts" : "Total attempts"}</p>
+                </div>
               </div>
-            </div>
-          </Card>
-          <Card>
-            <div className="flex items-center gap-3">
-              <div className="h-10 w-10 rounded-full bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center"><BarChart3 className="h-5 w-5 text-blue-600" /></div>
-              <div>
-                <p className="text-2xl font-bold">{resp.summary.avgPercent}%</p>
-                <p className="text-xs text-muted-foreground">Average score</p>
+            </Card>
+            <Card>
+              <div className="flex items-center gap-3">
+                <div className="h-10 w-10 rounded-full bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center"><BarChart3 className="h-5 w-5 text-blue-600" /></div>
+                <div>
+                  <p className="text-2xl font-bold">{avg}%</p>
+                  <p className="text-xs text-muted-foreground">Average score</p>
+                </div>
               </div>
-            </div>
-          </Card>
-          <Card>
-            <div className="flex items-center gap-3">
-              <div className="h-10 w-10 rounded-full bg-emerald-100 dark:bg-emerald-900/30 flex items-center justify-center"><Trophy className="h-5 w-5 text-emerald-600" /></div>
-              <div>
-                <p className="text-2xl font-bold">{resp.summary.passRate}%</p>
-                <p className="text-xs text-muted-foreground">Pass rate ({resp.summary.passCount} passed)</p>
+            </Card>
+            <Card>
+              <div className="flex items-center gap-3">
+                <div className="h-10 w-10 rounded-full bg-emerald-100 dark:bg-emerald-900/30 flex items-center justify-center"><Trophy className="h-5 w-5 text-emerald-600" /></div>
+                <div>
+                  <p className="text-2xl font-bold">{passRate}%</p>
+                  <p className="text-xs text-muted-foreground">Pass rate ({passCount} passed)</p>
+                </div>
               </div>
-            </div>
-          </Card>
-        </div>
-      )}
+            </Card>
+          </div>
+        );
+      })()}
 
       <div className="mb-4 relative max-w-xl">
         <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none" />
@@ -291,8 +302,9 @@ export default function QuizResults() {
           </div>
           <div><Label>From</Label><Input type="date" value={filterFrom} onChange={e => setFilterFrom(e.target.value)} className="mt-1" /></div>
           <div><Label>To</Label><Input type="date" value={filterTo} onChange={e => setFilterTo(e.target.value)} className="mt-1" /></div>
-          <div className="flex items-end gap-2 sm:col-span-2 lg:col-span-1">
-            <Button onClick={() => setReloadKey(k => k + 1)} disabled={loading} className="flex-1">Apply filters</Button>
+          <div className="flex items-end gap-2">
+            <Button onClick={() => setReloadKey(k => k + 1)} disabled={loading}>Apply</Button>
+            <Button variant="outline" onClick={clearFilters}>Clear</Button>
           </div>
         </div>
       </Card>

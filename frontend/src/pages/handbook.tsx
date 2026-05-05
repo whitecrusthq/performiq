@@ -227,20 +227,18 @@ export default function Handbook() {
                         <ExternalLink className="h-3.5 w-3.5" /> Open
                       </a>
                       {isAdmin && (
-                        <div className="flex items-center gap-1">
+                        <div className="flex flex-wrap items-center gap-1.5">
                           <button
                             onClick={() => setEditing(d)}
-                            title="Edit document"
-                            className="p-1.5 rounded-md text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+                            className="inline-flex items-center gap-1 text-xs px-2 py-1 rounded-md border hover:bg-accent transition-colors"
                           >
-                            <Edit2 className="h-3.5 w-3.5" />
+                            <Edit2 className="h-3 w-3" /> Edit
                           </button>
                           <button
                             onClick={() => setManaging(d)}
-                            title="Manage quiz questions"
-                            className="p-1.5 rounded-md text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+                            className="inline-flex items-center gap-1 text-xs px-2 py-1 rounded-md border hover:bg-accent transition-colors"
                           >
-                            <HelpCircle className="h-3.5 w-3.5" />
+                            <HelpCircle className="h-3 w-3" /> Quiz Q
                           </button>
                           <button
                             onClick={async () => {
@@ -248,10 +246,9 @@ export default function Handbook() {
                               const r = await apiFetch(`/api/documents/${d.id}`, { method: "DELETE" });
                               if (r.ok) refresh(); else alert((await r.json()).error ?? "Delete failed");
                             }}
-                            title="Delete document"
-                            className="p-1.5 rounded-md text-muted-foreground hover:bg-destructive/10 hover:text-destructive transition-colors"
+                            className="inline-flex items-center gap-1 text-xs px-2 py-1 rounded-md border text-destructive hover:bg-destructive/10 transition-colors"
                           >
-                            <Trash2 className="h-3.5 w-3.5" />
+                            <Trash2 className="h-3 w-3" /> Delete
                           </button>
                         </div>
                       )}
