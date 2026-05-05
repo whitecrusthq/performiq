@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { PageHeader, Card, Button, Input, Label } from "@/components/shared";
 import { apiFetch } from "@/lib/utils";
 import { useAuth } from "@/hooks/use-auth";
-import { BarChart3, Filter, RefreshCw, Trophy, X, Search, Download, CheckCircle2, XCircle, FileText, Calendar, Eye } from "lucide-react";
+import { BarChart3, Filter, RefreshCw, Trophy, X, Search, Download, CheckCircle2, XCircle, FileText, Calendar, Eye, ChevronLeft, ChevronRight } from "lucide-react";
 
 interface AttemptRow {
   id: number;
@@ -60,6 +60,9 @@ export default function QuizResults() {
   const [filterFrom, setFilterFrom] = useState("");
   const [filterTo, setFilterTo] = useState("");
   const [search, setSearch] = useState("");
+
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState<25 | 50 | 100>(25);
 
   const [sites, setSites] = useState<{ id: number; name: string }[]>([]);
   const [departments, setDepartments] = useState<{ id: number; name: string }[]>([]);
@@ -132,6 +135,15 @@ export default function QuizResults() {
       (a.department ?? "").toLowerCase().includes(q)
     );
   }, [resp, search]);
+
+  const totalPages = Math.max(1, Math.ceil(filteredRows.length / pageSize));
+  const safePage = Math.min(page, totalPages);
+  const paginatedRows = useMemo(
+    () => filteredRows.slice((safePage - 1) * pageSize, safePage * pageSize),
+    [filteredRows, safePage, pageSize]
+  );
+
+  useEffect(() => { setPage(1); }, [search, pageSize, resp]);
 
   const activeFilterCount =
     (filterDoc ? 1 : 0) + (filterUser ? 1 : 0) + (filterSite ? 1 : 0) +
@@ -319,7 +331,7 @@ export default function QuizResults() {
         </Card>
       ) : (
         <div className="space-y-2">
-          {filteredRows.map(a => {
+          {paginatedRows.map(a => {
             const initials = a.user?.name
               ? a.user.name.split(/\s+/).map(p => p[0]).filter(Boolean).slice(0, 2).join("").toUpperCase()
               : "—";
@@ -395,6 +407,45 @@ export default function QuizResults() {
               </Card>
             );
           })}
+
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 pt-2">
+            <div className="flex items-center gap-2 text-xs text-muted-foreground">
+              <span>Rows per page</span>
+              <select
+                value={pageSize}
+                onChange={(e) => setPageSize(Number(e.target.value) as 25 | 50 | 100)}
+                className="h-8 rounded-md border border-input bg-background px-2 text-xs cursor-pointer"
+              >
+                <option value={25}>25</option>
+                <option value={50}>50</option>
+                <option value={100}>100</option>
+              </select>
+              <span className="ml-2">
+                {filteredRows.length === 0
+                  ? "0 results"
+                  : `${(safePage - 1) * pageSize + 1}–${Math.min(safePage * pageSize, filteredRows.length)} of ${filteredRows.length}`}
+              </span>
+            </div>
+            <div className="flex items-center gap-1">
+              <button
+                onClick={() => setPage(p => Math.max(1, p - 1))}
+                disabled={safePage <= 1}
+                className="inline-flex items-center gap-1 h-8 px-2 rounded-md border border-input text-xs hover:bg-accent disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                <ChevronLeft className="w-3.5 h-3.5" /> Prev
+              </button>
+              <span className="text-xs text-muted-foreground px-2">
+                Page {safePage} of {totalPages}
+              </span>
+              <button
+                onClick={() => setPage(p => Math.min(totalPages, p + 1))}
+                disabled={safePage >= totalPages}
+                className="inline-flex items-center gap-1 h-8 px-2 rounded-md border border-input text-xs hover:bg-accent disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                Next <ChevronRight className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          </div>
         </div>
       )}
 
