@@ -21,6 +21,19 @@ const defaults: AppSettings = {
   loginSubtext: "PerformIQ streamlines appraisals, goals, and feedback into one elegant platform.",
 };
 
+const CACHE_KEY = "performiq.appSettings";
+
+function readCachedSettings(): AppSettings {
+  try {
+    const raw = localStorage.getItem(CACHE_KEY);
+    if (!raw) return defaults;
+    const cached = JSON.parse(raw);
+    return { ...defaults, ...cached };
+  } catch {
+    return defaults;
+  }
+}
+
 const AppSettingsContext = createContext<{
   settings: AppSettings;
   reload: () => void;
@@ -32,7 +45,9 @@ function applyTheme(hsl: string) {
 }
 
 export function AppSettingsProvider({ children }: { children: ReactNode }) {
-  const [settings, setSettings] = useState<AppSettings>(defaults);
+  // Seed from localStorage so the first render already shows the user's
+  // saved company name, logo letter, and theme — no flash of defaults.
+  const [settings, setSettings] = useState<AppSettings>(readCachedSettings);
 
   const load = () => {
     apiFetch("/api/app-settings")
@@ -50,12 +65,18 @@ export function AppSettingsProvider({ children }: { children: ReactNode }) {
           };
           setSettings(s);
           applyTheme(s.primaryHsl);
+          try { localStorage.setItem(CACHE_KEY, JSON.stringify(s)); } catch { /* ignore quota */ }
         }
       })
       .catch(() => {});
   };
 
-  useEffect(() => { load(); }, []);
+  useEffect(() => {
+    // Re-apply the cached theme on mount in case the inline bootstrap script
+    // didn't run (e.g. localStorage was cleared between then and React mount).
+    applyTheme(settings.primaryHsl);
+    load();
+  }, []);
 
   return (
     <AppSettingsContext.Provider value={{ settings, reload: load }}>
