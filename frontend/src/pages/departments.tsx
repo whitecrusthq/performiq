@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { PageHeader, Card, Button, Input, Label } from "@/components/shared";
-import { Building2, Plus, Edit, Trash2, X, Users } from "lucide-react";
+import { Building2, Plus, Edit, Trash2, X, Users, Search } from "lucide-react";
 import { BulkActionBar } from "@/components/bulk-action-bar";
 import { useAuth } from "@/hooks/use-auth";
 import { apiFetch } from "@/lib/utils";
@@ -80,6 +80,13 @@ export default function Departments() {
 
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
   const [bulkDeleting, setBulkDeleting] = useState(false);
+  const [search, setSearch] = useState("");
+
+  const filteredDepartments = departments.filter(d => {
+    if (!search.trim()) return true;
+    const q = search.trim().toLowerCase();
+    return d.name.toLowerCase().includes(q) || (d.description ?? "").toLowerCase().includes(q);
+  });
 
   const toggleSelect = (id: number) => setSelectedIds(prev => {
     const next = new Set(prev);
@@ -88,8 +95,8 @@ export default function Departments() {
   });
 
   const toggleAll = () => {
-    if (selectedIds.size === departments.length) setSelectedIds(new Set());
-    else setSelectedIds(new Set(departments.map(d => d.id)));
+    if (selectedIds.size === filteredDepartments.length) setSelectedIds(new Set());
+    else setSelectedIds(new Set(filteredDepartments.map(d => d.id)));
   };
 
   const handleBulkDelete = async () => {
@@ -125,9 +132,30 @@ export default function Departments() {
 
       {!loading && departments.length > 0 && (
         <>
+          <div className="mb-4 relative max-w-md">
+            <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none" />
+            <input
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              placeholder="Search departments by name or description…"
+              className="w-full pl-9 pr-9 py-2 rounded-xl border border-border bg-background text-sm outline-none focus:ring-2 focus:ring-primary/20"
+            />
+            {search && (
+              <button onClick={() => setSearch("")} className="absolute right-2 top-1/2 -translate-y-1/2 p-1 rounded-md text-muted-foreground hover:bg-muted">
+                <X className="w-3.5 h-3.5" />
+              </button>
+            )}
+          </div>
           <BulkActionBar count={selectedIds.size} onDelete={handleBulkDelete} onClear={() => setSelectedIds(new Set())} deleting={bulkDeleting} />
+          {filteredDepartments.length === 0 ? (
+            <Card className="p-12 text-center">
+              <Search className="w-10 h-10 mx-auto text-muted-foreground/40 mb-3" />
+              <p className="text-muted-foreground font-medium">No departments match "{search}"</p>
+              <button onClick={() => setSearch("")} className="text-sm text-primary hover:underline mt-2">Clear search</button>
+            </Card>
+          ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-            {departments.map(d => (
+            {filteredDepartments.map(d => (
               <Card key={d.id} className={`p-5 flex flex-col gap-3 ${selectedIds.has(d.id) ? "ring-2 ring-primary/30" : ""}`}>
                 <div className="flex items-start justify-between gap-2">
                   <div className="flex items-start gap-2 min-w-0">
@@ -172,6 +200,7 @@ export default function Departments() {
             </Card>
           ))}
           </div>
+          )}
         </>
       )}
 

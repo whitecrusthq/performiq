@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { PageHeader, Card, Button, Input, Label, EmptyState } from "@/components/shared";
-import { Shield, Plus, Edit, Trash2, X, LayoutDashboard, ClipboardList, Target, RefreshCcw, ListChecks, Users, BarChart3, Building2, MapPin, CalendarDays, Clock, ClipboardCheck, UserPlus, TrendingUp, CalendarClock, UserCog, Settings, BookOpen, IdCard, Briefcase, ArrowRightLeft, MessageSquareWarning, Award, ShieldAlert, Bell, Paintbrush, Sparkles, Brain } from "lucide-react";
+import { Shield, Plus, Edit, Trash2, X, LayoutDashboard, ClipboardList, Target, RefreshCcw, ListChecks, Users, BarChart3, Building2, MapPin, CalendarDays, Clock, ClipboardCheck, UserPlus, TrendingUp, CalendarClock, UserCog, Settings, BookOpen, IdCard, Briefcase, ArrowRightLeft, MessageSquareWarning, Award, ShieldAlert, Bell, Paintbrush, Sparkles, Brain, Search } from "lucide-react";
 import { BulkActionBar } from "@/components/bulk-action-bar";
 import { useAuth } from "@/hooks/use-auth";
 import { apiFetch } from "@/lib/utils";
@@ -150,6 +150,15 @@ export default function Roles() {
 
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
   const [bulkDeleting, setBulkDeleting] = useState(false);
+  const [search, setSearch] = useState("");
+
+  const filteredRoles = roles.filter(r => {
+    if (!search.trim()) return true;
+    const q = search.trim().toLowerCase();
+    return r.name.toLowerCase().includes(q)
+      || r.permissionLevel.toLowerCase().includes(q)
+      || (r.description ?? "").toLowerCase().includes(q);
+  });
 
   const toggleSelect = (id: number) => setSelectedIds(prev => {
     const next = new Set(prev);
@@ -158,8 +167,8 @@ export default function Roles() {
   });
 
   const toggleAll = () => {
-    if (selectedIds.size === roles.length) setSelectedIds(new Set());
-    else setSelectedIds(new Set(roles.map(r => r.id)));
+    if (selectedIds.size === filteredRoles.length) setSelectedIds(new Set());
+    else setSelectedIds(new Set(filteredRoles.map(r => r.id)));
   };
 
   const handleBulkDelete = async () => {
@@ -192,6 +201,23 @@ export default function Roles() {
         ))}
       </div>
 
+      {roles.length > 0 && (
+        <div className="mb-4 relative max-w-md">
+          <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none" />
+          <input
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            placeholder="Search roles by name, level, or description…"
+            className="w-full pl-9 pr-9 py-2 rounded-xl border border-border bg-background text-sm outline-none focus:ring-2 focus:ring-primary/20"
+          />
+          {search && (
+            <button onClick={() => setSearch("")} className="absolute right-2 top-1/2 -translate-y-1/2 p-1 rounded-md text-muted-foreground hover:bg-muted">
+              <X className="w-3.5 h-3.5" />
+            </button>
+          )}
+        </div>
+      )}
+
       <BulkActionBar count={selectedIds.size} onDelete={handleBulkDelete} onClear={() => setSelectedIds(new Set())} deleting={bulkDeleting} />
 
       <Card className="overflow-hidden">
@@ -201,6 +227,12 @@ export default function Roles() {
             description="Create roles like 'HR Manager' or 'Finance Admin' and control exactly which menus they can access."
             icon={Shield}
           />
+        ) : filteredRoles.length === 0 ? (
+          <div className="p-12 text-center">
+            <Search className="w-10 h-10 mx-auto text-muted-foreground/40 mb-3" />
+            <p className="text-muted-foreground font-medium">No roles match "{search}"</p>
+            <button onClick={() => setSearch("")} className="text-sm text-primary hover:underline mt-2">Clear search</button>
+          </div>
         ) : (
           <div className="overflow-x-auto"><table className="w-full text-left border-collapse min-w-[640px]">
             <thead>
@@ -208,7 +240,7 @@ export default function Roles() {
                 <th className="p-4 w-10">
                   <input
                     type="checkbox"
-                    checked={roles.length > 0 && selectedIds.size === roles.length}
+                    checked={filteredRoles.length > 0 && selectedIds.size === filteredRoles.length}
                     onChange={toggleAll}
                     className="w-4 h-4 accent-primary cursor-pointer"
                   />
@@ -221,7 +253,7 @@ export default function Roles() {
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
-              {roles.map(r => {
+              {filteredRoles.map(r => {
                 const pl = PERMISSION_LEVELS.find(p => p.value === r.permissionLevel);
                 const menuCount = r.menuPermissions?.length ?? 0;
                 return (

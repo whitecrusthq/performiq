@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { useListCriteria, useCreateCriterion, useUpdateCriterion, useDeleteCriterion } from "../lib";
 import { useQueryClient } from "@tanstack/react-query";
 import { PageHeader, Card, Button, Input, Label, EmptyState } from "@/components/shared";
-import { ListChecks, Plus, X, Trash2, Edit2, Layers, ChevronRight } from "lucide-react";
+import { ListChecks, Plus, X, Trash2, Edit2, Layers, ChevronRight, Search } from "lucide-react";
 import { BulkActionBar } from "@/components/bulk-action-bar";
 import { useAuth } from "@/hooks/use-auth";
 import { apiFetch } from "@/lib/utils";
@@ -43,6 +43,7 @@ export default function Criteria() {
   const deleteMutation = useDeleteCriterion({ request: { headers: authHeader() } });
 
   const [activeTab, setActiveTab] = useState<"criteria" | "groups">("criteria");
+  const [search, setSearch] = useState("");
 
   // ── Criterion form ──────────────────────────────────────────────────
   const [isDialogOpen, setIsDialogOpen] = useState(false);
@@ -173,10 +174,25 @@ export default function Criteria() {
   if (isLoading) return <div className="p-8">Loading criteria...</div>;
   if (user?.role !== "admin" && user?.role !== "super_admin") return <div className="p-8 text-destructive">Unauthorized</div>;
 
-  const grouped = criteria?.reduce((acc, curr) => {
+  const matchesSearch = (text: any) => {
+    if (!search.trim()) return true;
+    const q = search.trim().toLowerCase();
+    return String(text ?? "").toLowerCase().includes(q);
+  };
+  const filteredCriteria = (criteria ?? []).filter((c: any) =>
+    !search.trim() ||
+    matchesSearch(c.name) || matchesSearch(c.description) || matchesSearch(c.category) || matchesSearch(c.type)
+  );
+  const filteredGroups = groups.filter(g =>
+    !search.trim() ||
+    matchesSearch(g.name) || matchesSearch(g.description) ||
+    g.criteria.some((c: any) => matchesSearch(c.name))
+  );
+
+  const grouped = filteredCriteria.reduce((acc, curr: any) => {
     (acc[curr.category] = acc[curr.category] || []).push(curr);
     return acc;
-  }, {} as Record<string, typeof criteria>);
+  }, {} as Record<string, any[]>);
 
   return (
     <div>
@@ -197,16 +213,32 @@ export default function Criteria() {
       </PageHeader>
 
       {/* Tabs */}
-      <div className="flex gap-1 mb-6 bg-muted p-1 rounded-xl w-fit">
-        {(["criteria", "groups"] as const).map(t => (
-          <button
-            key={t}
-            onClick={() => setActiveTab(t)}
-            className={`px-4 py-2 rounded-lg text-sm font-medium transition-all capitalize ${activeTab === t ? "bg-card shadow text-foreground" : "text-muted-foreground hover:text-foreground"}`}
-          >
-            {t === "criteria" ? <><ListChecks className="w-4 h-4 inline mr-1.5 -mt-0.5" />Criteria</> : <><Layers className="w-4 h-4 inline mr-1.5 -mt-0.5" />Groups</>}
-          </button>
-        ))}
+      <div className="flex flex-wrap items-center gap-3 mb-6">
+        <div className="flex gap-1 bg-muted p-1 rounded-xl w-fit">
+          {(["criteria", "groups"] as const).map(t => (
+            <button
+              key={t}
+              onClick={() => setActiveTab(t)}
+              className={`px-4 py-2 rounded-lg text-sm font-medium transition-all capitalize ${activeTab === t ? "bg-card shadow text-foreground" : "text-muted-foreground hover:text-foreground"}`}
+            >
+              {t === "criteria" ? <><ListChecks className="w-4 h-4 inline mr-1.5 -mt-0.5" />Criteria</> : <><Layers className="w-4 h-4 inline mr-1.5 -mt-0.5" />Groups</>}
+            </button>
+          ))}
+        </div>
+        <div className="relative flex-1 min-w-[200px] max-w-md">
+          <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none" />
+          <input
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            placeholder={activeTab === "criteria" ? "Search criteria by name, category, type…" : "Search groups by name or contained criteria…"}
+            className="w-full pl-9 pr-9 py-2 rounded-xl border border-border bg-background text-sm outline-none focus:ring-2 focus:ring-primary/20"
+          />
+          {search && (
+            <button onClick={() => setSearch("")} className="absolute right-2 top-1/2 -translate-y-1/2 p-1 rounded-md text-muted-foreground hover:bg-muted">
+              <X className="w-3.5 h-3.5" />
+            </button>
+          )}
+        </div>
       </div>
 
       {/* ── CRITERIA TAB ── */}
@@ -215,6 +247,12 @@ export default function Criteria() {
           <BulkActionBar count={selectedCritIds.size} onDelete={() => handleBulkDeleteCrit(criteria ?? [])} onClear={() => setSelectedCritIds(new Set())} deleting={bulkDeleting} />
           {!criteria?.length ? (
             <EmptyState title="No criteria defined" description="Add evaluation metrics to build the appraisal rubrics." icon={ListChecks} />
+          ) : filteredCriteria.length === 0 ? (
+            <Card className="p-12 text-center">
+              <Search className="w-10 h-10 mx-auto text-muted-foreground/40 mb-3" />
+              <p className="text-muted-foreground font-medium">No criteria match "{search}"</p>
+              <button onClick={() => setSearch("")} className="text-sm text-primary hover:underline mt-2">Clear search</button>
+            </Card>
           ) : (
             <div className="space-y-8">
               {Object.entries(grouped || {}).map(([category, items]) => (
@@ -284,9 +322,15 @@ export default function Criteria() {
             <div className="p-8 text-muted-foreground">Loading groups...</div>
           ) : groups.length === 0 ? (
             <EmptyState title="No criteria groups" description="Create groups to bundle criteria together and assign them to appraisals." icon={Layers} />
+          ) : filteredGroups.length === 0 ? (
+            <Card className="p-12 text-center">
+              <Search className="w-10 h-10 mx-auto text-muted-foreground/40 mb-3" />
+              <p className="text-muted-foreground font-medium">No groups match "{search}"</p>
+              <button onClick={() => setSearch("")} className="text-sm text-primary hover:underline mt-2">Clear search</button>
+            </Card>
           ) : (
             <div className="space-y-3">
-              {groups.map(g => (
+              {filteredGroups.map(g => (
                 <Card key={g.id} className="overflow-hidden">
                   <div
                     className="flex items-center justify-between p-5 cursor-pointer hover:bg-muted/30 transition-colors"
