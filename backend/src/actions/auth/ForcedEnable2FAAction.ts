@@ -33,15 +33,17 @@ export class ForcedEnable2FAAction {
       const backupCodes = generateBackupCodes(10);
       const hashed = await hashBackupCodes(backupCodes);
 
+      const nextTokenVersion = ((user as any).tokenVersion ?? 0) + 1;
       await User.update({
         twoFactorSecret: user.twoFactorPendingSecret,
         twoFactorPendingSecret: null,
         twoFactorEnabled: true,
         twoFactorBackupCodes: JSON.stringify(hashed),
+        tokenVersion: nextTokenVersion,
       }, { where: { id: user.id } });
 
       const customRole = user.customRoleId ? await CustomRole.findByPk(user.customRoleId) : null;
-      const token = generateToken({ id: user.id, role: user.role, email: user.email, customRoleName: customRole?.name ?? null });
+      const token = generateToken({ id: user.id, role: user.role, email: user.email, customRoleName: customRole?.name ?? null, tokenVersion: nextTokenVersion });
 
       const reloaded = await User.findByPk(user.id);
       recordAuthEvent(req, {
