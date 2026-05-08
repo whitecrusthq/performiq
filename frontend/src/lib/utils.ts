@@ -10,9 +10,9 @@ const getAuthHeader = (): Record<string, string> => {
   return token ? { Authorization: `Bearer ${token}` } : {};
 };
 
-export function apiFetch(path: string, init?: RequestInit): Promise<Response> {
+export async function apiFetch(path: string, init?: RequestInit): Promise<Response> {
   const base = (import.meta.env.VITE_API_URL || "").replace(/\/+$/, "");
-  return fetch(`${base}${path}`, {
+  const r = await fetch(`${base}${path}`, {
     ...init,
     headers: {
       "Content-Type": "application/json",
@@ -20,4 +20,22 @@ export function apiFetch(path: string, init?: RequestInit): Promise<Response> {
       ...(init?.headers ?? {}),
     },
   });
+  // Global session-invalidation handler: if the backend rejects the token
+  // because another login replaced this session, surface it to the auth layer
+  // so the user is bounced to /login with a clear notice.
+  if (r.status === 401 && localStorage.getItem("token") && !path.startsWith("/api/auth/")) {
+    let reason: string | null = null;
+    try {
+      const cloned = r.clone();
+      const body = await cloned.json();
+      reason = body?.reason ?? null;
+    } catch { /* not JSON */ }
+    if (reason === "session_replaced") {
+      sessionStorage.setItem("authNotice", "session_replaced");
+    } else {
+      sessionStorage.setItem("authNotice", "session_expired");
+    }
+    window.dispatchEvent(new CustomEvent("auth:invalid"));
+  }
+  return r;
 }

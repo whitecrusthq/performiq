@@ -46,6 +46,18 @@ async function getCustomRole(user: User) {
   return cr ?? null;
 }
 
+/**
+ * Single-active-session enforcement: bump tokenVersion so any previously-issued
+ * JWT for this user is immediately rejected by requireAuth on the next request.
+ * Returns the new tokenVersion to embed in the freshly-minted JWT.
+ */
+async function rotateSession(userId: number): Promise<number> {
+  const u = await User.findByPk(userId, { attributes: ["id", "tokenVersion"] });
+  const next = ((u?.tokenVersion as number) ?? 0) + 1;
+  await User.update({ tokenVersion: next }, { where: { id: userId } });
+  return next;
+}
+
 export default class AuthController {
   static async login(email: string, password: string) {
     const user = await User.findOne({ where: { email: email.toLowerCase().trim() } });
@@ -109,7 +121,8 @@ export default class AuthController {
     }
 
     const customRole = await getCustomRole(user);
-    const token = generateToken({ id: user.id, role: user.role, email: user.email, customRoleName: customRole?.name ?? null });
+    const tokenVersion = await rotateSession(user.id);
+    const token = generateToken({ id: user.id, role: user.role, email: user.email, customRoleName: customRole?.name ?? null, tokenVersion });
     return { token, user: formatAuthUser(user, customRole) };
   }
 
@@ -122,7 +135,8 @@ export default class AuthController {
     const user = await User.findOne({ where: { email: email.toLowerCase().trim() } });
     if (!user) return { error: "User not found", status: 404 };
     const customRole = await getCustomRole(user);
-    const token = generateToken({ id: user.id, role: user.role, email: user.email, customRoleName: customRole?.name ?? null });
+    const tokenVersion = await rotateSession(user.id);
+    const token = generateToken({ id: user.id, role: user.role, email: user.email, customRoleName: customRole?.name ?? null, tokenVersion });
     return { token, user: formatAuthUser(user, customRole) };
   }
 
@@ -149,7 +163,8 @@ export default class AuthController {
     }
 
     const customRole = await getCustomRole(user);
-    const token = generateToken({ id: user.id, role: user.role, email: user.email, customRoleName: customRole?.name ?? null });
+    const tokenVersion = await rotateSession(user.id);
+    const token = generateToken({ id: user.id, role: user.role, email: user.email, customRoleName: customRole?.name ?? null, tokenVersion });
     return { token, user: formatAuthUser(user, customRole) };
   }
 
