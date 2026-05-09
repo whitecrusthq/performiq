@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { PageHeader, Card, Button, Input, Label } from "@/components/shared";
-import { ArrowRightLeft, Plus, X, CheckCircle2, XCircle, Clock, Ban, MapPin, Building2, Calendar, User, ChevronDown } from "lucide-react";
+import { ArrowRightLeft, Plus, X, CheckCircle2, XCircle, Clock, Ban, MapPin, Building2, Calendar, User, ChevronDown, Search } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
 import { apiFetch } from "@/lib/utils";
 
@@ -65,6 +65,7 @@ export default function Transfers() {
   const [mutationError, setMutationError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [expandedId, setExpandedId] = useState<number | null>(null);
+  const [search, setSearch] = useState("");
   const [form, setForm] = useState({
     employeeId: "",
     fromSiteId: "",
@@ -175,7 +176,19 @@ export default function Transfers() {
     load();
   };
 
-  const filtered = filterStatus === "all" ? transfers : transfers.filter(t => t.status === filterStatus);
+  const statusFiltered = filterStatus === "all" ? transfers : transfers.filter(t => t.status === filterStatus);
+  const filtered = !search.trim() ? statusFiltered : statusFiltered.filter(t => {
+    const q = search.trim().toLowerCase();
+    return [
+      t.employee?.name,
+      t.fromSite?.name,
+      t.toSite?.name,
+      t.fromDepartment,
+      t.toDepartment,
+      t.reason,
+      t.requestedBy?.name,
+    ].filter(Boolean).some(v => (v as string).toLowerCase().includes(q));
+  });
 
   return (
     <div>
@@ -184,6 +197,21 @@ export default function Transfers() {
           <Plus className="w-4 h-4 mr-2" /> New Transfer
         </Button>
       </PageHeader>
+
+      <div className="mb-4 relative max-w-md">
+        <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none" />
+        <input
+          value={search}
+          onChange={e => setSearch(e.target.value)}
+          placeholder="Search by employee, site, department, reason…"
+          className="w-full pl-9 pr-9 py-2 rounded-xl border border-border bg-background text-sm outline-none focus:ring-2 focus:ring-primary/20"
+        />
+        {search && (
+          <button onClick={() => setSearch("")} className="absolute right-2 top-1/2 -translate-y-1/2 p-1 rounded-md text-muted-foreground hover:bg-muted">
+            <X className="w-3.5 h-3.5" />
+          </button>
+        )}
+      </div>
 
       <div className="flex flex-wrap gap-2 mb-6">
         {["all", "pending", "approved", "rejected", "cancelled"].map(s => (

@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { PageHeader, Card, Button, Input, Label } from "@/components/shared";
 import { apiFetch } from "@/lib/utils";
 import { useAuth } from "@/hooks/use-auth";
-import { BarChart3, Filter, RefreshCw, Trophy, X } from "lucide-react";
+import { BarChart3, Filter, RefreshCw, Trophy, X, Search, Download, CheckCircle2, XCircle, FileText, Calendar, Eye, ChevronLeft, ChevronRight } from "lucide-react";
 
 interface AttemptRow {
   id: number;
@@ -59,6 +59,10 @@ export default function QuizResults() {
   const [filterDept, setFilterDept] = useState("");
   const [filterFrom, setFilterFrom] = useState("");
   const [filterTo, setFilterTo] = useState("");
+  const [search, setSearch] = useState("");
+
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState<25 | 50 | 100>(25);
 
   const [sites, setSites] = useState<{ id: number; name: string }[]>([]);
   const [departments, setDepartments] = useState<{ id: number; name: string }[]>([]);
@@ -114,8 +118,70 @@ export default function QuizResults() {
 
   function clearFilters() {
     setFilterDoc(""); setFilterUser(""); setFilterSite(""); setFilterDept("");
-    setFilterFrom(""); setFilterTo("");
+    setFilterFrom(""); setFilterTo(""); setSearch("");
     setReloadKey(k => k + 1);
+  }
+
+  const filteredRows = useMemo(() => {
+    if (!resp?.data) return [];
+    const q = search.trim().toLowerCase();
+    if (!q) return resp.data;
+    return resp.data.filter(a =>
+      (a.user?.name ?? "").toLowerCase().includes(q) ||
+      (a.user?.email ?? "").toLowerCase().includes(q) ||
+      (a.document?.title ?? "").toLowerCase().includes(q) ||
+      (a.document?.category ?? "").toLowerCase().includes(q) ||
+      (a.site ?? "").toLowerCase().includes(q) ||
+      (a.department ?? "").toLowerCase().includes(q)
+    );
+  }, [resp, search]);
+
+  const totalPages = Math.max(1, Math.ceil(filteredRows.length / pageSize));
+  const safePage = Math.min(page, totalPages);
+  const paginatedRows = useMemo(
+    () => filteredRows.slice((safePage - 1) * pageSize, safePage * pageSize),
+    [filteredRows, safePage, pageSize]
+  );
+
+  useEffect(() => { setPage(1); }, [search, pageSize, resp]);
+
+  const activeFilterCount =
+    (filterDoc ? 1 : 0) + (filterUser ? 1 : 0) + (filterSite ? 1 : 0) +
+    (filterDept ? 1 : 0) + (filterFrom ? 1 : 0) + (filterTo ? 1 : 0);
+
+  function exportCSV() {
+    if (!filteredRows.length) return;
+    const headers = isAdmin
+      ? ["User", "Email", "Site", "Department", "Document", "Category", "Score", "Total", "Percent", "Passed", "Completed"]
+      : ["Document", "Category", "Score", "Total", "Percent", "Passed", "Completed"];
+    const rows = filteredRows.map(a => {
+      const base = [
+        a.document?.title ?? `#${a.documentId}`,
+        a.document?.category ?? "",
+        String(a.score),
+        String(a.total),
+        `${a.percent}%`,
+        a.passed ? "Yes" : "No",
+        new Date(a.completedAt).toISOString(),
+      ];
+      if (!isAdmin) return base;
+      return [
+        a.user?.name ?? "",
+        a.user?.email ?? "",
+        a.site ?? "",
+        a.department ?? "",
+        ...base,
+      ];
+    });
+    const escape = (v: string) => /[",\n]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v;
+    const csv = [headers, ...rows].map(r => r.map(escape).join(",")).join("\n");
+    const blob = new Blob(["\uFEFF" + csv], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `quiz-results-${new Date().toISOString().slice(0, 10)}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
   }
 
   return (
@@ -125,43 +191,80 @@ export default function QuizResults() {
         description={isAdmin
           ? "Every quiz attempt across the company. Use the filters to drill in by user, document, or date."
           : "All your past quiz attempts and scores."}
-        action={<Button variant="outline" onClick={() => setReloadKey(k => k + 1)} disabled={loading}><RefreshCw className="h-4 w-4 mr-1.5" /> Refresh</Button>}
+        action={
+          <div className="flex items-center gap-2">
+            <Button variant="outline" onClick={exportCSV} disabled={!filteredRows.length}>
+              <Download className="h-4 w-4 mr-1.5" /> Export CSV
+            </Button>
+            <Button variant="outline" onClick={() => setReloadKey(k => k + 1)} disabled={loading}>
+              <RefreshCw className="h-4 w-4 mr-1.5" /> Refresh
+            </Button>
+          </div>
+        }
       />
 
-      {resp?.summary && (
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-4">
-          <Card>
-            <div className="flex items-center gap-3">
-              <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center"><BarChart3 className="h-5 w-5 text-primary" /></div>
-              <div>
-                <p className="text-2xl font-bold">{resp.summary.count}</p>
-                <p className="text-xs text-muted-foreground">Total attempts</p>
-              </div>
-            </div>
-          </Card>
-          <Card>
-            <div className="flex items-center gap-3">
-              <div className="h-10 w-10 rounded-full bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center"><BarChart3 className="h-5 w-5 text-blue-600" /></div>
-              <div>
-                <p className="text-2xl font-bold">{resp.summary.avgPercent}%</p>
-                <p className="text-xs text-muted-foreground">Average score</p>
-              </div>
-            </div>
-          </Card>
-          <Card>
-            <div className="flex items-center gap-3">
-              <div className="h-10 w-10 rounded-full bg-emerald-100 dark:bg-emerald-900/30 flex items-center justify-center"><Trophy className="h-5 w-5 text-emerald-600" /></div>
-              <div>
-                <p className="text-2xl font-bold">{resp.summary.passRate}%</p>
-                <p className="text-xs text-muted-foreground">Pass rate ({resp.summary.passCount} passed)</p>
-              </div>
-            </div>
-          </Card>
-        </div>
-      )}
+      {resp?.summary && (() => {
+        const useFiltered = !!search.trim();
+        const count = useFiltered ? filteredRows.length : resp.summary.count;
+        const avg = useFiltered
+          ? (filteredRows.length ? Math.round(filteredRows.reduce((s, a) => s + a.percent, 0) / filteredRows.length) : 0)
+          : resp.summary.avgPercent;
+        const passCount = useFiltered ? filteredRows.filter(a => a.passed).length : resp.summary.passCount;
+        const passRate = useFiltered
+          ? (filteredRows.length ? Math.round((passCount / filteredRows.length) * 100) : 0)
+          : resp.summary.passRate;
+        return (
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
+            <Card className="p-4 text-center">
+              <BarChart3 className="w-6 h-6 text-blue-600 mx-auto mb-1" />
+              <p className="text-2xl font-bold">{count}</p>
+              <p className="text-xs text-muted-foreground">{useFiltered ? "Matching attempts" : "Total attempts"}</p>
+            </Card>
+            <Card className="p-4 text-center">
+              <Trophy className="w-6 h-6 text-amber-600 mx-auto mb-1" />
+              <p className="text-2xl font-bold">{avg}%</p>
+              <p className="text-xs text-muted-foreground">Average score</p>
+            </Card>
+            <Card className="p-4 text-center">
+              <CheckCircle2 className="w-6 h-6 text-emerald-600 mx-auto mb-1" />
+              <p className="text-2xl font-bold">{passRate}%</p>
+              <p className="text-xs text-muted-foreground">Pass rate ({passCount} passed)</p>
+            </Card>
+          </div>
+        );
+      })()}
+
+      <div className="mb-4 relative max-w-xl">
+        <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none" />
+        <input
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          placeholder="Search results by user, document, category, site or department…"
+          className="w-full pl-9 pr-9 py-2 rounded-xl border border-border bg-background text-sm outline-none focus:ring-2 focus:ring-primary/20"
+        />
+        {search && (
+          <button onClick={() => setSearch("")} className="absolute right-2 top-1/2 -translate-y-1/2 p-1 rounded-md text-muted-foreground hover:bg-muted">
+            <X className="w-3.5 h-3.5" />
+          </button>
+        )}
+      </div>
 
       <Card className="mb-4">
-        <div className="flex items-center gap-2 mb-3 text-sm font-medium"><Filter className="h-4 w-4" /> Filters</div>
+        <div className="flex items-center justify-between mb-3">
+          <div className="flex items-center gap-2 text-sm font-medium">
+            <Filter className="h-4 w-4" /> Filters
+            {activeFilterCount > 0 && (
+              <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-primary/10 text-primary">
+                {activeFilterCount} active
+              </span>
+            )}
+          </div>
+          {activeFilterCount > 0 && (
+            <button onClick={clearFilters} className="text-xs text-muted-foreground hover:text-foreground hover:underline">
+              Clear all
+            </button>
+          )}
+        </div>
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
           {isAdmin && (
             <div>
@@ -206,61 +309,145 @@ export default function QuizResults() {
         </div>
       </Card>
 
-      <Card className="p-0 overflow-hidden">
-        {loading ? (
-          <div className="p-6 text-sm text-muted-foreground">Loading…</div>
-        ) : error ? (
-          <div className="p-6 text-sm text-destructive">{error}</div>
-        ) : !resp?.data.length ? (
-          <div className="p-6 text-sm text-muted-foreground">No quiz attempts found.</div>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead className="bg-muted/40 border-b">
-                <tr className="text-left">
-                  {isAdmin && <th className="px-4 py-2 font-medium">User</th>}
-                  {isAdmin && <th className="px-4 py-2 font-medium hidden md:table-cell">Site</th>}
-                  {isAdmin && <th className="px-4 py-2 font-medium hidden md:table-cell">Department</th>}
-                  <th className="px-4 py-2 font-medium">Document</th>
-                  <th className="px-4 py-2 font-medium">Category</th>
-                  <th className="px-4 py-2 font-medium text-right">Score</th>
-                  <th className="px-4 py-2 font-medium text-right">%</th>
-                  <th className="px-4 py-2 font-medium">Status</th>
-                  <th className="px-4 py-2 font-medium">Completed</th>
-                  <th className="px-4 py-2 font-medium"></th>
-                </tr>
-              </thead>
-              <tbody>
-                {resp.data.map(a => (
-                  <tr key={a.id} className="border-b last:border-0 hover:bg-muted/20">
-                    {isAdmin && (
-                      <td className="px-4 py-2">
-                        <div className="font-medium">{a.user?.name ?? "—"}</div>
-                        <div className="text-xs text-muted-foreground">{a.user?.email ?? ""}</div>
-                      </td>
+      {loading ? (
+        <Card className="p-12 flex justify-center">
+          <div className="animate-spin w-6 h-6 border-3 border-primary border-t-transparent rounded-full" />
+        </Card>
+      ) : error ? (
+        <Card className="p-6 text-sm text-destructive">{error}</Card>
+      ) : !resp?.data.length ? (
+        <Card className="p-12 text-center">
+          <BarChart3 className="h-10 w-10 mx-auto text-muted-foreground/40 mb-3" />
+          <p className="font-medium text-sm">No quiz attempts found</p>
+          <p className="text-xs text-muted-foreground mt-1">Try adjusting your filters above.</p>
+        </Card>
+      ) : !filteredRows.length ? (
+        <Card className="p-12 text-center">
+          <Search className="h-10 w-10 mx-auto text-muted-foreground/40 mb-3" />
+          <p className="font-medium text-sm">No results match "{search}"</p>
+          <button onClick={() => setSearch("")} className="text-xs text-primary hover:underline mt-2">
+            Clear search
+          </button>
+        </Card>
+      ) : (
+        <div className="space-y-2">
+          {paginatedRows.map(a => {
+            const initials = a.user?.name
+              ? a.user.name.split(/\s+/).map(p => p[0]).filter(Boolean).slice(0, 2).join("").toUpperCase()
+              : "—";
+            const accent = a.passed
+              ? "bg-emerald-100 text-emerald-700"
+              : "bg-rose-100 text-rose-700";
+            return (
+              <Card
+                key={a.id}
+                className="p-3 cursor-pointer hover:shadow-md transition-all"
+                onClick={() => openDetail(a.id)}
+              >
+                <div className="flex items-center justify-between gap-3 flex-wrap">
+                  <div className="flex items-center gap-3 min-w-0 flex-1">
+                    {isAdmin ? (
+                      <div className="w-9 h-9 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center font-bold text-xs shrink-0">
+                        {initials}
+                      </div>
+                    ) : (
+                      <div className="w-9 h-9 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center shrink-0">
+                        <FileText className="w-4 h-4" />
+                      </div>
                     )}
-                    {isAdmin && <td className="px-4 py-2 text-muted-foreground hidden md:table-cell">{a.site ?? "—"}</td>}
-                    {isAdmin && <td className="px-4 py-2 text-muted-foreground hidden md:table-cell">{a.department ?? "—"}</td>}
-                    <td className="px-4 py-2">{a.document?.title ?? `#${a.documentId}`}</td>
-                    <td className="px-4 py-2"><span className="text-xs px-1.5 py-0.5 rounded bg-muted">{a.document?.category ?? "—"}</span></td>
-                    <td className="px-4 py-2 text-right font-mono">{a.score}/{a.total}</td>
-                    <td className="px-4 py-2 text-right font-mono">{a.percent}%</td>
-                    <td className="px-4 py-2">
-                      <span className={`text-xs px-2 py-0.5 rounded-full ${a.passed ? "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-400" : "bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-400"}`}>
-                        {a.passed ? "Passed" : "Below pass"}
+                    <div className="min-w-0">
+                      {isAdmin && (
+                        <p className="font-semibold text-sm truncate">{a.user?.name ?? "—"}</p>
+                      )}
+                      <p className={`${isAdmin ? "text-xs text-muted-foreground" : "font-semibold text-sm"} truncate flex items-center gap-1.5`}>
+                        {!isAdmin && <FileText className="w-3.5 h-3.5 text-muted-foreground shrink-0" />}
+                        {isAdmin ? (a.user?.email ?? "") : (a.document?.title ?? `#${a.documentId}`)}
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="hidden md:flex items-center gap-2 min-w-0 flex-1">
+                    {isAdmin && (
+                      <div className="min-w-0">
+                        <p className="text-xs text-muted-foreground">Document</p>
+                        <p className="text-sm font-medium truncate">{a.document?.title ?? `#${a.documentId}`}</p>
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="flex items-center gap-2 flex-wrap">
+                    {a.document?.category && (
+                      <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-muted text-muted-foreground">
+                        {a.document.category}
                       </span>
-                    </td>
-                    <td className="px-4 py-2 text-muted-foreground">{new Date(a.completedAt).toLocaleString()}</td>
-                    <td className="px-4 py-2 text-right">
-                      <Button size="sm" variant="outline" onClick={() => openDetail(a.id)}>View</Button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+                    )}
+                    {isAdmin && a.site && (
+                      <span className="hidden lg:inline text-[10px] font-medium px-2 py-0.5 rounded-full bg-purple-100 text-purple-700">
+                        {a.site}
+                      </span>
+                    )}
+                    <div className="flex items-center gap-1 text-xs text-muted-foreground">
+                      <Calendar className="w-3 h-3" />
+                      <span className="hidden sm:inline">{new Date(a.completedAt).toLocaleDateString()}</span>
+                    </div>
+                    <div className="text-sm font-mono font-semibold w-14 text-right">{a.percent}%</div>
+                    <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold ${accent}`}>
+                      {a.passed ? <CheckCircle2 className="w-3.5 h-3.5" /> : <XCircle className="w-3.5 h-3.5" />}
+                      {a.passed ? "Passed" : "Failed"}
+                    </span>
+                    <button
+                      onClick={(e) => { e.stopPropagation(); openDetail(a.id); }}
+                      className="p-1.5 rounded-md text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+                      title="View details"
+                    >
+                      <Eye className="w-4 h-4" />
+                    </button>
+                  </div>
+                </div>
+              </Card>
+            );
+          })}
+
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 pt-2">
+            <div className="flex items-center gap-2 text-xs text-muted-foreground">
+              <span>Rows per page</span>
+              <select
+                value={pageSize}
+                onChange={(e) => setPageSize(Number(e.target.value) as 25 | 50 | 100)}
+                className="h-8 rounded-md border border-input bg-background px-2 text-xs cursor-pointer"
+              >
+                <option value={25}>25</option>
+                <option value={50}>50</option>
+                <option value={100}>100</option>
+              </select>
+              <span className="ml-2">
+                {filteredRows.length === 0
+                  ? "0 results"
+                  : `${(safePage - 1) * pageSize + 1}–${Math.min(safePage * pageSize, filteredRows.length)} of ${filteredRows.length}`}
+              </span>
+            </div>
+            <div className="flex items-center gap-1">
+              <button
+                onClick={() => setPage(p => Math.max(1, p - 1))}
+                disabled={safePage <= 1}
+                className="inline-flex items-center gap-1 h-8 px-2 rounded-md border border-input text-xs hover:bg-accent disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                <ChevronLeft className="w-3.5 h-3.5" /> Prev
+              </button>
+              <span className="text-xs text-muted-foreground px-2">
+                Page {safePage} of {totalPages}
+              </span>
+              <button
+                onClick={() => setPage(p => Math.min(totalPages, p + 1))}
+                disabled={safePage >= totalPages}
+                className="inline-flex items-center gap-1 h-8 px-2 rounded-md border border-input text-xs hover:bg-accent disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                Next <ChevronRight className="w-3.5 h-3.5" />
+              </button>
+            </div>
           </div>
-        )}
-      </Card>
+        </div>
+      )}
 
       {detail && (
         <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={() => setDetail(null)}>

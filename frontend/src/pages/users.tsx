@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo, useRef } from "react";
 import { useLocation } from "wouter";
 import { useListUsers, useCreateUser, useUpdateUser, useDeleteUser } from "../lib";
 import { useQueryClient } from "@tanstack/react-query";
-import { PageHeader, Card, Button, Input, Label } from "@/components/shared";
+import { PageHeader, Card, Button, Input, PasswordInput, Label } from "@/components/shared";
 import { Users as UsersIcon, Plus, Edit, Trash2, X, Search, ChevronDown, AlertCircle, Camera, UserCircle2, ExternalLink, ShieldCheck } from "lucide-react";
 import { BulkActionBar } from "@/components/bulk-action-bar";
 import { useAuth } from "@/hooks/use-auth";
@@ -150,9 +150,12 @@ export default function Users() {
     return next;
   });
 
+  const isProtectedRow = (role: string) => role === "admin" || role === "super_admin";
+  const selectableUsers = useMemo(() => filteredUsers.filter(u => !isProtectedRow(u.role)), [filteredUsers]);
+
   const toggleAll = () => {
-    if (selectedIds.size === filteredUsers.length) setSelectedIds(new Set());
-    else setSelectedIds(new Set(filteredUsers.map(u => u.id)));
+    if (selectableUsers.length > 0 && selectedIds.size === selectableUsers.length) setSelectedIds(new Set());
+    else setSelectedIds(new Set(selectableUsers.map(u => u.id)));
   };
 
   const handleBulkDelete = async () => {
@@ -230,9 +233,10 @@ export default function Users() {
               <th className="p-4 w-10">
                 <input
                   type="checkbox"
-                  checked={filteredUsers.length > 0 && selectedIds.size === filteredUsers.length}
+                  checked={selectableUsers.length > 0 && selectedIds.size === selectableUsers.length}
                   onChange={toggleAll}
-                  className="w-4 h-4 accent-primary cursor-pointer"
+                  disabled={selectableUsers.length === 0}
+                  className="w-4 h-4 accent-primary cursor-pointer disabled:cursor-not-allowed disabled:opacity-40"
                 />
               </th>
               <th className="p-4">Name</th>
@@ -253,7 +257,9 @@ export default function Users() {
                     type="checkbox"
                     checked={selectedIds.has(u.id)}
                     onChange={() => toggleSelect(u.id)}
-                    className="w-4 h-4 accent-primary cursor-pointer"
+                    disabled={isProtectedRow(u.role)}
+                    title={isProtectedRow(u.role) ? "Admin and Super Admin accounts can't be bulk-selected" : undefined}
+                    className="w-4 h-4 accent-primary cursor-pointer disabled:cursor-not-allowed disabled:opacity-40"
                   />
                 </td>
                 <td className="p-4">
@@ -392,7 +398,7 @@ export default function Users() {
               <div><Label>Email</Label><Input type="email" value={formData.email} onChange={e=>setFormData({...formData, email: e.target.value})} required /></div>
               <div>
                 <Label>{editingId ? "New Password" : "Password"}</Label>
-                <Input type="password" placeholder={editingId ? "Leave blank to keep unchanged" : ""} value={formData.password} onChange={e=>setFormData({...formData, password: e.target.value})} required={!editingId} />
+                <PasswordInput placeholder={editingId ? "Leave blank to keep unchanged" : ""} value={formData.password} onChange={e=>setFormData({...formData, password: e.target.value})} required={!editingId} />
               </div>
               <div>
                 <Label>Site <span className="text-destructive">*</span></Label>

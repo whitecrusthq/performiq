@@ -51,14 +51,11 @@ async function getUserWithRole(userId: number) {
 export default class UserController {
   static ELEVATED_ROLES = ELEVATED_ROLES;
 
-  static async getAll(actorRole: string) {
+  static async getAll(_actorRole: string) {
     const allUsers = await User.findAll({ order: [["name", "ASC"]] });
     const customRoles = await CustomRole.findAll();
     const roleMap = new Map<number, CustomRole>(customRoles.map((r: CustomRole) => [r.id, r]));
-    const visible = actorRole === "super_admin"
-      ? allUsers
-      : allUsers.filter((u: User) => u.role !== "super_admin");
-    return visible.map((u: User) => formatUser(u, u.customRoleId ? roleMap.get(u.customRoleId) ?? null : null));
+    return allUsers.map((u: User) => formatUser(u, u.customRoleId ? roleMap.get(u.customRoleId) ?? null : null));
   }
 
   static async create(data: any, actorRole: string) {
@@ -128,7 +125,7 @@ export default class UserController {
     return { id: rows[0].id, name: rows[0].name, profilePhoto: rows[0].profilePhoto };
   }
 
-  static async updateHrProfile(targetId: number, data: Record<string, any>) {
+  static async updateHrProfile(targetId: number, data: Record<string, any>, options: { allowEmploymentFields?: boolean } = {}) {
     const updates: Record<string, any> = {
       surname: data.surname ?? null, firstName: data.firstName ?? null, middleName: data.middleName ?? null,
       address: data.address ?? null,
@@ -154,6 +151,13 @@ export default class UserController {
       bankAccountName: data.bankAccountName ?? null, taxId: data.taxId ?? null, pensionId: data.pensionId ?? null,
       pfaName: data.pfaName ?? null, rsaPin: data.rsaPin ?? null, hmo: data.hmo ?? null, notes: data.notes ?? null,
     };
+    if (options.allowEmploymentFields) {
+      if (data.department !== undefined)  updates.department = data.department || null;
+      if (data.jobTitle !== undefined)    updates.jobTitle  = data.jobTitle  || null;
+      if (data.staffId !== undefined)     updates.staffId   = data.staffId   || null;
+      if (data.phone !== undefined)       updates.phone     = data.phone     || null;
+      if (data.siteId !== undefined)      updates.siteId    = data.siteId ? Number(data.siteId) : null;
+    }
     const [count, rows] = await User.update(updates, { where: { id: targetId }, returning: true });
     if (count === 0) return null;
     return getUserWithRole(rows[0].id);

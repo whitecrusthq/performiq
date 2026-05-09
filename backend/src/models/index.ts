@@ -44,6 +44,7 @@ import ConfirmationReview from "./ConfirmationReview.js";
 import JobRequisition from "./JobRequisition.js";
 import Candidate from "./Candidate.js";
 import NotificationSettings from "./NotificationSettings.js";
+import AuthAuditLog from "./AuthAuditLog.js";
 
 export {
   sequelize,
@@ -92,4 +93,5 @@ export {
   JobRequisition,
   Candidate,
   NotificationSettings,
+  AuthAuditLog,
 };

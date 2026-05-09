@@ -3,7 +3,7 @@ import { useListCycles, useCreateCycle, useUpdateCycle, useDeleteCycle } from ".
 import { useQueryClient } from "@tanstack/react-query";
 import { PageHeader, Card, StatusBadge, Button, Input, Label, EmptyState } from "@/components/shared";
 import { format } from "date-fns";
-import { Calendar, Plus, Edit2, Trash2, X } from "lucide-react";
+import { Calendar, Plus, Edit2, Trash2, X, Search } from "lucide-react";
 import { BulkActionBar } from "@/components/bulk-action-bar";
 import { useAuth } from "@/hooks/use-auth";
 
@@ -82,6 +82,13 @@ export default function Cycles() {
 
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
   const [bulkDeleting, setBulkDeleting] = useState(false);
+  const [search, setSearch] = useState("");
+
+  const filteredCycles = visibleCycles.filter((c: any) => {
+    if (!search.trim()) return true;
+    const q = search.trim().toLowerCase();
+    return (c.name ?? "").toLowerCase().includes(q) || (c.status ?? "").toLowerCase().includes(q);
+  });
 
   const toggleSelect = (id: number) => setSelectedIds(prev => {
     const next = new Set(prev);
@@ -90,8 +97,8 @@ export default function Cycles() {
   });
 
   const toggleAll = () => {
-    if (selectedIds.size === visibleCycles.length) setSelectedIds(new Set());
-    else setSelectedIds(new Set(visibleCycles.map(c => c.id)));
+    if (selectedIds.size === filteredCycles.length) setSelectedIds(new Set());
+    else setSelectedIds(new Set(filteredCycles.map((c: any) => c.id)));
   };
 
   const handleBulkDelete = async () => {
@@ -121,9 +128,30 @@ export default function Cycles() {
         <EmptyState title="No cycles found" description="Create an appraisal cycle to start tracking performance." icon={Calendar} action={(user?.role === 'admin' || user?.role === 'super_admin') && <Button onClick={openCreate}>Create Cycle</Button>} />
       ) : (
         <>
+          <div className="mb-4 relative max-w-md">
+            <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none" />
+            <input
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              placeholder="Search cycles by name or status…"
+              className="w-full pl-9 pr-9 py-2 rounded-xl border border-border bg-background text-sm outline-none focus:ring-2 focus:ring-primary/20"
+            />
+            {search && (
+              <button onClick={() => setSearch("")} className="absolute right-2 top-1/2 -translate-y-1/2 p-1 rounded-md text-muted-foreground hover:bg-muted">
+                <X className="w-3.5 h-3.5" />
+              </button>
+            )}
+          </div>
           {isAdmin && <BulkActionBar count={selectedIds.size} onDelete={handleBulkDelete} onClear={() => setSelectedIds(new Set())} deleting={bulkDeleting} />}
+          {filteredCycles.length === 0 ? (
+            <Card className="p-12 text-center">
+              <Search className="w-10 h-10 mx-auto text-muted-foreground/40 mb-3" />
+              <p className="text-muted-foreground font-medium">No cycles match "{search}"</p>
+              <button onClick={() => setSearch("")} className="text-sm text-primary hover:underline mt-2">Clear search</button>
+            </Card>
+          ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
-            {cycles.map((cycle) => (
+            {filteredCycles.map((cycle: any) => (
               <Card key={cycle.id} className={`flex flex-col relative group ${selectedIds.has(cycle.id) ? "ring-2 ring-primary/30" : ""}`}>
                 <div className="p-6 flex-1">
                   <div className="flex justify-between items-start mb-4">
@@ -163,6 +191,7 @@ export default function Cycles() {
             </Card>
             ))}
           </div>
+          )}
         </>
       )}
 

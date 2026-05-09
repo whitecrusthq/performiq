@@ -1,6 +1,7 @@
 import { Response } from "express";
 import { AuthRequest } from "../../middlewares/auth.js";
 import AuthController from "../../controllers/AuthController.js";
+import { recordAuthEvent } from "../../lib/auth-audit.js";
 
 export class LoginAction {
   static async handle(req: AuthRequest, res: Response) {
@@ -10,8 +11,16 @@ export class LoginAction {
         res.status(400).json({ error: "Email and password required" });
         return;
       }
+      const normalizedEmail = String(email).toLowerCase().trim();
       const result = await AuthController.login(email, password);
       if ("error" in result) {
+        if (result.status && result.status >= 400 && result.status < 500) {
+          recordAuthEvent(req, {
+            email: normalizedEmail,
+            event: "login_failed",
+            failureReason: result.error,
+          });
+        }
         res.status(result.status!).json({ error: result.error });
         return;
       }
@@ -27,10 +36,29 @@ export class LoginAction {
         res.json({ requires2FASetup: true, pendingToken: result.pendingToken, email: result.email });
         return;
       }
+      recordAuthEvent(req, {
+        userId: result.user?.id ?? null,
+        email: result.user?.email ?? normalizedEmail,
+        event: "login_success",
+      });
       res.json({ token: result.token, user: result.user });
     } catch (err) {
-      console.error("Login error:", err);
-      res.status(500).json({ error: "Server error" });
+      const e = err as Error & { name?: string; original?: { code?: string; message?: string } };
+      const details = {
+        message: e?.message ?? String(err),
+        name: e?.name,
+        sequelizeCode: e?.original?.code,
+        sequelizeMessage: e?.original?.message,
+        stack: e?.stack,
+        email: req.body?.email,
+      };
+      console.error("[LoginAction] Login failed with exception:", JSON.stringify(details, null, 2));
+      try { (req as any).log?.error?.(details, "[LoginAction] Login failed with exception"); } catch {}
+      const exposeDetails = process.env.NODE_ENV !== "production";
+      res.status(500).json({
+        error: "Server error",
+        ...(exposeDetails ? { detail: details.message, name: details.name, stack: details.stack } : {}),
+      });
     }
   }
 }

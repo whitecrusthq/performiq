@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useLocation } from "wouter";
 import { useAuth } from "@/hooks/use-auth";
 import { useLogin } from "../lib";
-import { Button, Input, Label } from "@/components/shared";
+import { Button, Input, PasswordInput, Label } from "@/components/shared";
 import { AlertCircle, ShieldCheck, ArrowLeft, Smartphone } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { apiFetch } from "@/lib/utils";
@@ -135,12 +135,20 @@ export default function Login() {
               <h2 className="text-3xl font-bold font-display tracking-tight text-foreground mb-2">Welcome back</h2>
               <p className="text-muted-foreground mb-8">Please enter your details to sign in.</p>
 
-              {loginMutation.isError && (
-                <div className="bg-destructive/10 border-l-4 border-destructive text-destructive p-4 rounded-r-xl mb-6 flex items-start gap-3">
-                  <AlertCircle className="w-5 h-5 shrink-0 mt-0.5" />
-                  <p className="text-sm font-medium">Invalid email or password. Please try again.</p>
-                </div>
-              )}
+              {loginMutation.isError && (() => {
+                const err = loginMutation.error as any;
+                const serverMsg =
+                  err?.data?.error ||
+                  err?.data?.detail ||
+                  err?.data?.message ||
+                  "Invalid email or password. Please try again.";
+                return (
+                  <div className="bg-destructive/10 border-l-4 border-destructive text-destructive p-4 rounded-r-xl mb-6 flex items-start gap-3">
+                    <AlertCircle className="w-5 h-5 shrink-0 mt-0.5" />
+                    <p className="text-sm font-medium min-w-0 flex-1">{serverMsg}</p>
+                  </div>
+                );
+              })()}
 
               <form onSubmit={handleSubmit} className="space-y-5">
                 <div>
@@ -151,7 +159,7 @@ export default function Login() {
                   <div className="flex items-center justify-between mb-1.5">
                     <Label className="mb-0">Password</Label>
                   </div>
-                  <Input type="password" placeholder="••••••••" value={password} onChange={e => setPassword(e.target.value)} required />
+                  <PasswordInput placeholder="••••••••" value={password} onChange={e => setPassword(e.target.value)} required />
                 </div>
                 <Button type="submit" className="w-full mt-8" size="lg" isLoading={loginMutation.isPending}>
                   Sign In
