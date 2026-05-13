@@ -14,11 +14,13 @@ export default class SecurityController {
     lockoutDurationMinutes?: number;
     enforce2faAll?: boolean;
     enforce2faRoles?: string[] | null;
+    idleTimeoutMinutes?: number;
   }) {
     const updates: Record<string, any> = { updatedAt: new Date() };
     if (typeof data.lockoutEnabled === "boolean") updates.lockoutEnabled = data.lockoutEnabled;
     if (typeof data.maxAttempts === "number" && data.maxAttempts >= 1 && data.maxAttempts <= 50) updates.maxAttempts = data.maxAttempts;
     if (typeof data.lockoutDurationMinutes === "number" && data.lockoutDurationMinutes >= 1) updates.lockoutDurationMinutes = data.lockoutDurationMinutes;
+    if (typeof data.idleTimeoutMinutes === "number" && data.idleTimeoutMinutes >= 1 && data.idleTimeoutMinutes <= 1440) updates.idleTimeoutMinutes = data.idleTimeoutMinutes;
     if (typeof data.enforce2faAll === "boolean") updates.enforce2faAll = data.enforce2faAll;
     if (data.enforce2faRoles === null) {
       updates.enforce2faRoles = null;

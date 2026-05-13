@@ -35,6 +35,9 @@ function formatUser(u: User, customRole?: CustomRole | null) {
     bankAccountName: u.bankAccountName, taxId: u.taxId, pensionId: u.pensionId, pfaName: u.pfaName,
     rsaPin: u.rsaPin, hmo: u.hmo, notes: u.notes,
     require2Fa: !!u.require2Fa, twoFactorEnabled: !!u.twoFactorEnabled,
+    isActive: u.isActive !== false,
+    deactivatedAt: u.deactivatedAt,
+    deactivationReason: u.deactivationReason,
   };
 }
 
@@ -161,6 +164,33 @@ export default class UserController {
     const [count, rows] = await User.update(updates, { where: { id: targetId }, returning: true });
     if (count === 0) return null;
     return getUserWithRole(rows[0].id);
+  }
+
+  /**
+   * Enable or disable a user. Disabling immediately blocks login (AuthController
+   * checks isActive) and bumps tokenVersion so existing sessions are kicked.
+   */
+  static async setActive(id: number, isActive: boolean, actorId: number, actorRole: string, reason?: string | null) {
+    if (id === actorId && !isActive) return { error: "You cannot deactivate your own account.", status: 400 };
+    const target = await User.findByPk(id);
+    if (!target) return { error: "User not found", status: 404 };
+    // Symmetric protection: only super_admin can disable OR re-enable a
+    // super_admin account, otherwise an admin could re-enable a disabled
+    // super_admin (privilege escalation).
+    if (target.role === "super_admin" && actorRole !== "super_admin") {
+      return { error: "Only a Super Admin can change the status of Super Admin accounts.", status: 403 };
+    }
+    const updates: any = { isActive };
+    if (!isActive) {
+      updates.deactivatedAt = new Date();
+      updates.deactivationReason = reason ?? null;
+      updates.tokenVersion = (target.tokenVersion ?? 0) + 1;
+    } else {
+      updates.deactivatedAt = null;
+      updates.deactivationReason = null;
+    }
+    await User.update(updates, { where: { id } });
+    return { data: await getUserWithRole(id) };
   }
 
   static async delete(id: number, actorId: number, actorRole: string) {

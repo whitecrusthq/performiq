@@ -211,7 +211,28 @@ export default class OnboardingController {
       updates.targetCompletionDate = targetCompletionDate ? new Date(targetCompletionDate) : null;
     const [count, rows] = await OnboardingWorkflow.update(updates, { where: { id }, returning: true });
     if (count === 0) return null;
+    await OnboardingController.maybeDeactivateOnOffboardingComplete(rows[0]);
     return OnboardingController.enrichWorkflow(rows[0]);
+  }
+
+  /**
+   * When an offboarding workflow flips to "completed", auto-deactivate the
+   * employee: blocks future logins and bumps their tokenVersion so any active
+   * session is kicked. Idempotent — only runs when the user is still active.
+   */
+  static async maybeDeactivateOnOffboardingComplete(wf: OnboardingWorkflow) {
+    if (wf.type !== "offboarding" || wf.status !== "completed" || !wf.employeeId) return;
+    const emp = await User.findByPk(wf.employeeId);
+    if (!emp || emp.isActive === false) return;
+    await User.update(
+      {
+        isActive: false,
+        deactivatedAt: new Date(),
+        deactivationReason: `Offboarding workflow #${wf.id} completed`,
+        tokenVersion: (emp.tokenVersion ?? 0) + 1,
+      },
+      { where: { id: emp.id } }
+    );
   }
 
   static async deleteWorkflow(id: number) {
@@ -252,6 +273,7 @@ export default class OnboardingController {
     }
 
     const wf = await OnboardingWorkflow.findByPk(updated.workflowId);
+    if (wf) await OnboardingController.maybeDeactivateOnOffboardingComplete(wf);
     return OnboardingController.enrichWorkflow(wf!);
   }
 

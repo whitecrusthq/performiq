@@ -1,5 +1,6 @@
 import { Request, Response, NextFunction } from "express";
 import jwt from "jsonwebtoken";
+import User from "../models/User.js";
 
 const JWT_SECRET = process.env.JWT_SECRET;
 if (!JWT_SECRET) {
@@ -10,7 +11,7 @@ export interface AuthRequest extends Request {
   user?: { id: number; role: string; email: string; customRoleName?: string | null };
 }
 
-export function requireAuth(req: AuthRequest, res: Response, next: NextFunction) {
+export async function requireAuth(req: AuthRequest, res: Response, next: NextFunction) {
   const authHeader = req.headers.authorization;
   if (!authHeader?.startsWith("Bearer ")) {
     res.status(401).json({ error: "Unauthorized" });
@@ -22,6 +23,31 @@ export function requireAuth(req: AuthRequest, res: Response, next: NextFunction)
     // Reject 2FA pending tokens (have a `purpose` claim and no `role`) so they cannot
     // be used as full session tokens to call protected endpoints like /auth/2fa/*.
     if (payload?.purpose || typeof payload?.role !== "string") {
+      res.status(401).json({ error: "Invalid token" });
+      return;
+    }
+    // Single-active-session check: every successful login bumps users.token_version,
+    // so any tokens issued before that login (i.e. an older browser session) are
+    // rejected here with a distinct error code the frontend uses to show the
+    // "Signed in elsewhere" notice on the login page.
+    try {
+      const u = await User.findByPk(payload.id, { attributes: ["id", "tokenVersion", "isActive"] });
+      if (!u) {
+        res.status(401).json({ error: "Invalid token" });
+        return;
+      }
+      const tokenV = typeof payload.v === "number" ? payload.v : 0;
+      if (tokenV !== (u as any).tokenVersion) {
+        res.status(401).json({ error: "Session ended", reason: "session_replaced" });
+        return;
+      }
+      // Defense-in-depth: even if tokenVersion still matches (e.g. a manual DB
+      // update bypassed setActive's bump), reject deactivated users immediately.
+      if ((u as any).isActive === false) {
+        res.status(401).json({ error: "Account is deactivated", reason: "session_replaced" });
+        return;
+      }
+    } catch (lookupErr) {
       res.status(401).json({ error: "Invalid token" });
       return;
     }
@@ -90,8 +116,9 @@ export function requireHRAccess(req: AuthRequest, res: Response, next: NextFunct
   res.status(403).json({ error: "Forbidden" });
 }
 
-export function generateToken(user: { id: number; role: string; email: string; customRoleName?: string | null }) {
-  return jwt.sign(user, JWT_SECRET, { expiresIn: "7d" });
+export function generateToken(user: { id: number; role: string; email: string; customRoleName?: string | null; tokenVersion: number }) {
+  const { tokenVersion, ...rest } = user;
+  return jwt.sign({ ...rest, v: tokenVersion }, JWT_SECRET, { expiresIn: "7d" });
 }
 
 export function generate2FAPendingToken(payload: { id: number; email: string; purpose: "2fa-verify" | "2fa-setup" }) {

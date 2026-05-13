@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useLocation } from "wouter";
 import { useAuth } from "@/hooks/use-auth";
 import { useLogin } from "../lib";
@@ -23,6 +23,15 @@ export default function Login() {
   const [, setLocation] = useLocation();
   const loginMutation = useLogin();
   const { settings } = useAppSettings();
+  const [authNotice, setAuthNotice] = useState<string | null>(null);
+
+  useEffect(() => {
+    const n = sessionStorage.getItem("authNotice");
+    if (n) {
+      setAuthNotice(n);
+      sessionStorage.removeItem("authNotice");
+    }
+  }, []);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -134,6 +143,19 @@ export default function Login() {
 
               <h2 className="text-3xl font-bold font-display tracking-tight text-foreground mb-2">Welcome back</h2>
               <p className="text-muted-foreground mb-8">Please enter your details to sign in.</p>
+
+              {authNotice && (
+                <div className="bg-amber-50 dark:bg-amber-950/30 border-l-4 border-amber-400 text-amber-900 dark:text-amber-200 p-4 rounded-r-xl mb-6 flex items-start gap-3">
+                  <AlertCircle className="w-5 h-5 shrink-0 mt-0.5" />
+                  <p className="text-sm font-medium min-w-0 flex-1">
+                    {authNotice === "session_replaced"
+                      ? "You were signed out because your account was used to sign in elsewhere."
+                      : authNotice === "idle_timeout"
+                      ? "You were signed out after 30 minutes of inactivity. Please sign in again."
+                      : "Your session has expired. Please sign in again."}
+                  </p>
+                </div>
+              )}
 
               {loginMutation.isError && (() => {
                 const err = loginMutation.error as any;

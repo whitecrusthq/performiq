@@ -29,6 +29,7 @@ interface SecuritySettings {
   lockoutDurationMinutes: number;
   enforce2faAll?: boolean;
   enforce2faRoles?: string | null;
+  idleTimeoutMinutes?: number;
   updatedAt: string;
 }
 
@@ -487,12 +488,17 @@ export default function Security() {
     refetchInterval: 30000,
   });
 
-  const [form, setForm] = useState<{ lockoutEnabled: boolean; maxAttempts: number; lockoutDurationMinutes: number } | null>(null);
+  const [form, setForm] = useState<{ lockoutEnabled: boolean; maxAttempts: number; lockoutDurationMinutes: number; idleTimeoutMinutes: number } | null>(null);
 
-  const currentForm = form ?? (settings ? { lockoutEnabled: settings.lockoutEnabled, maxAttempts: settings.maxAttempts, lockoutDurationMinutes: settings.lockoutDurationMinutes } : null);
+  const currentForm = form ?? (settings ? {
+    lockoutEnabled: settings.lockoutEnabled,
+    maxAttempts: settings.maxAttempts,
+    lockoutDurationMinutes: settings.lockoutDurationMinutes,
+    idleTimeoutMinutes: settings.idleTimeoutMinutes ?? 30,
+  } : null);
 
   const saveSettings = useMutation({
-    mutationFn: (data: { lockoutEnabled: boolean; maxAttempts: number; lockoutDurationMinutes: number }) =>
+    mutationFn: (data: { lockoutEnabled: boolean; maxAttempts: number; lockoutDurationMinutes: number; idleTimeoutMinutes: number }) =>
       apiFetch("/api/security/settings", {
         method: "PUT",
         headers: { "Content-Type": "application/json", ...authHeader() },
@@ -587,6 +593,25 @@ export default function Security() {
                       />
                       <p className="text-xs text-muted-foreground">0 = manual unlock only</p>
                     </div>
+                  </div>
+
+                  <div className="border-t border-border pt-5 space-y-1.5">
+                    <Label htmlFor="idle-timeout" className="text-sm font-medium flex items-center gap-2">
+                      <Clock className="h-4 w-4 text-muted-foreground" />
+                      Inactive session timeout (minutes)
+                    </Label>
+                    <Input
+                      id="idle-timeout"
+                      type="number"
+                      min={1}
+                      max={1440}
+                      value={currentForm.idleTimeoutMinutes}
+                      onChange={e => setForm({ ...currentForm, idleTimeoutMinutes: parseInt(e.target.value) || 30 })}
+                      className="max-w-[200px]"
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      Users are signed out automatically after this many minutes of no mouse, keyboard, scroll, or touch activity. Applies on next page load. Default is 30 minutes; max 1440 (24 hours).
+                    </p>
                   </div>
 
                   <div className="flex justify-end pt-2">

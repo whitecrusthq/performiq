@@ -3,7 +3,7 @@ import { useLocation } from "wouter";
 import { useListUsers, useCreateUser, useUpdateUser, useDeleteUser } from "../lib";
 import { useQueryClient } from "@tanstack/react-query";
 import { PageHeader, Card, Button, Input, PasswordInput, Label } from "@/components/shared";
-import { Users as UsersIcon, Plus, Edit, Trash2, X, Search, ChevronDown, AlertCircle, Camera, UserCircle2, ExternalLink, ShieldCheck } from "lucide-react";
+import { Users as UsersIcon, Plus, Edit, Trash2, X, Search, ChevronDown, AlertCircle, Camera, UserCircle2, ExternalLink, ShieldCheck, Power, PowerOff } from "lucide-react";
 import { BulkActionBar } from "@/components/bulk-action-bar";
 import { useAuth } from "@/hooks/use-auth";
 import { apiFetch } from "@/lib/utils";
@@ -129,6 +129,32 @@ export default function Users() {
     } finally {
       setPhotoUploading(false);
       if (fileInputRef.current) fileInputRef.current.value = "";
+    }
+  };
+
+  const handleToggleActive = async (u: any) => {
+    const willDeactivate = u.isActive !== false;
+    let reason: string | null = null;
+    if (willDeactivate) {
+      const ok = confirm(`Disable ${u.name}? They will be signed out immediately and unable to log in until re-enabled.`);
+      if (!ok) return;
+      reason = prompt("Optional reason (e.g. 'Resigned', 'Terminated'):") || null;
+    } else {
+      if (!confirm(`Re-enable ${u.name}? They will be able to sign in again.`)) return;
+    }
+    try {
+      const r = await apiFetch(`/api/users/${u.id}/active`, {
+        method: "PATCH",
+        body: JSON.stringify({ isActive: !willDeactivate, reason }),
+      });
+      if (!r.ok) {
+        const data = await r.json().catch(() => ({}));
+        throw new Error(data?.error || "Failed to update user status");
+      }
+      toast({ title: willDeactivate ? "User disabled" : "User re-enabled", description: u.name });
+      queryClient.invalidateQueries({ queryKey: ["/api/users"] });
+    } catch (err: any) {
+      toast({ title: "Error", description: err?.message ?? "Failed to update user status.", variant: "destructive" });
     }
   };
 
@@ -280,6 +306,14 @@ export default function Users() {
                         <ShieldCheck className="w-3 h-3" /> {(u as any).twoFactorEnabled ? '2FA on' : '2FA required'}
                       </span>
                     )}
+                    {(u as any).isActive === false && (
+                      <span
+                        className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium w-fit bg-red-100 text-red-700"
+                        title={(u as any).deactivationReason ? `Deactivated — ${(u as any).deactivationReason}` : "Account disabled"}
+                      >
+                        <PowerOff className="w-3 h-3" /> Disabled
+                      </span>
+                    )}
                   </div>
                 </td>
                 <td className="p-4 hidden md:table-cell text-sm">
@@ -319,6 +353,29 @@ export default function Users() {
                       >
                         <Edit className="w-3.5 h-3.5" /> Edit
                       </Button>
+                    )}
+                    {u.id !== user?.id && (user?.role === 'super_admin' || !['admin','super_admin'].includes(u.role)) && (
+                      (u as any).isActive === false ? (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="gap-1.5 text-emerald-700 hover:bg-emerald-50 hover:text-emerald-700 border-emerald-200"
+                          title="Re-enable this user (allow login)"
+                          onClick={() => handleToggleActive(u)}
+                        >
+                          <Power className="w-3.5 h-3.5" /> Enable
+                        </Button>
+                      ) : (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="gap-1.5 text-amber-700 hover:bg-amber-50 hover:text-amber-700 border-amber-200"
+                          title="Disable this user (sign out + block login)"
+                          onClick={() => handleToggleActive(u)}
+                        >
+                          <PowerOff className="w-3.5 h-3.5" /> Disable
+                        </Button>
+                      )
                     )}
                     {(user?.role === 'super_admin' || !['admin','super_admin'].includes(u.role)) && (
                       <Button
