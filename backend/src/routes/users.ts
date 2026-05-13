@@ -8,6 +8,7 @@ import { UpdateUserAction } from "../actions/users/UpdateUserAction.js";
 import { UpdateProfilePhotoAction } from "../actions/users/UpdateProfilePhotoAction.js";
 import { UpdateHrProfileAction } from "../actions/users/UpdateHrProfileAction.js";
 import { DeleteUserAction } from "../actions/users/DeleteUserAction.js";
+import { SetUserActiveAction } from "../actions/users/SetUserActiveAction.js";
 import { GetDocumentsAction } from "../actions/users/GetDocumentsAction.js";
 import { CreateDocumentAction } from "../actions/users/CreateDocumentAction.js";
 import { DeleteDocumentAction } from "../actions/users/DeleteDocumentAction.js";
@@ -37,6 +38,7 @@ router.put("/users/:id", requireAuth, requireRole("admin"), UpdateUserAction.han
 router.put("/users/:id/profile-photo", requireAuth, UpdateProfilePhotoAction.handle);
 router.put("/users/:id/hr-profile", requireAuth, UpdateHrProfileAction.handle);
 router.delete("/users/:id", requireAuth, requireRole("admin"), DeleteUserAction.handle);
+router.patch("/users/:id/active", requireAuth, requireRole("admin"), SetUserActiveAction.handle);
 
 router.get("/users/:id/documents", requireAuth, GetDocumentsAction.handle);
 router.post("/users/:id/documents", requireAuth, CreateDocumentAction.handle);
