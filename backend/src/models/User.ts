@@ -73,6 +73,9 @@ class User extends Model {
   declare twoFactorBackupCodes: string | null;
   declare require2Fa: boolean;
   declare tokenVersion: number;
+  declare isActive: boolean;
+  declare deactivatedAt: Date | null;
+  declare deactivationReason: string | null;
 }
 
 User.init(
@@ -148,6 +151,9 @@ User.init(
     twoFactorBackupCodes: { type: DataTypes.TEXT, field: "two_factor_backup_codes" },
     require2Fa: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: false, field: "require_2fa" },
     tokenVersion: { type: DataTypes.INTEGER, allowNull: false, defaultValue: 0, field: "token_version" },
+    isActive: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: true, field: "is_active" },
+    deactivatedAt: { type: DataTypes.DATE, field: "deactivated_at" },
+    deactivationReason: { type: DataTypes.TEXT, field: "deactivation_reason" },
   },
   {
     sequelize,

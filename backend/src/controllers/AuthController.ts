@@ -1,4 +1,5 @@
 import bcrypt from "bcryptjs";
+import sequelize from "../db/sequelize.js";
 import { User, CustomRole, Site } from "../models/index.js";
 import { generateToken, generate2FAPendingToken } from "../middlewares/auth.js";
 import { sendOtpEmail } from "../lib/mailgun.js";
@@ -52,16 +53,25 @@ async function getCustomRole(user: User) {
  * Returns the new tokenVersion to embed in the freshly-minted JWT.
  */
 async function rotateSession(userId: number): Promise<number> {
+  // Atomic increment via SQL — avoids the read/write race where two concurrent
+  // logins both read the same tokenVersion and write the same +1, leaving an
+  // earlier session still valid.
+  await User.update(
+    { tokenVersion: sequelize.literal("token_version + 1") as any },
+    { where: { id: userId } }
+  );
   const u = await User.findByPk(userId, { attributes: ["id", "tokenVersion"] });
-  const next = ((u?.tokenVersion as number) ?? 0) + 1;
-  await User.update({ tokenVersion: next }, { where: { id: userId } });
-  return next;
+  return (u?.tokenVersion as number) ?? 1;
 }
 
 export default class AuthController {
   static async login(email: string, password: string) {
     const user = await User.findOne({ where: { email: email.toLowerCase().trim() } });
     if (!user) return { error: "Invalid credentials", status: 401 };
+
+    if (user.isActive === false) {
+      return { error: "This account has been deactivated. Please contact your administrator.", status: 403 };
+    }
 
     const settings = await SecurityController.getSettings();
 
@@ -134,6 +144,9 @@ export default class AuthController {
 
     const user = await User.findOne({ where: { email: email.toLowerCase().trim() } });
     if (!user) return { error: "User not found", status: 404 };
+    if (user.isActive === false) {
+      return { error: "This account has been deactivated. Please contact your administrator.", status: 403 };
+    }
     const customRole = await getCustomRole(user);
     const tokenVersion = await rotateSession(user.id);
     const token = generateToken({ id: user.id, role: user.role, email: user.email, customRoleName: customRole?.name ?? null, tokenVersion });
@@ -144,6 +157,9 @@ export default class AuthController {
     const user = await User.findByPk(userId);
     if (!user || !user.twoFactorEnabled || !user.twoFactorSecret) {
       return { error: "Two-factor authentication is not enabled for this account.", status: 400 };
+    }
+    if (user.isActive === false) {
+      return { error: "This account has been deactivated. Please contact your administrator.", status: 403 };
     }
     const codeStr = String(code).trim();
     const isTotpValid = /^\d{6}$/.test(codeStr) && verifyTotpToken(user.twoFactorSecret, codeStr);

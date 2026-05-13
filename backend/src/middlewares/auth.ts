@@ -31,7 +31,7 @@ export async function requireAuth(req: AuthRequest, res: Response, next: NextFun
     // rejected here with a distinct error code the frontend uses to show the
     // "Signed in elsewhere" notice on the login page.
     try {
-      const u = await User.findByPk(payload.id, { attributes: ["id", "tokenVersion"] });
+      const u = await User.findByPk(payload.id, { attributes: ["id", "tokenVersion", "isActive"] });
       if (!u) {
         res.status(401).json({ error: "Invalid token" });
         return;
@@ -39,6 +39,12 @@ export async function requireAuth(req: AuthRequest, res: Response, next: NextFun
       const tokenV = typeof payload.v === "number" ? payload.v : 0;
       if (tokenV !== (u as any).tokenVersion) {
         res.status(401).json({ error: "Session ended", reason: "session_replaced" });
+        return;
+      }
+      // Defense-in-depth: even if tokenVersion still matches (e.g. a manual DB
+      // update bypassed setActive's bump), reject deactivated users immediately.
+      if ((u as any).isActive === false) {
+        res.status(401).json({ error: "Account is deactivated", reason: "session_replaced" });
         return;
       }
     } catch (lookupErr) {

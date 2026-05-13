@@ -30,6 +30,112 @@ const TASK_STATUS_CONFIG = {
   skipped:     { label: "Skipped",     color: "bg-yellow-100 text-yellow-700", icon: SkipForward },
 };
 
+// ─── Searchable Employee Picker ────────────────────────────────────────────────
+function EmployeePicker({
+  users, value, onChange, placeholder = "Search by name, email, job title…",
+}: {
+  users: any[];
+  value: string;
+  onChange: (id: string) => void;
+  placeholder?: string;
+}) {
+  const [query, setQuery] = useState("");
+  const [open, setOpen] = useState(false);
+  const selected = users.find(u => String(u.id) === String(value));
+
+  useEffect(() => {
+    if (selected && !open) setQuery("");
+  }, [selected, open]);
+
+  const norm = (s: any) => (s ?? "").toString().toLowerCase();
+  const q = query.trim().toLowerCase();
+  const matches = q
+    ? users.filter(u =>
+        norm(u.name).includes(q) ||
+        norm(u.email).includes(q) ||
+        norm(u.jobTitle).includes(q) ||
+        norm(u.department).includes(q) ||
+        norm(u.staffId).includes(q)
+      ).slice(0, 50)
+    : users.slice(0, 50);
+
+  return (
+    <div className="relative">
+      {selected && !open ? (
+        <button
+          type="button"
+          onClick={() => { setOpen(true); setQuery(""); }}
+          className="w-full mt-1 px-3 py-2 rounded-xl border border-border bg-background text-left flex items-center justify-between focus:ring-2 focus:ring-primary/20 outline-none"
+        >
+          <div>
+            <div className="font-medium text-sm">{selected.name}</div>
+            <div className="text-xs text-muted-foreground">
+              {selected.email}{selected.jobTitle ? ` • ${selected.jobTitle}` : ""}
+              {selected.isActive === false ? " • Disabled" : ""}
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={(e) => { e.stopPropagation(); onChange(""); setOpen(true); setQuery(""); }}
+              className="p-1 rounded hover:bg-muted"
+              title="Clear selection"
+            >
+              <X className="w-3.5 h-3.5 text-muted-foreground" />
+            </button>
+            <ChevronDown className="w-4 h-4 text-muted-foreground" />
+          </div>
+        </button>
+      ) : (
+        <div className="relative mt-1">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none" />
+          <input
+            autoFocus={open}
+            value={query}
+            onChange={e => { setQuery(e.target.value); setOpen(true); }}
+            onFocus={() => setOpen(true)}
+            onBlur={() => setTimeout(() => setOpen(false), 150)}
+            placeholder={placeholder}
+            className="w-full pl-9 pr-3 py-2 rounded-xl border border-border bg-background focus:ring-2 focus:ring-primary/20 outline-none"
+          />
+          {open && (
+            <div className="absolute z-50 mt-1 w-full max-h-72 overflow-y-auto rounded-xl border border-border bg-background shadow-lg">
+              {matches.length === 0 ? (
+                <div className="px-3 py-4 text-sm text-muted-foreground text-center">No employees match "{query}".</div>
+              ) : matches.map(u => (
+                <button
+                  key={u.id}
+                  type="button"
+                  onMouseDown={(e) => e.preventDefault()}
+                  onClick={() => { onChange(String(u.id)); setOpen(false); setQuery(""); }}
+                  className="w-full text-left px-3 py-2 hover:bg-muted/60 border-b border-border last:border-b-0"
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="min-w-0">
+                      <div className="font-medium text-sm truncate">{u.name}</div>
+                      <div className="text-xs text-muted-foreground truncate">
+                        {u.email}{u.jobTitle ? ` • ${u.jobTitle}` : ""}{u.department ? ` • ${u.department}` : ""}
+                      </div>
+                    </div>
+                    {u.isActive === false && (
+                      <span className="text-[10px] px-1.5 py-0.5 rounded bg-red-100 text-red-700 shrink-0">Disabled</span>
+                    )}
+                  </div>
+                </button>
+              ))}
+              {!q && users.length > 50 && (
+                <div className="px-3 py-2 text-[11px] text-muted-foreground text-center border-t border-border">
+                  Showing first 50 — type to search all {users.length} employees.
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function ProgressBar({ value }: { value: number }) {
   return (
     <div className="w-full bg-muted rounded-full h-2">
@@ -140,11 +246,14 @@ function StartWorkflowDialog({
           {/* Employee */}
           <div>
             <Label>Employee *</Label>
-            <select value={employeeId} onChange={e => setEmployeeId(e.target.value)}
-              className="w-full mt-1 px-3 py-2 rounded-xl border border-border bg-background focus:ring-2 focus:ring-primary/20 outline-none">
-              <option value="">Select employee...</option>
-              {users.map(u => <option key={u.id} value={u.id}>{u.name} — {u.jobTitle || u.role}</option>)}
-            </select>
+            <EmployeePicker
+              users={type === "offboarding" ? users : users.filter(u => u.isActive !== false)}
+              value={employeeId}
+              onChange={setEmployeeId}
+              placeholder={type === "offboarding"
+                ? "Search staff to offboard…"
+                : "Search staff to onboard…"}
+            />
           </div>
 
           {/* Template */}

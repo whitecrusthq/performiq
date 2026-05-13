@@ -21,6 +21,10 @@ export class ForcedEnable2FAAction {
 
       const user = await User.findByPk(payload.id);
       if (!user) { res.status(404).json({ error: "User not found" }); return; }
+      if (user.isActive === false) {
+        res.status(403).json({ error: "This account has been deactivated. Please contact your administrator." });
+        return;
+      }
       if (!user.twoFactorPendingSecret) {
         res.status(400).json({ error: "No setup in progress. Please scan the QR code first." });
         return;
