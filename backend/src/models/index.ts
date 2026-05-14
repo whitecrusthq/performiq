@@ -37,6 +37,7 @@ import WorkflowTask from "./WorkflowTask.js";
 import OnboardingDocument from "./OnboardingDocument.js";
 import HrQuery from "./HrQuery.js";
 import HrQueryMessage from "./HrQueryMessage.js";
+import HrKbDocument from "./HrKbDocument.js";
 import SecuritySettings from "./SecuritySettings.js";
 import AppSettings from "./AppSettings.js";
 import TransferRequest from "./TransferRequest.js";
@@ -86,6 +87,7 @@ export {
   OnboardingDocument,
   HrQuery,
   HrQueryMessage,
+  HrKbDocument,
   SecuritySettings,
   AppSettings,
   TransferRequest,

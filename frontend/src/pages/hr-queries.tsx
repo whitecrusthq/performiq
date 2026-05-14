@@ -20,7 +20,9 @@ import {
 import {
   MessageSquareWarning, Plus, Filter, ChevronRight, Clock, CheckCircle2,
   CircleDot, XCircle, AlertTriangle, User, Send, Trash2, Pencil, RotateCcw,
+  Sparkles, BookOpen, Loader2,
 } from "lucide-react";
+import { Link } from "wouter";
 
 import { apiFetch as apiFetchBase } from "@/lib/utils";
 import { BulkActionBar } from "@/components/bulk-action-bar";
@@ -177,6 +179,38 @@ function QueryDetailSheet({
   const [editOpen, setEditOpen] = useState(false);
   const [liveQuery, setLiveQuery] = useState(query);
   const bottomRef = useRef<HTMLDivElement>(null);
+  const [suggesting, setSuggesting] = useState(false);
+  const [aiRefs, setAiRefs] = useState<{ docId: number; title: string }[]>([]);
+
+  const requestAiSuggestion = async () => {
+    if (suggesting) return;
+    if (msgText.trim().length > 0) {
+      const ok = window.confirm("Replace your current draft with an AI-generated suggestion?");
+      if (!ok) return;
+    }
+    setSuggesting(true);
+    setAiRefs([]);
+    try {
+      const res = await apiFetchBase(`/api/hr-queries/${query.id}/suggest-reply`, { method: "POST" });
+      if (!res.ok) {
+        const e = await res.json().catch(() => ({}));
+        throw new Error(e.error ?? "AI suggestion failed");
+      }
+      const data = await res.json();
+      setMsgText(data.suggestion);
+      setAiRefs(Array.isArray(data.references) ? data.references : []);
+      if ((data.references ?? []).length === 0) {
+        toast({
+          title: "Draft ready",
+          description: "No matching knowledge base entries — review carefully before sending.",
+        });
+      }
+    } catch (err: any) {
+      toast({ title: err.message || "AI suggestion failed", variant: "destructive" });
+    } finally {
+      setSuggesting(false);
+    }
+  };
 
   const isClosed = liveQuery.status === "closed";
   const canEdit = !isHR && liveQuery.status === "open";
@@ -339,6 +373,37 @@ function QueryDetailSheet({
                   </Button>
                 </div>
               )}
+              {isHR && (
+                <div className="flex flex-wrap items-center gap-2 mb-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="text-xs gap-1.5 h-7 bg-violet-50 hover:bg-violet-100 border-violet-200 text-violet-700 dark:bg-violet-950/30 dark:hover:bg-violet-900/40 dark:border-violet-800 dark:text-violet-300"
+                    onClick={requestAiSuggestion}
+                    disabled={suggesting}
+                    title="Draft a reply using your HR knowledge base"
+                  >
+                    {suggesting
+                      ? <><Loader2 className="w-3 h-3 animate-spin" /> Drafting…</>
+                      : <><Sparkles className="w-3 h-3" /> Suggest with AI</>}
+                  </Button>
+                  <Link href="/hr-knowledge-base">
+                    <a className="text-[11px] text-muted-foreground hover:text-foreground inline-flex items-center gap-1">
+                      <BookOpen className="w-3 h-3" /> Manage knowledge base
+                    </a>
+                  </Link>
+                  {aiRefs.length > 0 && (
+                    <div className="basis-full text-[11px] text-muted-foreground">
+                      Drafted from: {aiRefs.map((r, i) => (
+                        <span key={r.docId}>
+                          {i > 0 && ", "}
+                          <span className="text-violet-700 dark:text-violet-300">{r.title}</span>
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
               <div className="flex gap-2 items-end">
                 <Textarea
                   className="flex-1 min-h-[44px] max-h-32 text-sm resize-none"
@@ -352,7 +417,9 @@ function QueryDetailSheet({
                   <Send className="w-4 h-4" />
                 </Button>
               </div>
-              <p className="text-[10px] text-muted-foreground mt-1">Press Enter to send · Shift+Enter for new line</p>
+              <p className="text-[10px] text-muted-foreground mt-1">
+                {isHR ? "AI drafts are suggestions — review before sending. " : ""}Press Enter to send · Shift+Enter for new line
+              </p>
             </div>
           )}
         </SheetContent>

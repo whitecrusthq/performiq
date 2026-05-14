@@ -7,6 +7,7 @@ import { UpdateQueryAction } from "../actions/hr-queries/UpdateQueryAction.js";
 import { GetMessagesAction } from "../actions/hr-queries/GetMessagesAction.js";
 import { CreateMessageAction } from "../actions/hr-queries/CreateMessageAction.js";
 import { DeleteQueryAction } from "../actions/hr-queries/DeleteQueryAction.js";
+import { SuggestReplyAction } from "../actions/hr-queries/SuggestReplyAction.js";
 
 const router = Router();
 
@@ -16,6 +17,7 @@ router.post("/hr-queries", requireAuth, CreateQueryAction.handle);
 router.put("/hr-queries/:id", requireAuth, UpdateQueryAction.handle);
 router.get("/hr-queries/:id/messages", requireAuth, GetMessagesAction.handle);
 router.post("/hr-queries/:id/messages", requireAuth, CreateMessageAction.handle);
+router.post("/hr-queries/:id/suggest-reply", requireAuth, SuggestReplyAction.handle);
 router.delete("/hr-queries/:id", requireAuth, DeleteQueryAction.handle);
 
 export default router;

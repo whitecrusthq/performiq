@@ -27,6 +27,7 @@ import Timesheets from "@/pages/timesheets";
 import Onboarding from "@/pages/onboarding";
 import Staff from "@/pages/staff";
 import HrQueries from "@/pages/hr-queries";
+import HrKnowledgeBase from "@/pages/hr-knowledge-base";
 import Profile from "@/pages/profile";
 import Security from "@/pages/security";
 import AuditLog from "@/pages/audit-log";
@@ -119,6 +120,9 @@ function Router() {
       </Route>
       <Route path="/hr-queries">
         <AppLayout><ProtectedRoute component={HrQueries} /></AppLayout>
+      </Route>
+      <Route path="/hr-knowledge-base">
+        <AppLayout><ProtectedRoute component={HrKnowledgeBase} /></AppLayout>
       </Route>
       <Route path="/profile">
         <AppLayout><ProtectedRoute component={Profile} /></AppLayout>
