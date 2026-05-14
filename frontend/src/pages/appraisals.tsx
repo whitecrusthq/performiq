@@ -8,6 +8,7 @@ import { BulkActionBar } from "@/components/bulk-action-bar";
 import { useAuth } from "@/hooks/use-auth";
 import { Link } from "wouter";
 import { apiFetch } from "@/lib/utils";
+import { matchesPerson } from "@/lib/search";
 
 const authHeader = () => ({ Authorization: `Bearer ${localStorage.getItem("token")}` });
 
@@ -55,8 +56,7 @@ export default function Appraisals() {
   const filteredAppraisals = useMemo(() => {
     if (!appraisals) return [];
     return appraisals.filter(a => {
-      const q = search.toLowerCase();
-      const matchSearch = !q || (a.employee?.name ?? "").toLowerCase().includes(q) || (a.employee?.department ?? "").toLowerCase().includes(q);
+      const matchSearch = matchesPerson(search, a.employee, [a.employee?.department, a.employee?.jobTitle]);
       const matchStatus = !filterStatus || a.status === filterStatus;
       const matchCycle = !filterCycle || String(a.cycleId) === filterCycle;
       return matchSearch && matchStatus && matchCycle;

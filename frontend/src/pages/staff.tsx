@@ -10,6 +10,7 @@ import {
   ArrowRightLeft, CheckCircle2, XCircle, Ban, FileUp, Loader2, UserPlus,
 } from "lucide-react";
 import { apiFetch } from "@/lib/utils";
+import { matchesPerson } from "@/lib/search";
 
 function csvEscape(val: any): string {
   if (val == null || val === "") return "";
@@ -2121,9 +2122,8 @@ export default function Staff() {
   const departments = useMemo(() => [...new Set((users as any[]).map(u => u.department).filter(Boolean))].sort(), [users]);
 
   const filtered = useMemo(() => {
-    const q = search.toLowerCase();
     return (users as any[]).filter(u => {
-      const matchQ = !q || u.name?.toLowerCase().includes(q) || u.email?.toLowerCase().includes(q) || u.staffId?.toLowerCase().includes(q);
+      const matchQ = matchesPerson(search, u, [u.jobTitle, u.department]);
       const matchDept = !filterDept || u.department === filterDept;
       const matchRole = !filterRole || u.role === filterRole;
       return matchQ && matchDept && matchRole;

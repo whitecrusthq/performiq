@@ -25,6 +25,7 @@ import {
 import { Link } from "wouter";
 
 import { apiFetch as apiFetchBase } from "@/lib/utils";
+import { matchesPerson } from "@/lib/search";
 import { BulkActionBar } from "@/components/bulk-action-bar";
 
 // ── helpers ───────────────────────────────────────────────────────────────────
@@ -671,9 +672,10 @@ export default function HrQueries() {
     if (priorityFilter !== "all" && q.priority !== priorityFilter) return false;
     if (search) {
       const s = search.toLowerCase();
-      if (!q.title.toLowerCase().includes(s) &&
-          !q.description.toLowerCase().includes(s) &&
-          !(q.submitter?.name?.toLowerCase().includes(s))) return false;
+      const titleMatch = q.title.toLowerCase().includes(s);
+      const descMatch = q.description.toLowerCase().includes(s);
+      const submitterMatch = matchesPerson(search, q.submitter);
+      if (!titleMatch && !descMatch && !submitterMatch) return false;
     }
     return true;
   });

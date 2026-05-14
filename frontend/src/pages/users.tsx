@@ -7,6 +7,7 @@ import { Users as UsersIcon, Plus, Edit, Trash2, X, Search, ChevronDown, AlertCi
 import { BulkActionBar } from "@/components/bulk-action-bar";
 import { useAuth } from "@/hooks/use-auth";
 import { apiFetch } from "@/lib/utils";
+import { matchesPerson } from "@/lib/search";
 import { useToast } from "@/hooks/use-toast";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 
@@ -49,8 +50,7 @@ export default function Users() {
   const filteredUsers = useMemo(() => {
     if (!users) return [];
     return users.filter(u => {
-      const q = search.toLowerCase();
-      const matchSearch = !q || (u.name ?? "").toLowerCase().includes(q) || (u.email ?? "").toLowerCase().includes(q);
+      const matchSearch = matchesPerson(search, u, [u.staffId, u.jobTitle, u.department]);
       const matchRole = !filterRole || u.role === filterRole;
       const matchDept = !filterDept || (u.department ?? "") === filterDept;
       return matchSearch && matchRole && matchDept;

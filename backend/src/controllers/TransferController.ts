@@ -6,7 +6,7 @@ export default class TransferController {
     const userIds = [t.employeeId, t.requestedById, ...(t.approvedById ? [t.approvedById] : [])];
     const users = await User.findAll({
       where: { id: { [Op.in]: userIds } },
-      attributes: ["id", "name", "email", "department", "jobTitle", "managerId"],
+      attributes: ["id", "name", "email", "department", "jobTitle", "managerId", "firstName", "middleName", "surname", "staffId"],
     });
     const userMap: Record<number, any> = {};
     users.forEach(u => { userMap[u.id] = u.get({ plain: true }); });
