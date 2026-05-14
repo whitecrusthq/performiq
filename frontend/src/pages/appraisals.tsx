@@ -3,7 +3,7 @@ import { useListAppraisals, useCreateAppraisal, useListCycles, useListUsers } fr
 import { useQueryClient } from "@tanstack/react-query";
 import { PageHeader, Card, StatusBadge, Button, EmptyState, Label } from "@/components/shared";
 import { format } from "date-fns";
-import { ClipboardList, Plus, X, Search, ChevronDown, ArrowUp, ArrowDown, UserPlus, Trash2, Users, User, Check } from "lucide-react";
+import { ClipboardList, Plus, X, Search, ChevronDown, ArrowUp, ArrowDown, UserPlus, Trash2, Users, User, Check, Calendar, Clock } from "lucide-react";
 import { BulkActionBar } from "@/components/bulk-action-bar";
 import { useAuth } from "@/hooks/use-auth";
 import { Link } from "wouter";
@@ -14,11 +14,17 @@ import { SearchableSelect, personMatcher } from "@/components/searchable-select"
 const authHeader = () => ({ Authorization: `Bearer ${localStorage.getItem("token")}` });
 
 const STATUS_OPTIONS = [
+  { value: "scheduled",         label: "Scheduled" },
   { value: "self_review",       label: "Self Review" },
   { value: "manager_review",    label: "Manager Review" },
   { value: "pending_approval",  label: "Pending Approval" },
   { value: "completed",         label: "Completed" },
 ];
+
+function toDatetimeLocalValue(d: Date): string {
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
 
 export default function Appraisals() {
   const { user } = useAuth();
@@ -39,6 +45,8 @@ export default function Appraisals() {
   const [selectedEmployeeIds, setSelectedEmployeeIds] = useState<Set<number>>(new Set());
   const [categoryBudgets, setCategoryBudgets] = useState<Record<string, Record<number, string>>>({});
   const [bulkCreating, setBulkCreating] = useState(false);
+  const [scheduleEnabled, setScheduleEnabled] = useState(false);
+  const [scheduledStartAt, setScheduledStartAt] = useState("");
 
   // Criteria groups
   const [criteriaGroups, setCriteriaGroups] = useState<any[]>([]);
@@ -175,6 +183,7 @@ export default function Appraisals() {
             reviewerIds,
             criteriaGroupId: formData.criteriaGroupId ? parseInt(formData.criteriaGroupId) : undefined,
             budgetsByCategory: Object.keys(budgetsByCat).length > 0 ? budgetsByCat : undefined,
+            scheduledStartAt: scheduleEnabled && scheduledStartAt ? new Date(scheduledStartAt).toISOString() : undefined,
           }),
         });
         queryClient.invalidateQueries({ queryKey: ["/api/appraisals"] });
@@ -196,6 +205,7 @@ export default function Appraisals() {
       reviewerIds,
       criteriaGroupId: formData.criteriaGroupId ? parseInt(formData.criteriaGroupId) : undefined,
       budgetValues: Object.keys(budgetMap).length > 0 ? budgetMap : undefined,
+      scheduledStartAt: scheduleEnabled && scheduledStartAt ? new Date(scheduledStartAt).toISOString() : undefined,
     } as Record<string, unknown>;
     createMutation.mutate(
       { data: payload },
@@ -216,6 +226,8 @@ export default function Appraisals() {
     setAssignMode("individual");
     setSelectedEmployeeIds(new Set());
     setCategoryBudgets({});
+    setScheduleEnabled(false);
+    setScheduledStartAt("");
   };
 
   if (isLoading) return <div className="p-8">Loading appraisals...</div>;
@@ -340,7 +352,14 @@ export default function Appraisals() {
                         ? (app as any).reviewers.map((r: any) => r.name).join(', ')
                         : 'Unassigned'}
                     </td>
-                    <td className="p-4"><StatusBadge status={app.status} type="appraisal" /></td>
+                    <td className="p-4">
+                      <StatusBadge status={app.status} type="appraisal" />
+                      {app.status === "scheduled" && (app as any).scheduledStartAt && (
+                        <div className="text-xs text-muted-foreground mt-1 flex items-center gap-1">
+                          <Clock className="w-3 h-3" /> {format(new Date((app as any).scheduledStartAt), "PPp")}
+                        </div>
+                      )}
+                    </td>
                     <td className="p-4">
                       {app.overallScore !== null ? (
                         <span className="font-bold text-lg">{Number(app.overallScore).toFixed(1)}<span className="text-sm text-muted-foreground font-normal">/5</span> <span className="text-sm text-muted-foreground font-normal">({(Number(app.overallScore) / 5 * 100).toFixed(0)}%)</span></span>
@@ -675,15 +694,64 @@ export default function Appraisals() {
                   ))}
                 </div>
               </div>
+              <div className="rounded-xl border border-border p-3 bg-muted/10">
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={scheduleEnabled}
+                    onChange={e => {
+                      const enabled = e.target.checked;
+                      setScheduleEnabled(enabled);
+                      if (enabled && !scheduledStartAt) {
+                        const t = new Date(); t.setHours(t.getHours() + 1, 0, 0, 0);
+                        setScheduledStartAt(toDatetimeLocalValue(t));
+                      }
+                    }}
+                    className="accent-primary"
+                  />
+                  <Calendar className="w-4 h-4 text-primary" />
+                  <span className="text-sm font-medium">Schedule start for later</span>
+                  <span className="text-xs text-muted-foreground">— hold off until a specific date / time</span>
+                </label>
+                {scheduleEnabled && (
+                  <div className="mt-3 flex items-center gap-3 flex-wrap">
+                    <div className="relative">
+                      <Clock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none" />
+                      <input
+                        type="datetime-local"
+                        value={scheduledStartAt}
+                        min={toDatetimeLocalValue(new Date())}
+                        onChange={e => setScheduledStartAt(e.target.value)}
+                        className="pl-9 pr-3 py-2 rounded-xl border border-border bg-background text-sm outline-none focus:ring-2 focus:ring-primary/20"
+                        required={scheduleEnabled}
+                      />
+                    </div>
+                    {scheduledStartAt && (() => {
+                      const d = new Date(scheduledStartAt);
+                      const inPast = d.getTime() <= Date.now();
+                      return inPast
+                        ? <p className="text-xs text-amber-600">That time is in the past — the appraisal will start immediately.</p>
+                        : <p className="text-xs text-muted-foreground">Will start {format(d, "PPp")} ({Math.round((d.getTime() - Date.now()) / 60000)} min from now)</p>;
+                    })()}
+                  </div>
+                )}
+              </div>
               <div className="pt-4 flex justify-end gap-3">
                 <Button type="button" variant="ghost" onClick={() => { setIsDialogOpen(false); resetForm(); }}>Cancel</Button>
-                {assignMode === "category" ? (
-                  <Button type="submit" isLoading={bulkCreating} disabled={selectedEmployeeIds.size === 0}>
-                    Start {selectedEmployeeIds.size} Appraisal{selectedEmployeeIds.size !== 1 ? "s" : ""}
-                  </Button>
-                ) : (
-                  <Button type="submit" isLoading={createMutation.isPending}>Start Appraisal</Button>
-                )}
+                {(() => {
+                  const willSchedule = scheduleEnabled && !!scheduledStartAt && new Date(scheduledStartAt).getTime() > Date.now();
+                  const verb = willSchedule ? "Schedule" : "Start";
+                  if (assignMode === "category") {
+                    return (
+                      <Button type="submit" isLoading={bulkCreating} disabled={selectedEmployeeIds.size === 0}>
+                        {verb} {selectedEmployeeIds.size} Appraisal{selectedEmployeeIds.size !== 1 ? "s" : ""}
+                      </Button>
+                    );
+                  }
+                  return (
+                    <Button type="submit" isLoading={createMutation.isPending}>{verb} Appraisal</Button>
+                  );
+                })()}
               </div>
             </form>
           </Card>
