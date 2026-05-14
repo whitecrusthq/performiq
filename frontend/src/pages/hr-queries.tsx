@@ -20,7 +20,7 @@ import {
 import {
   MessageSquareWarning, Plus, Filter, ChevronRight, Clock, CheckCircle2,
   CircleDot, XCircle, AlertTriangle, User, Send, Trash2, Pencil, RotateCcw,
-  Sparkles, BookOpen, Loader2,
+  Sparkles, BookOpen, Loader2, ArrowRightLeft, Flame, Timer, BarChart3,
 } from "lucide-react";
 import { Link } from "wouter";
 
@@ -83,6 +83,13 @@ function priorityBadge(priority: string) {
 
 function fmtDate(d: string) {
   return new Date(d).toLocaleDateString(undefined, { day: "2-digit", month: "short", year: "numeric" });
+}
+
+function formatHours(h: number | null | undefined): string {
+  if (h === null || h === undefined) return "—";
+  if (h < 1) return `${Math.round(h * 60)}m`;
+  if (h < 24) return `${h.toFixed(1)}h`;
+  return `${(h / 24).toFixed(1)}d`;
 }
 
 function catLabel(cat: string) {
@@ -158,6 +165,126 @@ function QueryFormDialog({
   );
 }
 
+// ── Transfer / Escalate dialogs ───────────────────────────────────────────────
+function TransferDialog({
+  open, onClose, queryId, currentAssigneeId, onDone, mode,
+}: {
+  open: boolean;
+  onClose: () => void;
+  queryId: number;
+  currentAssigneeId: number | null;
+  onDone: (updated: any) => void;
+  mode: "transfer" | "escalate";
+}) {
+  const { toast } = useToast();
+  const [assignedTo, setAssignedTo] = useState<string>("");
+  const [reason, setReason] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  const { data: hrUsers = [] } = useQuery({
+    queryKey: ["hr-users"],
+    queryFn: () => apiFetch("/api/hr-queries/hr-users"),
+    enabled: open,
+  });
+
+  const isEscalate = mode === "escalate";
+  const reassignRequired = !isEscalate;
+
+  const submit = async () => {
+    if (reassignRequired && !assignedTo) {
+      toast({ title: "Pick an HR officer to transfer to", variant: "destructive" });
+      return;
+    }
+    setBusy(true);
+    try {
+      const url = `/api/hr-queries/${queryId}/${isEscalate ? "escalate" : "transfer"}`;
+      const body: any = { reason };
+      if (assignedTo) body.assignedTo = Number(assignedTo);
+      const res = await apiFetchBase(url, { method: "POST", body: JSON.stringify(body) });
+      if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error ?? "Failed");
+      const updated = await res.json();
+      onDone(updated);
+      onClose();
+      toast({ title: isEscalate ? "Ticket escalated" : "Ticket transferred" });
+    } catch (err: any) {
+      toast({ title: err.message || "Action failed", variant: "destructive" });
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const available = (hrUsers as any[]).filter(u => u.id !== currentAssigneeId);
+
+  return (
+    <Dialog open={open} onOpenChange={v => !v && !busy && onClose()}>
+      <DialogContent className="max-w-md">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            {isEscalate
+              ? <><Flame className="w-4 h-4 text-red-600" /> Escalate ticket</>
+              : <><ArrowRightLeft className="w-4 h-4 text-blue-600" /> Transfer ticket</>}
+          </DialogTitle>
+        </DialogHeader>
+        <div className="space-y-4 py-2">
+          {isEscalate && (
+            <p className="text-xs text-muted-foreground">
+              Escalating sets priority to <strong className="text-red-600">High</strong> and records an audit trail entry on the thread.
+            </p>
+          )}
+          <div>
+            <Label className="text-xs">
+              {isEscalate ? "Reassign to (optional)" : "Reassign to"} {reassignRequired && <span className="text-red-500">*</span>}
+            </Label>
+            <Select value={assignedTo} onValueChange={setAssignedTo}>
+              <SelectTrigger className="mt-1 h-9 text-sm">
+                <SelectValue placeholder={isEscalate ? "Keep current assignee" : "Pick an HR officer"} />
+              </SelectTrigger>
+              <SelectContent>
+                {available.length === 0 && (
+                  <div className="px-3 py-2 text-xs text-muted-foreground">No other HR officers available</div>
+                )}
+                {available.map(u => (
+                  <SelectItem key={u.id} value={String(u.id)}>
+                    {u.name} <span className="text-xs text-muted-foreground ml-1">({u.email})</span>
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div>
+            <Label className="text-xs">
+              Reason {isEscalate && <span className="text-muted-foreground">(strongly recommended)</span>}
+            </Label>
+            <Textarea
+              className="mt-1 text-sm min-h-[80px]"
+              placeholder={isEscalate
+                ? "e.g. Employee disputes payroll deduction — needs senior review."
+                : "e.g. This relates to payroll — assigning to the payroll lead."}
+              value={reason}
+              onChange={e => setReason(e.target.value)}
+              maxLength={1000}
+            />
+          </div>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose} disabled={busy}>Cancel</Button>
+          <Button
+            onClick={submit}
+            disabled={busy}
+            className={isEscalate ? "bg-red-600 hover:bg-red-700" : ""}
+          >
+            {busy
+              ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Working…</>
+              : isEscalate
+                ? <><Flame className="w-4 h-4 mr-2" /> Escalate</>
+                : <><ArrowRightLeft className="w-4 h-4 mr-2" /> Transfer</>}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 // ── Query Detail Sheet ────────────────────────────────────────────────────────
 function QueryDetailSheet({
   query, isHR, currentUser, onClose, onUpdate, onDelete,
@@ -170,6 +297,7 @@ function QueryDetailSheet({
   onDelete: (id: number) => void;
 }) {
   const { toast } = useToast();
+  const qc = useQueryClient();
   const [messages, setMessages] = useState<any[]>([]);
   const [msgsLoading, setMsgsLoading] = useState(true);
   const [msgText, setMsgText] = useState("");
@@ -181,6 +309,7 @@ function QueryDetailSheet({
   const bottomRef = useRef<HTMLDivElement>(null);
   const [suggesting, setSuggesting] = useState(false);
   const [aiRefs, setAiRefs] = useState<{ docId: number; title: string }[]>([]);
+  const [transferMode, setTransferMode] = useState<"transfer" | "escalate" | null>(null);
 
   const requestAiSuggestion = async () => {
     if (suggesting) return;
@@ -277,11 +406,33 @@ function QueryDetailSheet({
               {statusBadge(liveQuery.status)}
               {priorityBadge(liveQuery.priority)}
               <Badge variant="outline" className="text-xs">{catLabel(liveQuery.category)}</Badge>
+              {liveQuery.escalatedAt && (
+                <Badge className="bg-red-100 text-red-700 border-red-200 text-xs">
+                  <Flame className="w-3 h-3 mr-1" />Escalated
+                </Badge>
+              )}
             </div>
             <div className="text-xs text-muted-foreground mt-1">
               {isHR && query.submitter && <span>From <strong>{query.submitter.name}</strong> · </span>}
               {fmtDate(query.createdAt)}
+              {liveQuery.assignee && (
+                <span> · Assigned to <strong>{liveQuery.assignee.name}</strong></span>
+              )}
             </div>
+            {isHR && (liveQuery.responseHours != null || liveQuery.resolutionHours != null) && (
+              <div className="flex flex-wrap gap-3 mt-2 text-[11px]">
+                {liveQuery.responseHours != null && (
+                  <span className="inline-flex items-center gap-1 text-muted-foreground">
+                    <Timer className="w-3 h-3" /> First reply in <strong className="text-foreground">{formatHours(liveQuery.responseHours)}</strong>
+                  </span>
+                )}
+                {liveQuery.resolutionHours != null && (
+                  <span className="inline-flex items-center gap-1 text-muted-foreground">
+                    <CheckCircle2 className="w-3 h-3" /> Resolved in <strong className="text-foreground">{formatHours(liveQuery.resolutionHours)}</strong>
+                  </span>
+                )}
+              </div>
+            )}
           </SheetHeader>
 
           {/* HR controls (status / priority) */}
@@ -309,6 +460,26 @@ function QueryDetailSheet({
                 <Button size="sm" variant="outline" className="h-8 text-xs" onClick={saveSettings}>Save</Button>
                 <Button size="sm" variant="destructive" className="h-8 text-xs" onClick={() => { onDelete(query.id); onClose(); }}>
                   <Trash2 className="w-3.5 h-3.5" />
+                </Button>
+              </div>
+              <div className="basis-full flex gap-2 pt-1">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="h-8 text-xs gap-1.5"
+                  onClick={() => setTransferMode("transfer")}
+                  disabled={isClosed}
+                >
+                  <ArrowRightLeft className="w-3.5 h-3.5" /> Transfer
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="h-8 text-xs gap-1.5 border-red-200 text-red-700 hover:bg-red-50 dark:border-red-900 dark:text-red-300 dark:hover:bg-red-950/30"
+                  onClick={() => setTransferMode("escalate")}
+                  disabled={isClosed}
+                >
+                  <Flame className="w-3.5 h-3.5" /> Escalate
                 </Button>
               </div>
             </div>
@@ -437,6 +608,28 @@ function QueryDetailSheet({
           }}
         />
       )}
+
+      {transferMode && (
+        <TransferDialog
+          open
+          mode={transferMode}
+          queryId={query.id}
+          currentAssigneeId={liveQuery.assignedTo ?? null}
+          onClose={() => setTransferMode(null)}
+          onDone={updated => {
+            setLiveQuery((p: any) => ({ ...p, ...updated }));
+            setNewStatus(updated.status);
+            setNewPriority(updated.priority);
+            // Refresh thread to include the system message
+            (async () => {
+              const res = await apiFetchBase(`/api/hr-queries/${query.id}/messages`);
+              if (res.ok) setMessages(await res.json());
+            })();
+            qc.invalidateQueries({ queryKey: ["hr-queries"] });
+            qc.invalidateQueries({ queryKey: ["hr-queries-metrics"] });
+          }}
+        />
+      )}
     </>
   );
 }
@@ -550,9 +743,20 @@ export default function HrQueries() {
           ? "Review and respond to queries raised by employees."
           : "Raise questions or issues directly to the HR department."}
       >
-        <Button onClick={() => setSubmitOpen(true)} className="gap-2">
-          <Plus className="w-4 h-4" /> Submit Ticket
-        </Button>
+        <div className="flex gap-2">
+          {isHR && (
+            <Link href="/hr-support-dashboard">
+              <a>
+                <Button variant="outline" className="gap-2">
+                  <BarChart3 className="w-4 h-4" /> Dashboard
+                </Button>
+              </a>
+            </Link>
+          )}
+          <Button onClick={() => setSubmitOpen(true)} className="gap-2">
+            <Plus className="w-4 h-4" /> Submit Ticket
+          </Button>
+        </div>
       </PageHeader>
 
       {/* Stats (HR only) */}

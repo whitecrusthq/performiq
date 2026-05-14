@@ -97,6 +97,7 @@ const NAV_STRUCTURE: NavEntry[] = [
       { name: "Onboarding", path: "/onboarding", icon: UserPlus, roles: ["super_admin", "admin"], customRoles: ["hr manager"] },
       { name: "Staff Transfer", path: "/transfers", icon: ArrowRightLeft, roles: ["super_admin", "admin", "manager"], customRoles: ["hr manager"] },
       { name: "HR Support", path: "/hr-queries", icon: MessageSquareWarning, roles: ["super_admin", "admin", "manager", "employee"], customRoles: ["hr manager"] },
+      { name: "HR Support Dashboard", path: "/hr-support-dashboard", icon: BarChart3, roles: ["super_admin", "admin"], customRoles: ["hr manager"] },
       { name: "HR Knowledge Base", path: "/hr-knowledge-base", icon: BookOpen, roles: ["super_admin", "admin"], customRoles: ["hr manager"] },
       { name: "Anniversaries", path: "/anniversaries", icon: Award, roles: ["super_admin", "admin", "manager"] },
     ],

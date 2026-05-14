@@ -13,6 +13,15 @@ class HrQuery extends Model {
   declare response: string | null;
   declare respondedBy: number | null;
   declare respondedAt: Date | null;
+  declare firstResponseAt: Date | null;
+  declare resolvedAt: Date | null;
+  declare closedAt: Date | null;
+  declare escalatedAt: Date | null;
+  declare escalatedBy: number | null;
+  declare escalationReason: string | null;
+  declare transferredAt: Date | null;
+  declare transferredBy: number | null;
+  declare transferReason: string | null;
   declare createdAt: Date;
   declare updatedAt: Date;
 }
@@ -30,6 +39,15 @@ HrQuery.init(
     response: { type: DataTypes.TEXT },
     respondedBy: { type: DataTypes.INTEGER, field: "responded_by" },
     respondedAt: { type: DataTypes.DATE, field: "responded_at" },
+    firstResponseAt: { type: DataTypes.DATE, field: "first_response_at" },
+    resolvedAt: { type: DataTypes.DATE, field: "resolved_at" },
+    closedAt: { type: DataTypes.DATE, field: "closed_at" },
+    escalatedAt: { type: DataTypes.DATE, field: "escalated_at" },
+    escalatedBy: { type: DataTypes.INTEGER, field: "escalated_by" },
+    escalationReason: { type: DataTypes.TEXT, field: "escalation_reason" },
+    transferredAt: { type: DataTypes.DATE, field: "transferred_at" },
+    transferredBy: { type: DataTypes.INTEGER, field: "transferred_by" },
+    transferReason: { type: DataTypes.TEXT, field: "transfer_reason" },
     createdAt: { type: DataTypes.DATE, allowNull: false, defaultValue: DataTypes.NOW, field: "created_at" },
     updatedAt: { type: DataTypes.DATE, allowNull: false, defaultValue: DataTypes.NOW, field: "updated_at" },
   },
