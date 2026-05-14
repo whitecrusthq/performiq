@@ -355,8 +355,10 @@ export default function Appraisals() {
                     <td className="p-4">
                       <StatusBadge status={app.status} type="appraisal" />
                       {(app.status as string) === "scheduled" && (app as any).scheduledStartAt && (
-                        <div className="text-xs text-muted-foreground mt-1 flex items-center gap-1">
-                          <Clock className="w-3 h-3" /> {format(new Date((app as any).scheduledStartAt), "PPp")}
+                        <div className="text-xs text-muted-foreground mt-1 flex items-start gap-1 whitespace-nowrap">
+                          <Clock className="w-3 h-3 mt-0.5 shrink-0" />
+                          <span className="hidden sm:inline">{format(new Date((app as any).scheduledStartAt), "PPp")}</span>
+                          <span className="sm:hidden">{format(new Date((app as any).scheduledStartAt), "MMM d, p")}</span>
                         </div>
                       )}
                     </td>
@@ -695,7 +697,7 @@ export default function Appraisals() {
                 </div>
               </div>
               <div className="rounded-xl border border-border p-3 bg-muted/10">
-                <label className="flex items-center gap-2 cursor-pointer">
+                <label className="flex items-start sm:items-center gap-2 cursor-pointer flex-wrap">
                   <input
                     type="checkbox"
                     checked={scheduleEnabled}
@@ -707,22 +709,22 @@ export default function Appraisals() {
                         setScheduledStartAt(toDatetimeLocalValue(t));
                       }
                     }}
-                    className="accent-primary"
+                    className="accent-primary mt-1 sm:mt-0 shrink-0"
                   />
-                  <Calendar className="w-4 h-4 text-primary" />
+                  <Calendar className="w-4 h-4 text-primary mt-1 sm:mt-0 shrink-0" />
                   <span className="text-sm font-medium">Schedule start for later</span>
-                  <span className="text-xs text-muted-foreground">— hold off until a specific date / time</span>
+                  <span className="text-xs text-muted-foreground basis-full sm:basis-auto sm:ml-1">Hold off until a specific date / time</span>
                 </label>
                 {scheduleEnabled && (
-                  <div className="mt-3 flex items-center gap-3 flex-wrap">
-                    <div className="relative">
+                  <div className="mt-3 flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3">
+                    <div className="relative w-full sm:w-auto">
                       <Clock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none" />
                       <input
                         type="datetime-local"
                         value={scheduledStartAt}
                         min={toDatetimeLocalValue(new Date())}
                         onChange={e => setScheduledStartAt(e.target.value)}
-                        className="pl-9 pr-3 py-2 rounded-xl border border-border bg-background text-sm outline-none focus:ring-2 focus:ring-primary/20"
+                        className="w-full sm:w-auto pl-9 pr-3 py-2 rounded-xl border border-border bg-background text-sm outline-none focus:ring-2 focus:ring-primary/20"
                         required={scheduleEnabled}
                       />
                     </div>
