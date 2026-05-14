@@ -8,7 +8,7 @@ export class CreateAppraisalAction {
       if (!["admin", "super_admin", "manager"].includes(req.user!.role)) {
         res.status(403).json({ error: "Forbidden" }); return;
       }
-      const { cycleId, employeeId, reviewerIds, workflowType, criteriaGroupId, budgetValues } = req.body;
+      const { cycleId, employeeId, reviewerIds, workflowType, criteriaGroupId, budgetValues, scheduledStartAt } = req.body;
       const orderedIds: number[] = Array.isArray(reviewerIds) && reviewerIds.length > 0
         ? reviewerIds.map(Number)
         : (req.user!.role !== "employee" ? [req.user!.id] : []);
@@ -25,6 +25,7 @@ export class CreateAppraisalAction {
         workflowType: workflowType ?? "admin_approval",
         criteriaGroupId: criteriaGroupId ? Number(criteriaGroupId) : null,
         budgetValues: budgetMap,
+        scheduledStartAt: scheduledStartAt ?? null,
       });
       res.status(201).json(enriched);
     } catch (err) {

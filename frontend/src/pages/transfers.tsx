@@ -1,8 +1,9 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { PageHeader, Card, Button, Input, Label } from "@/components/shared";
 import { ArrowRightLeft, Plus, X, CheckCircle2, XCircle, Clock, Ban, MapPin, Building2, Calendar, User, ChevronDown, Search } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
 import { apiFetch } from "@/lib/utils";
+import { matchesPerson } from "@/lib/search";
 
 type TransferStatus = "pending" | "approved" | "rejected" | "cancelled";
 
@@ -28,7 +29,112 @@ function fmt(d: string) {
 }
 
 interface Site { id: number; name: string; region?: string | null; city?: string | null }
-interface UserOption { id: number; name: string; role: string; department?: string | null; siteId?: number | null }
+interface UserOption {
+  id: number;
+  name: string;
+  role: string;
+  department?: string | null;
+  siteId?: number | null;
+  email?: string | null;
+  jobTitle?: string | null;
+  staffId?: string | null;
+  firstName?: string | null;
+  middleName?: string | null;
+  surname?: string | null;
+  isActive?: boolean;
+}
+
+function EmployeePicker({
+  users, value, onChange, placeholder = "Search by name, email, staff ID, job title…",
+}: {
+  users: UserOption[];
+  value: string;
+  onChange: (id: string) => void;
+  placeholder?: string;
+}) {
+  const [query, setQuery] = useState("");
+  const [open, setOpen] = useState(false);
+  const selected = users.find(u => String(u.id) === String(value));
+
+  useEffect(() => {
+    if (selected && !open) setQuery("");
+  }, [selected, open]);
+
+  const q = query.trim().toLowerCase();
+  const matches = q
+    ? users.filter(u => matchesPerson(query, u as any, [u.jobTitle, u.department])).slice(0, 50)
+    : users.slice(0, 50);
+
+  return (
+    <div className="relative">
+      {selected && !open ? (
+        <button
+          type="button"
+          onClick={() => { setOpen(true); setQuery(""); }}
+          className="w-full mt-1 px-3 py-2 rounded-xl border border-border bg-background text-left flex items-center justify-between focus:ring-2 focus:ring-primary/20 outline-none"
+        >
+          <div>
+            <div className="font-medium text-sm">{selected.name}</div>
+            <div className="text-xs text-muted-foreground">
+              {selected.email}{selected.jobTitle ? ` • ${selected.jobTitle}` : ""}{selected.department ? ` • ${selected.department}` : ""}
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={(e) => { e.stopPropagation(); onChange(""); setOpen(true); setQuery(""); }}
+              className="p-1 rounded hover:bg-muted"
+              title="Clear selection"
+            >
+              <X className="w-3.5 h-3.5 text-muted-foreground" />
+            </button>
+            <ChevronDown className="w-4 h-4 text-muted-foreground" />
+          </div>
+        </button>
+      ) : (
+        <div className="relative mt-1">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none" />
+          <input
+            autoFocus={open}
+            value={query}
+            onChange={e => { setQuery(e.target.value); setOpen(true); }}
+            onFocus={() => setOpen(true)}
+            onBlur={() => setTimeout(() => setOpen(false), 150)}
+            placeholder={placeholder}
+            className="w-full pl-9 pr-3 py-2 rounded-xl border border-border bg-background focus:ring-2 focus:ring-primary/20 outline-none"
+          />
+          {open && (
+            <div className="absolute z-50 mt-1 w-full max-h-72 overflow-y-auto rounded-xl border border-border bg-background shadow-lg">
+              {matches.length === 0 ? (
+                <div className="px-3 py-4 text-sm text-muted-foreground text-center">No employees match "{query}".</div>
+              ) : matches.map(u => (
+                <button
+                  key={u.id}
+                  type="button"
+                  onMouseDown={(e) => e.preventDefault()}
+                  onClick={() => { onChange(String(u.id)); setOpen(false); setQuery(""); }}
+                  className="w-full text-left px-3 py-2 hover:bg-muted/60 border-b border-border last:border-b-0"
+                >
+                  <div className="min-w-0">
+                    <div className="font-medium text-sm truncate">{u.name}</div>
+                    <div className="text-xs text-muted-foreground truncate">
+                      {u.email}{u.jobTitle ? ` • ${u.jobTitle}` : ""}{u.department ? ` • ${u.department}` : ""}
+                    </div>
+                  </div>
+                </button>
+              ))}
+              {!q && users.length > 50 && (
+                <div className="px-3 py-2 text-[11px] text-muted-foreground text-center border-t border-border">
+                  Showing first 50 — type to search all {users.length} employees.
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
 interface TransferRequest {
   id: number;
   employeeId: number;
@@ -176,18 +282,30 @@ export default function Transfers() {
     load();
   };
 
+  const usersById = useMemo(() => {
+    const m = new Map<number, UserOption>();
+    for (const u of allUsers) m.set(u.id, u);
+    return m;
+  }, [allUsers]);
+
   const statusFiltered = filterStatus === "all" ? transfers : transfers.filter(t => t.status === filterStatus);
   const filtered = !search.trim() ? statusFiltered : statusFiltered.filter(t => {
-    const q = search.trim().toLowerCase();
-    return [
-      t.employee?.name,
+    // Cross-reference allUsers (O(1) map lookup) for canonical name parts —
+    // transfer.employee may lack firstName/middleName/surname on legacy rows.
+    const empFromList = t.employee?.id ? usersById.get(t.employee.id) : undefined;
+    const personFields = {
+      ...(t.employee ?? {}),
+      ...(empFromList ?? {}),
+    };
+    return matchesPerson(search, personFields, [
       t.fromSite?.name,
       t.toSite?.name,
       t.fromDepartment,
       t.toDepartment,
       t.reason,
       t.requestedBy?.name,
-    ].filter(Boolean).some(v => (v as string).toLowerCase().includes(q));
+      t.approvedBy?.name,
+    ]);
   });
 
   return (
@@ -386,17 +504,11 @@ export default function Transfers() {
 
             <div>
               <Label className="text-sm font-medium">Employee *</Label>
-              <select
-                className="w-full mt-1 px-3 py-2 rounded-lg border bg-background text-sm"
+              <EmployeePicker
+                users={allUsers.filter(u => u.isActive !== false)}
                 value={form.employeeId}
-                onChange={e => handleEmployeeChange(e.target.value)}
-                required
-              >
-                <option value="">Select employee...</option>
-                {allUsers.map(u => (
-                  <option key={u.id} value={u.id}>{u.name} {u.department ? `(${u.department})` : ""}</option>
-                ))}
-              </select>
+                onChange={handleEmployeeChange}
+              />
             </div>
 
             <div className="grid grid-cols-2 gap-4">

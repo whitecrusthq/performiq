@@ -5,6 +5,7 @@ import { fileURLToPath } from "url";
 import app from "./app";
 import { connectDatabase } from "./db/sequelize.js";
 import { logger } from "./lib/logger";
+import AppraisalController from "./controllers/AppraisalController.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -37,6 +38,18 @@ async function startServer() {
     }
 
     logger.info({ port }, "Server listening");
+
+    const ACTIVATOR_MS = 60_000;
+    const tickActivator = async () => {
+      try {
+        const n = await AppraisalController.activateDueScheduled();
+        if (n > 0) logger.info({ activated: n }, "Activated scheduled appraisals");
+      } catch (err) {
+        logger.warn({ err }, "Scheduled appraisal activator failed");
+      }
+    };
+    void tickActivator();
+    setInterval(tickActivator, ACTIVATOR_MS).unref?.();
 
     if (process.env.NODE_ENV === "development") {
       const frontendDir = path.resolve(__dirname, "../../frontend");

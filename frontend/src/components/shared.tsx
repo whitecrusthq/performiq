@@ -34,6 +34,7 @@ export function StatusBadge({ status, type = "appraisal" }: { status: string, ty
   if (type === "appraisal") {
     switch (status) {
       case "pending": colorClass = "bg-slate-100 text-slate-700 border-slate-200"; break;
+      case "scheduled": colorClass = "bg-indigo-100 text-indigo-700 border-indigo-200"; break;
       case "self_review": colorClass = "bg-amber-100 text-amber-700 border-amber-200"; break;
       case "manager_review": colorClass = "bg-blue-100 text-blue-700 border-blue-200"; break;
       case "pending_approval": colorClass = "bg-purple-100 text-purple-700 border-purple-200"; break;

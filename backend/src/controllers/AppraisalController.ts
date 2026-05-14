@@ -7,7 +7,14 @@ const formatUser = (u: any) => u ? ({
   managerId: u.managerId, department: u.department, jobTitle: u.jobTitle, createdAt: u.createdAt,
 }) : null;
 
-type AppraisalStatusValue = "pending" | "self_review" | "manager_review" | "pending_approval" | "completed";
+type AppraisalStatusValue = "pending" | "scheduled" | "self_review" | "manager_review" | "pending_approval" | "completed";
+
+function parseScheduledStart(input: any): Date | null {
+  if (input == null || input === "") return null;
+  const d = input instanceof Date ? input : new Date(input);
+  if (Number.isNaN(d.getTime())) return null;
+  return d;
+}
 
 function nextAppraisalStatus(current: string, workflowType: string, allReviewersDone: boolean): AppraisalStatusValue | null {
   if (current === "self_review") return "manager_review";
@@ -130,16 +137,20 @@ export default class AppraisalController {
     cycleId: number; employeeId: number; reviewerIds: number[];
     workflowType: string; criteriaGroupId?: number | null;
     budgetValues?: Record<number, number>;
+    scheduledStartAt?: Date | string | null;
   }) {
     const orderedIds = data.reviewerIds;
+    const scheduledAt = parseScheduledStart(data.scheduledStartAt);
+    const isScheduled = !!(scheduledAt && scheduledAt.getTime() > Date.now());
 
     const appraisal = await Appraisal.create({
       cycleId: data.cycleId,
       employeeId: data.employeeId,
       reviewerId: orderedIds[0] ?? null,
       workflowType: data.workflowType ?? "admin_approval",
-      status: "self_review",
+      status: isScheduled ? "scheduled" : "self_review",
       criteriaGroupId: data.criteriaGroupId ? Number(data.criteriaGroupId) : null,
+      scheduledStartAt: isScheduled ? scheduledAt : null,
     });
 
     const appraisalId = (appraisal as any).id;
@@ -183,7 +194,10 @@ export default class AppraisalController {
     workflowType: string; criteriaGroupId?: number | null;
     budgetsByCategory?: Record<string, Record<number, number>>;
     currentUser: { id: number; role: string };
+    scheduledStartAt?: Date | string | null;
   }) {
+    const scheduledAt = parseScheduledStart(data.scheduledStartAt);
+    const isScheduled = !!(scheduledAt && scheduledAt.getTime() > Date.now());
     const uniqueEmpIds = [...new Set(data.employeeIds.map(Number).filter(n => !isNaN(n) && n > 0))];
     if (uniqueEmpIds.length === 0) throw new Error("No valid employee IDs provided");
 
@@ -219,8 +233,9 @@ export default class AppraisalController {
           employeeId: empId,
           reviewerId: orderedReviewerIds[0] ?? null,
           workflowType: data.workflowType ?? "admin_approval",
-          status: "self_review",
+          status: isScheduled ? "scheduled" : "self_review",
           criteriaGroupId: data.criteriaGroupId ? Number(data.criteriaGroupId) : null,
+          scheduledStartAt: isScheduled ? scheduledAt : null,
         }, { transaction: t });
 
         const appraisalId = (appraisal as any).id;
@@ -283,6 +298,35 @@ export default class AppraisalController {
     if (!current) return { error: "Not found", status: 404 };
 
     const currentPlain = (current as any).get({ plain: true });
+
+    if (action === "reschedule") {
+      if (!["admin", "super_admin"].includes(currentUser.role)) {
+        return { error: "Only admins can reschedule appraisals", status: 403 };
+      }
+      if (currentPlain.status !== "scheduled") {
+        return { error: "Only scheduled appraisals can be rescheduled", status: 400 };
+      }
+      const newAt = parseScheduledStart(body.scheduledStartAt);
+      if (!newAt || newAt.getTime() <= Date.now()) {
+        return { error: "scheduledStartAt must be a future date", status: 400 };
+      }
+      await Appraisal.update({ scheduledStartAt: newAt }, { where: { id: appraisalId } });
+      const enriched = await AppraisalController.enrichAppraisal(await Appraisal.findByPk(appraisalId));
+      return { data: enriched };
+    }
+
+    if (action === "start_now" && currentPlain.status === "scheduled") {
+      if (!["admin", "super_admin"].includes(currentUser.role)) {
+        return { error: "Only admins can start scheduled appraisals early", status: 403 };
+      }
+      await Appraisal.update({ status: "self_review", scheduledStartAt: null }, { where: { id: appraisalId } });
+      const enriched = await AppraisalController.enrichAppraisal(await Appraisal.findByPk(appraisalId));
+      return { data: enriched };
+    }
+
+    if (currentPlain.status === "scheduled") {
+      return { error: "This appraisal is scheduled and has not started yet.", status: 400 };
+    }
 
     const updates: any = {};
 
@@ -516,6 +560,19 @@ export default class AppraisalController {
 
     const reviewers = await AppraisalController.getReviewersForAppraisal(appraisalId);
     return { data: { reviewers } };
+  }
+
+  static async activateDueScheduled(): Promise<number> {
+    const result = await Appraisal.update(
+      { status: "self_review", scheduledStartAt: null },
+      {
+        where: {
+          status: "scheduled",
+          scheduledStartAt: { [Op.lte]: new Date() },
+        },
+      }
+    );
+    return Array.isArray(result) ? Number(result[0]) || 0 : 0;
   }
 
   static async delete(id: number) {

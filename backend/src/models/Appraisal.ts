@@ -12,6 +12,7 @@ class Appraisal extends Model {
   declare managerComment: string | null;
   declare overallScore: string | null;
   declare criteriaGroupId: number | null;
+  declare scheduledStartAt: Date | null;
   declare createdAt: Date;
 }
 
@@ -27,6 +28,7 @@ Appraisal.init(
     managerComment: { type: DataTypes.TEXT, field: "manager_comment" },
     overallScore: { type: DataTypes.DECIMAL(5, 2), field: "overall_score" },
     criteriaGroupId: { type: DataTypes.INTEGER, field: "criteria_group_id" },
+    scheduledStartAt: { type: DataTypes.DATE, allowNull: true, field: "scheduled_start_at" },
     createdAt: { type: DataTypes.DATE, allowNull: false, defaultValue: DataTypes.NOW, field: "created_at" },
   },
   { sequelize, tableName: "appraisals", timestamps: false }

@@ -7,6 +7,7 @@ import { Users as UsersIcon, Plus, Edit, Trash2, X, Search, ChevronDown, AlertCi
 import { BulkActionBar } from "@/components/bulk-action-bar";
 import { useAuth } from "@/hooks/use-auth";
 import { apiFetch } from "@/lib/utils";
+import { matchesPerson } from "@/lib/search";
 import { useToast } from "@/hooks/use-toast";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 
@@ -49,8 +50,7 @@ export default function Users() {
   const filteredUsers = useMemo(() => {
     if (!users) return [];
     return users.filter(u => {
-      const q = search.toLowerCase();
-      const matchSearch = !q || (u.name ?? "").toLowerCase().includes(q) || (u.email ?? "").toLowerCase().includes(q);
+      const matchSearch = matchesPerson(search, u, [u.staffId, u.jobTitle, u.department]);
       const matchRole = !filterRole || u.role === filterRole;
       const matchDept = !filterDept || (u.department ?? "") === filterDept;
       return matchSearch && matchRole && matchDept;
@@ -178,6 +178,14 @@ export default function Users() {
 
   const isProtectedRow = (role: string) => role === "admin" || role === "super_admin";
   const selectableUsers = useMemo(() => filteredUsers.filter(u => !isProtectedRow(u.role)), [filteredUsers]);
+
+  // Per-row action gate (Edit / Disable / Delete). Mirrors the backend rules in
+  // UserController: super_admin can act on anyone; everyone else can act on
+  // anyone except super_admin. This deliberately lets an admin edit/disable
+  // another admin (so promoting a user to admin doesn't lock them out of HR's
+  // reach), while still protecting super_admin accounts from non-super_admins.
+  const canActOnRow = (targetRole: string) =>
+    user?.role === "super_admin" || targetRole !== "super_admin";
 
   const toggleAll = () => {
     if (selectableUsers.length > 0 && selectedIds.size === selectableUsers.length) setSelectedIds(new Set());
@@ -344,7 +352,7 @@ export default function Users() {
                     >
                       <ExternalLink className="w-3.5 h-3.5" /> View
                     </Button>
-                    {(user?.role === 'super_admin' || !['admin','super_admin'].includes(u.role)) && (
+                    {canActOnRow(u.role) && (
                       <Button
                         variant="outline"
                         size="sm"
@@ -354,7 +362,7 @@ export default function Users() {
                         <Edit className="w-3.5 h-3.5" /> Edit
                       </Button>
                     )}
-                    {u.id !== user?.id && (user?.role === 'super_admin' || !['admin','super_admin'].includes(u.role)) && (
+                    {u.id !== user?.id && canActOnRow(u.role) && (
                       (u as any).isActive === false ? (
                         <Button
                           variant="outline"
@@ -377,7 +385,7 @@ export default function Users() {
                         </Button>
                       )
                     )}
-                    {(user?.role === 'super_admin' || !['admin','super_admin'].includes(u.role)) && (
+                    {canActOnRow(u.role) && (
                       <Button
                         variant="ghost"
                         size="sm"
