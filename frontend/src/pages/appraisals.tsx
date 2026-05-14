@@ -354,7 +354,7 @@ export default function Appraisals() {
                     </td>
                     <td className="p-4">
                       <StatusBadge status={app.status} type="appraisal" />
-                      {app.status === "scheduled" && (app as any).scheduledStartAt && (
+                      {(app.status as string) === "scheduled" && (app as any).scheduledStartAt && (
                         <div className="text-xs text-muted-foreground mt-1 flex items-center gap-1">
                           <Clock className="w-3 h-3" /> {format(new Date((app as any).scheduledStartAt), "PPp")}
                         </div>

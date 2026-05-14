@@ -563,7 +563,7 @@ export default class AppraisalController {
   }
 
   static async activateDueScheduled(): Promise<number> {
-    const [, affected] = await Appraisal.update(
+    const result = await Appraisal.update(
       { status: "self_review", scheduledStartAt: null },
       {
         where: {
@@ -572,7 +572,7 @@ export default class AppraisalController {
         },
       }
     );
-    return Array.isArray(affected) ? affected.length : (affected as unknown as number) ?? 0;
+    return Array.isArray(result) ? Number(result[0]) || 0 : 0;
   }
 
   static async delete(id: number) {
