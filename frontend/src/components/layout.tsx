@@ -26,6 +26,7 @@ import {
   MessageSquareWarning,
   ShieldAlert,
   Paintbrush,
+  HardDrive,
   IdCard,
   ArrowRightLeft,
   Award,
@@ -116,6 +117,7 @@ const NAV_STRUCTURE: NavEntry[] = [
       { name: "Notifications", path: "/notifications", icon: Bell, roles: ["super_admin", "admin"] },
       { name: "Appearance", path: "/appearance", icon: Paintbrush, roles: ["super_admin", "admin"] },
       { name: "AI Assistant", path: "/ai-settings", icon: Sparkles, roles: ["super_admin", "admin"] },
+      { name: "Storage Providers", path: "/storage-providers", icon: HardDrive, roles: ["super_admin", "admin"] },
     ],
   },
   {

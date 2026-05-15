@@ -42,6 +42,7 @@ import Handbook from "@/pages/handbook";
 import Quiz from "@/pages/quiz";
 import QuizResults from "@/pages/quiz-results";
 import AiSettings from "@/pages/ai-settings";
+import StorageProviders from "@/pages/storage-providers";
 
 const queryClient = new QueryClient();
 
@@ -163,6 +164,9 @@ function Router() {
       </Route>
       <Route path="/ai-settings">
         <AppLayout><ProtectedRoute component={AiSettings} /></AppLayout>
+      </Route>
+      <Route path="/storage-providers">
+        <AppLayout><ProtectedRoute component={StorageProviders} /></AppLayout>
       </Route>
 
       <Route component={NotFound} />
