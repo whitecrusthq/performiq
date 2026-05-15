@@ -30,6 +30,7 @@ import careersRouter from "./careers";
 import documentsRouter from "./documents";
 import quizRouter from "./quiz";
 import aiSettingsRouter from "./ai-settings";
+import storageProvidersRouter from "./storage-providers";
 
 const router: IRouter = Router();
 
@@ -64,5 +65,6 @@ router.use(careersRouter);
 router.use(documentsRouter);
 router.use(quizRouter);
 router.use(aiSettingsRouter);
+router.use(storageProvidersRouter);
 
 export default router;
