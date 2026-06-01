@@ -59,6 +59,18 @@ const authLimiter = rateLimit({
 app.use("/api/auth/login", authLimiter);
 app.use("/api/auth/verify-otp", authLimiter);
 
+// Upload endpoints can be hit unauthenticated (token-based proxy upload and the
+// public careers upload-url minting), so cap volume per IP to limit abuse/cost.
+const uploadLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 60,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: "Too many uploads from this IP, please try again later." },
+});
+app.use("/api/storage/proxy-upload", uploadLimiter);
+app.use("/api/careers/upload-url", uploadLimiter);
+
 app.use("/api", router);
 
 if (process.env.NODE_ENV === "development") {

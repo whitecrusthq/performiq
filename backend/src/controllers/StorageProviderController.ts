@@ -1,6 +1,7 @@
 import StorageProvider from "../models/StorageProvider.js";
 import sequelize from "../db/sequelize.js";
 import { encryptSecretIfPresent, isEncryptedSecret, decryptSecret } from "../lib/secret-cipher.js";
+import type { DecryptedS3Provider } from "../lib/s3-storage.js";
 
 /**
  * Supported provider types and their config schemas.
@@ -263,6 +264,52 @@ export default class StorageProviderController {
     if (!row) return { error: "Not found", status: 404 } as const;
     await row.destroy();
     return { data: { ok: true } } as const;
+  }
+
+  /**
+   * Internal use only — returns the decrypted credentials for an S3-family
+   * provider so file uploads/serving can actually talk to the bucket.
+   * Returns null when the provider is missing, disabled, not S3-family, or its
+   * secret can't be decrypted. NEVER expose the result over the API.
+   */
+  private static toDecryptedS3(row: StorageProvider | null): DecryptedS3Provider | null {
+    if (!row || !row.isEnabled) return null;
+    const type = row.type as ProviderType;
+    if (type !== "s3" && type !== "s3_compatible" && type !== "digitalocean_spaces") return null;
+    const cfg: Record<string, any> = { ...(row.config ?? {}) };
+    for (const k of PROVIDER_TYPES[type].secretFields) {
+      const v = cfg[k];
+      if (typeof v === "string" && v) {
+        try { cfg[k] = isEncryptedSecret(v) ? decryptSecret(v) : v; }
+        catch { return null; }
+      }
+    }
+    if (!cfg.bucket || !cfg.accessKeyId || !cfg.secretAccessKey) return null;
+    return {
+      id: row.id,
+      type,
+      config: {
+        bucket: String(cfg.bucket),
+        accessKeyId: String(cfg.accessKeyId),
+        secretAccessKey: String(cfg.secretAccessKey),
+        region: cfg.region ? String(cfg.region) : undefined,
+        endpoint: cfg.endpoint ? String(cfg.endpoint) : undefined,
+        forcePathStyle: !!cfg.forcePathStyle,
+        prefix: cfg.prefix ? String(cfg.prefix) : undefined,
+      },
+    };
+  }
+
+  /** The default+enabled S3-family provider, decrypted, or null. */
+  static async getActiveUploadProvider() {
+    const row = await StorageProvider.findOne({ where: { isDefault: true, isEnabled: true } });
+    return StorageProviderController.toDecryptedS3(row);
+  }
+
+  /** A specific S3-family provider by id, decrypted, or null. */
+  static async getDecryptedUploadProviderById(id: number) {
+    const row = await StorageProvider.findByPk(id);
+    return StorageProviderController.toDecryptedS3(row);
   }
 
   static async setDefault(id: number) {
