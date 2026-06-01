@@ -65,6 +65,18 @@ async function startServer() {
         logger.warn({ code }, "PerformIQ Vite dev server exited");
       });
       logger.info({ frontendPort }, "PerformIQ Vite dev server spawned");
+
+      const shutdown = (signal: string) => {
+        logger.info({ signal }, "Shutting down");
+        try {
+          vite.kill("SIGTERM");
+        } catch {
+          // ignore
+        }
+        process.exit(0);
+      };
+      process.on("SIGTERM", () => shutdown("SIGTERM"));
+      process.on("SIGINT", () => shutdown("SIGINT"));
     }
   });
 }
