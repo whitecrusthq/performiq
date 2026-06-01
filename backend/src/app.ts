@@ -4,8 +4,12 @@ import helmet from "helmet";
 import rateLimit from "express-rate-limit";
 import pinoHttp from "pino-http";
 import { createProxyMiddleware } from "http-proxy-middleware";
+import path from "path";
+import { fileURLToPath } from "url";
 import router from "./routes";
 import { logger } from "./lib/logger";
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 const app: Express = express();
 
@@ -74,6 +78,7 @@ app.use("/api/careers/upload-url", uploadLimiter);
 app.use("/api", router);
 
 if (process.env.NODE_ENV === "development") {
+  // Dev only: proxy all non-API requests to the Vite dev server (HMR, etc).
   app.use(
     "/",
     createProxyMiddleware({
@@ -82,6 +87,16 @@ if (process.env.NODE_ENV === "development") {
       ws: true,
     }),
   );
+} else {
+  // Production: serve the built frontend directly from Express so that the API
+  // (including PUT /api/storage/proxy-upload) and the SPA are served by the same
+  // server. No Vite dev server / proxy is involved in production.
+  const clientDist = path.resolve(__dirname, "../../frontend/dist");
+  app.use(express.static(clientDist));
+  app.use((req, res, next) => {
+    if (req.method !== "GET" || req.path.startsWith("/api")) return next();
+    res.sendFile(path.join(clientDist, "index.html"));
+  });
 }
 
 export default app;
