@@ -6,7 +6,7 @@ export FRONTEND_PORT=5000
 export DATABASE_URL="$DATABASE_URL"
 export JWT_SECRET="${JWT_SECRET:-performiq-dev-jwt-secret-2024}"
 
-if [ "$REPLIT_DEPLOYMENT" = "1" ]; then
+if [ "$1" = "production" ] || [ "$REPLIT_DEPLOYMENT" = "1" ]; then
   # Production (autoscale deployment): the frontend is built by the deployment
   # build step and served statically by Express. No Vite dev server runs here.
   # Express listens on the public port (5000 -> external 80) and serves both the
