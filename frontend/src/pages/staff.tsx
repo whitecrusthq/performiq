@@ -9,7 +9,7 @@ import {
   ShieldAlert, Paperclip, Upload, Eye, ChevronDown, Download, Clock,
   ArrowRightLeft, CheckCircle2, XCircle, Ban, FileUp, Loader2, UserPlus,
 } from "lucide-react";
-import { apiFetch } from "@/lib/utils";
+import { apiFetch, resolveUploadUrl } from "@/lib/utils";
 import { matchesPerson } from "@/lib/search";
 
 function csvEscape(val: any): string {
@@ -222,7 +222,7 @@ function StaffPanel({ staffId, canEdit, onClose, onUpdated }: {
     setUploadingPhoto(true);
     try {
       const urlRes = await apiFetchJson("/api/storage/uploads/request-url", { method: "POST" });
-      await fetch(urlRes.uploadURL, { method: "PUT", headers: { "Content-Type": file.type }, body: file });
+      await fetch(resolveUploadUrl(urlRes.uploadURL), { method: "PUT", headers: { "Content-Type": file.type }, body: file });
       const objectId = urlRes.objectPath.split("/").pop();
       const photoUrl = `/api/storage/objects/${objectId}`;
       await apiFetchJson(`/api/users/${staffId}/profile-photo`, {
@@ -307,7 +307,7 @@ function StaffPanel({ staffId, canEdit, onClose, onUpdated }: {
       const uploadedAttachments: any[] = [];
       for (const pf of pendingFiles) {
         const urlRes = await apiFetchJson("/api/storage/uploads/request-url", { method: "POST" });
-        await fetch(urlRes.uploadURL, {
+        await fetch(resolveUploadUrl(urlRes.uploadURL), {
           method: "PUT",
           headers: { "Content-Type": pf.file.type },
           body: pf.file,
@@ -336,7 +336,7 @@ function StaffPanel({ staffId, canEdit, onClose, onUpdated }: {
   const handleAddAttachment = async (recordId: number, file: File) => {
     try {
       const urlRes = await apiFetchJson("/api/storage/uploads/request-url", { method: "POST" });
-      await fetch(urlRes.uploadURL, {
+      await fetch(resolveUploadUrl(urlRes.uploadURL), {
         method: "PUT",
         headers: { "Content-Type": file.type },
         body: file,
@@ -753,7 +753,7 @@ function StaffPanel({ staffId, canEdit, onClose, onUpdated }: {
                           setUploadingReviewDoc(true);
                           try {
                             const urlRes = await apiFetchJson("/api/storage/uploads/request-url", { method: "POST" });
-                            await fetch(urlRes.uploadURL, { method: "PUT", headers: { "Content-Type": file.type }, body: file });
+                            await fetch(resolveUploadUrl(urlRes.uploadURL), { method: "PUT", headers: { "Content-Type": file.type }, body: file });
                             const objectId = urlRes.objectPath.split("/").pop();
                             const docPath = `/api/storage/objects/${objectId}`;
                             await apiFetchJson(`/api/confirmation-reviews/${activeReview.id}/document`, {

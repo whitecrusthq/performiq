@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { PageHeader, Card, Button, Input, Label } from "@/components/shared";
 import { useAuth } from "@/hooks/use-auth";
-import { apiFetch } from "@/lib/utils";
+import { apiFetch, resolveUploadUrl } from "@/lib/utils";
 import {
   BookOpen, Upload, FileText, Trash2, Sparkles, Plus, X, Check, Search,
   Filter, FolderOpen, ExternalLink, Edit2, HelpCircle,
@@ -350,7 +350,7 @@ function UploadDialog({
       const r1 = await apiFetch("/api/storage/uploads/request-url", { method: "POST" });
       if (!r1.ok) { setErr((await r1.json()).error ?? "Could not get upload URL"); setBusy(false); return; }
       const { uploadURL, objectPath } = await r1.json();
-      const put = await fetch(uploadURL, { method: "PUT", body: file, headers: { "Content-Type": file.type || "application/octet-stream" } });
+      const put = await fetch(resolveUploadUrl(uploadURL), { method: "PUT", body: file, headers: { "Content-Type": file.type || "application/octet-stream" } });
       if (!put.ok) { setErr(`Upload failed: ${put.status}`); setBusy(false); return; }
       const r2 = await apiFetch("/api/documents", {
         method: "POST",
