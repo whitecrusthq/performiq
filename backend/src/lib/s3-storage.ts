@@ -42,6 +42,13 @@ function buildClient(provider: DecryptedS3Provider): S3Client {
     region: (config.region || "us-east-1").trim(),
     endpoint: resolveEndpoint(provider),
     forcePathStyle: type === "s3_compatible" ? !!config.forcePathStyle : false,
+    // Recent @aws-sdk/client-s3 (>=3.729) adds CRC32 integrity checksums to every
+    // request by default. S3-compatible providers (DigitalOcean Spaces, R2, B2,
+    // MinIO) reject these headers, and the checksum can't be computed over a
+    // streamed (non-rewindable) request body — which caused proxy uploads to fail
+    // with a 500. Only compute/validate checksums when the operation requires it.
+    requestChecksumCalculation: "WHEN_REQUIRED",
+    responseChecksumValidation: "WHEN_REQUIRED",
     credentials: {
       accessKeyId: config.accessKeyId,
       secretAccessKey: config.secretAccessKey,

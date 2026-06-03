@@ -1,0 +1,66 @@
+Request URL
+https://hr.medplusnig.com/api/storage/proxy-upload/eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJwdXJwb3NlIjoic3RvcmFnZS11cGxvYWQiLCJvYmplY3RJZCI6IjI1MDBjNGNkLTg2OWMtNDVkZC1hNDFhLTYyZWI4NmIwZTUwMCIsInByb3ZpZGVySWQiOjIsImlhdCI6MTc4MDQ4MzE2OCwiZXhwIjoxNzgwNDg0MDY4fQ.qlP43ySPVubGn_4HGFe7o-z_AMHpACS_okk9GT5-aH0
+Request Method
+PUT
+Status Code
+405 Method Not Allowed
+Remote Address
+64.29.17.1:443
+Referrer Policy
+strict-origin-when-cross-origin
+cache-control
+public, max-age=0, must-revalidate
+content-disposition
+inline; filename="index.html"
+content-type
+text/html; charset=utf-8
+date
+Wed, 03 Jun 2026 10:39:33 GMT
+server
+Vercel
+strict-transport-security
+max-age=63072000
+x-vercel-cache
+BYPASS
+x-vercel-id
+cdg1::9fj59-1780483168234-22add3ec0a31
+:authority
+hr.medplusnig.com
+:method
+PUT
+:path
+/api/storage/proxy-upload/eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJwdXJwb3NlIjoic3RvcmFnZS11cGxvYWQiLCJvYmplY3RJZCI6IjI1MDBjNGNkLTg2OWMtNDVkZC1hNDFhLTYyZWI4NmIwZTUwMCIsInByb3ZpZGVySWQiOjIsImlhdCI6MTc4MDQ4MzE2OCwiZXhwIjoxNzgwNDg0MDY4fQ.qlP43ySPVubGn_4HGFe7o-z_AMHpACS_okk9GT5-aH0
+:scheme
+https
+accept
+*/*
+accept-encoding
+gzip, deflate, br, zstd
+accept-language
+en-GB,en-US;q=0.9,en;q=0.8
+content-length
+1785805
+content-type
+application/vnd.openxmlformats-officedocument.wordprocessingml.document
+cookie
+_ga=GA1.1.879864468.1776611721; cc_cookie=%7B%22categories%22%3A%5B%22necessary%22%5D%2C%22revision%22%3A0%2C%22data%22%3Anull%2C%22consentTimestamp%22%3A%222026-04-19T15%3A20%3A30.644Z%22%2C%22consentId%22%3A%2238f61935-753e-46a8-8eb7-249e646aa8e4%22%2C%22services%22%3A%7B%22necessary%22%3A%5B%5D%7D%2C%22lastConsentTimestamp%22%3A%222026-04-19T15%3A20%3A30.644Z%22%2C%22expirationTime%22%3A1792336830644%7D; _fbp=fb.1.1776887354661.581622051163586128; fpestid=eu3NkpLTS46FNs7HZbhHwq0hsFL98j8Y7TX0d5C9Oj-OhZbwjEPIkBKAUVJUXq2_CQxKBg; _cc_id=ec9eea9f03328146e742d92f31425cb6; _ga_L5TQ00MV16=GS2.1.s1779391595$o28$g0$t1779391595$j60$l0$h0; _clck=xuxp6i%5E2%5Eg6k%5E0%5E2300; cf_clearance=ws4uxuP7YkZGz3hjUcERNY6joiW0cue8TrQ52xi6w1Q-1780409350-1.2.1.1-O_HxJJCODemokYbyuMQ6KCn2tss6ttTXyaFgHfLM.QEC6XkfdjP.M_5VdkHzNnN3wE9njfSuBzhZ.YyT_Mzdu4bw7KQ5NHlDJYv5xcxTMI8tqbE8yF4N2op5iuPBKldozBouADejl2IrJ_DyYzeqP9FlrRN2NOP_iLQgn_S2Pt88LXs6DFE17zEnYDaG9TSOmp2ONZZ9NpSjZL1VHWpL.ODHeihuUJsBAOiTwJPMgV6jvitRo6RyDHQFEFdJeG_e9BJO.3dz7HYXeZWfh4S2VtWYUNexOKoZsWcVlfmEi3i4CRZzrEVtVVGCcYR6LV88rRdC_Wmr6hyQgAZneF.vX7ZthlAA_KVroAMIDauVDvpAMpcK0FD1QEY6jWxAUiGjuhjuE5gHhLqY0svrnrNMJJLGcT9vbYNb5dARjI1dzs0; _clsk=os5t49%5E1780430159604%5E1%5E1%5Eb.clarity.ms%2Fcollect
+origin
+https://hr.medplusnig.com
+priority
+u=1, i
+referer
+https://hr.medplusnig.com/handbook
+sec-ch-ua
+"Google Chrome";v="147", "Not.A/Brand";v="8", "Chromium";v="147"
+sec-ch-ua-mobile
+?0
+sec-ch-ua-platform
+"macOS"
+sec-fetch-dest
+empty
+sec-fetch-mode
+cors
+sec-fetch-site
+same-origin
+user-agent
+Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/147.0.0.0 Safari/537.36

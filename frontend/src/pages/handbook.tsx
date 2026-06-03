@@ -351,7 +351,12 @@ function UploadDialog({
       if (!r1.ok) { setErr((await r1.json()).error ?? "Could not get upload URL"); setBusy(false); return; }
       const { uploadURL, objectPath } = await r1.json();
       const put = await fetch(resolveUploadUrl(uploadURL), { method: "PUT", body: file, headers: { "Content-Type": file.type || "application/octet-stream" } });
-      if (!put.ok) { setErr(`Upload failed: ${put.status}`); setBusy(false); return; }
+      if (!put.ok) {
+        const body = await put.json().catch(() => null as any);
+        setErr(body?.error ? `Upload failed: ${body.error}` : `Upload failed: ${put.status}`);
+        setBusy(false);
+        return;
+      }
       const r2 = await apiFetch("/api/documents", {
         method: "POST",
         body: JSON.stringify({
