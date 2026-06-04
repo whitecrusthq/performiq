@@ -1,8 +1,16 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { PageHeader, Card, Button, Input, PasswordInput, Label } from "@/components/shared";
 import { useAuth } from "@/hooks/use-auth";
-import { User, Lock, CheckCircle } from "lucide-react";
+import { User, Lock, CheckCircle, ShieldCheck } from "lucide-react";
 import { apiFetch } from "@/lib/utils";
+
+interface MyAcceptance {
+  published: boolean;
+  currentVersion: number;
+  accepted: boolean;
+  version: number | null;
+  acceptedAt: string | null;
+}
 
 export default function Profile() {
   const { user } = useAuth();
@@ -10,6 +18,14 @@ export default function Profile() {
   const [pwForm, setPwForm] = useState({ currentPassword: "", newPassword: "", confirmPassword: "" });
   const [status, setStatus] = useState<"idle" | "loading" | "success" | "error">("idle");
   const [errorMsg, setErrorMsg] = useState("");
+  const [acceptance, setAcceptance] = useState<MyAcceptance | null>(null);
+
+  useEffect(() => {
+    apiFetch("/api/legal/my-acceptance")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => setAcceptance(d))
+      .catch(() => setAcceptance(null));
+  }, []);
 
   const handleChangePassword = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -60,6 +76,12 @@ export default function Profile() {
           <div>
             <h2 className="text-xl font-bold">{user.name ?? user.email}</h2>
             <p className="text-muted-foreground">{user.email}</p>
+            {acceptance?.published && acceptance?.accepted && (
+              <span className="inline-flex items-center gap-1.5 mt-2 px-2.5 py-1 rounded-full bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 text-xs font-semibold border border-emerald-200 dark:border-emerald-900">
+                <ShieldCheck className="w-3.5 h-3.5" />
+                Terms accepted{acceptance.version ? ` (v${acceptance.version})` : ""}
+              </span>
+            )}
           </div>
         </div>
         <div className="grid grid-cols-2 gap-4 text-sm">

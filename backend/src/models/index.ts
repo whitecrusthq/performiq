@@ -47,6 +47,8 @@ import Candidate from "./Candidate.js";
 import NotificationSettings from "./NotificationSettings.js";
 import AuthAuditLog from "./AuthAuditLog.js";
 import StorageProvider from "./StorageProvider.js";
+import LegalDocument from "./LegalDocument.js";
+import TermsAcceptance from "./TermsAcceptance.js";
 
 export {
   sequelize,
@@ -98,4 +100,6 @@ export {
   NotificationSettings,
   AuthAuditLog,
   StorageProvider,
+  LegalDocument,
+  TermsAcceptance,
 };

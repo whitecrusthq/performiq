@@ -24,6 +24,10 @@ export class VerifyOtpAction {
         res.status(result.status!).json({ error: result.error });
         return;
       }
+      if ("requiresTermsAcceptance" in result) {
+        res.json({ requiresTermsAcceptance: true, pendingToken: result.pendingToken, termsVersion: result.termsVersion });
+        return;
+      }
       recordAuthEvent(req, {
         userId: result.user?.id ?? null,
         email: result.user?.email ?? normalizedEmail,

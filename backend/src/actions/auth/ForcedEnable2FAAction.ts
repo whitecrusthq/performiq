@@ -1,8 +1,9 @@
 import { Response } from "express";
-import { AuthRequest, verify2FAPendingToken, generateToken } from "../../middlewares/auth.js";
-import { User, CustomRole } from "../../models/index.js";
+import { AuthRequest, verify2FAPendingToken } from "../../middlewares/auth.js";
+import { User } from "../../models/index.js";
 import { verifyToken, generateBackupCodes, hashBackupCodes } from "../../lib/totp.js";
 import { recordAuthEvent } from "../../lib/auth-audit.js";
+import AuthController from "../../controllers/AuthController.js";
 
 export class ForcedEnable2FAAction {
   static async handle(req: AuthRequest, res: Response) {
@@ -37,38 +38,38 @@ export class ForcedEnable2FAAction {
       const backupCodes = generateBackupCodes(10);
       const hashed = await hashBackupCodes(backupCodes);
 
-      const nextTokenVersion = ((user as any).tokenVersion ?? 0) + 1;
       await User.update({
         twoFactorSecret: user.twoFactorPendingSecret,
         twoFactorPendingSecret: null,
         twoFactorEnabled: true,
         twoFactorBackupCodes: JSON.stringify(hashed),
-        tokenVersion: nextTokenVersion,
       }, { where: { id: user.id } });
 
-      const customRole = user.customRoleId ? await CustomRole.findByPk(user.customRoleId) : null;
-      const token = generateToken({ id: user.id, role: user.role, email: user.email, customRoleName: customRole?.name ?? null, tokenVersion: nextTokenVersion });
-
       const reloaded = await User.findByPk(user.id);
+      // Run the shared login finalizer so the Terms & Conditions gate is enforced
+      // here too — never mint a session directly and bypass it. Backup codes are
+      // returned regardless (they were just generated and can't be re-shown).
+      const result = await AuthController.finalize(reloaded!);
+
+      if ("requiresTermsAcceptance" in result) {
+        res.json({
+          backupCodes,
+          requiresTermsAcceptance: true,
+          pendingToken: result.pendingToken,
+          termsVersion: result.termsVersion,
+        });
+        return;
+      }
+
       recordAuthEvent(req, {
         userId: user.id,
         email: user.email,
         event: "login_success",
       });
       res.json({
-        token,
+        token: result.token,
         backupCodes,
-        user: {
-          id: reloaded!.id, name: reloaded!.name, email: reloaded!.email, role: reloaded!.role,
-          managerId: reloaded!.managerId, siteId: reloaded!.siteId, department: reloaded!.department,
-          jobTitle: reloaded!.jobTitle, phone: reloaded!.phone, staffId: reloaded!.staffId, createdAt: reloaded!.createdAt,
-          twoFactorEnabled: true,
-          customRoleId: reloaded!.customRoleId ?? null,
-          customRole: customRole ? {
-            id: customRole.id, name: customRole.name, permissionLevel: customRole.permissionLevel,
-            menuPermissions: (() => { try { return JSON.parse(customRole.menuPermissions ?? "[]"); } catch { return []; } })(),
-          } : null,
-        },
+        user: result.user,
       });
     } catch (err) {
       console.error("ForcedEnable2FA error:", err);
