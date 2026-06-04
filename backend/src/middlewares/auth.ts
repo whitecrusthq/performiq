@@ -135,3 +135,19 @@ export function verify2FAPendingToken(token: string): { id: number; email: strin
     return null;
   }
 }
+
+export function generateTermsPendingToken(payload: { id: number; email: string; version: number }) {
+  return jwt.sign({ ...payload, purpose: "terms-accept" }, JWT_SECRET, { expiresIn: "10m" });
+}
+
+export function verifyTermsPendingToken(token: string): { id: number; email: string; version: number; purpose: "terms-accept" } | null {
+  try {
+    const payload = jwt.verify(token, JWT_SECRET) as any;
+    if (payload?.purpose !== "terms-accept") return null;
+    if (typeof payload.id !== "number" || typeof payload.email !== "string") return null;
+    if (typeof payload.version !== "number") return null;
+    return payload;
+  } catch {
+    return null;
+  }
+}

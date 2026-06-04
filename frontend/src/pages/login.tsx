@@ -1,15 +1,16 @@
 import { useEffect, useState } from "react";
-import { useLocation } from "wouter";
+import { useLocation, Link } from "wouter";
 import { useAuth } from "@/hooks/use-auth";
 import { useLogin } from "../lib";
 import { Button, Input, PasswordInput, Label } from "@/components/shared";
-import { AlertCircle, ShieldCheck, ArrowLeft, Smartphone } from "lucide-react";
+import { AlertCircle, ShieldCheck, ArrowLeft, Smartphone, ScrollText, ExternalLink } from "lucide-react";
+import { Checkbox } from "@/components/ui/checkbox";
 import { motion, AnimatePresence } from "framer-motion";
 import { apiFetch } from "@/lib/utils";
 import { useAppSettings } from "@/hooks/use-app-settings";
 import { BrandMark } from "@/components/brand-mark";
 
-type Step = "login" | "email-otp" | "totp";
+type Step = "login" | "email-otp" | "totp" | "terms";
 
 export default function Login() {
   const [email, setEmail] = useState("");
@@ -19,6 +20,9 @@ export default function Login() {
   const [pendingToken, setPendingToken] = useState<string>("");
   const [verifyLoading, setVerifyLoading] = useState(false);
   const [verifyError, setVerifyError] = useState<string | null>(null);
+  const [termsVersion, setTermsVersion] = useState<number>(0);
+  const [termsContent, setTermsContent] = useState<string>("");
+  const [termsAccepted, setTermsAccepted] = useState(false);
   const { login } = useAuth();
   const [, setLocation] = useLocation();
   const loginMutation = useLogin();
@@ -33,36 +37,90 @@ export default function Login() {
     }
   }, []);
 
+  // Fetch the published terms so the user can read them inline on the gate.
+  const loadTermsContent = async () => {
+    try {
+      const r = await apiFetch("/api/legal/terms");
+      const data = await r.json();
+      if (data.published) setTermsContent(data.content ?? "");
+    } catch {
+      /* The full page link still works even if inline preview fails. */
+    }
+  };
+
+  // Returns true when a follow-up step (2FA / OTP / terms) was triggered and the
+  // caller should stop. Returns false when the response is a final session.
+  const handleAuthResponse = (data: any): boolean => {
+    if (data.requires2FASetup && data.pendingToken) {
+      sessionStorage.setItem("pending2FAToken", data.pendingToken);
+      sessionStorage.setItem("pending2FAEmail", data.email || email);
+      setLocation("/setup-2fa");
+      return true;
+    }
+    if (data.requires2FA && data.pendingToken) {
+      setPendingToken(data.pendingToken);
+      setStep("totp");
+      setCode("");
+      setVerifyError(null);
+      return true;
+    }
+    if (data.status === "otp_required" || data.otpRequired) {
+      setStep("email-otp");
+      setCode("");
+      setVerifyError(null);
+      return true;
+    }
+    if (data.requiresTermsAcceptance && data.pendingToken) {
+      setPendingToken(data.pendingToken);
+      setTermsVersion(data.termsVersion ?? 0);
+      setTermsAccepted(false);
+      setTermsContent("");
+      setVerifyError(null);
+      setStep("terms");
+      loadTermsContent();
+      return true;
+    }
+    return false;
+  };
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     loginMutation.mutate(
       { data: { email, password } },
       {
         onSuccess: (data: any) => {
-          if (data.requires2FASetup && data.pendingToken) {
-            sessionStorage.setItem("pending2FAToken", data.pendingToken);
-            sessionStorage.setItem("pending2FAEmail", data.email || email);
-            setLocation("/setup-2fa");
-            return;
-          }
-          if (data.requires2FA && data.pendingToken) {
-            setPendingToken(data.pendingToken);
-            setStep("totp");
-            setCode("");
-            setVerifyError(null);
-            return;
-          }
-          if (data.status === "otp_required" || data.otpRequired) {
-            setStep("email-otp");
-            setCode("");
-            setVerifyError(null);
-            return;
-          }
+          if (handleAuthResponse(data)) return;
           login(data.token, data.user);
           setLocation("/dashboard");
         }
       }
     );
+  };
+
+  const handleAcceptTerms = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!termsAccepted) return;
+    setVerifyError(null);
+    setVerifyLoading(true);
+    try {
+      const r = await apiFetch("/api/auth/terms/accept", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ pendingToken }),
+      });
+      const data = await r.json();
+      if (!r.ok) {
+        setVerifyError(data.error || "Could not record your acceptance. Please sign in again.");
+        return;
+      }
+      if (handleAuthResponse(data)) return;
+      login(data.token, data.user);
+      setLocation("/dashboard");
+    } catch {
+      setVerifyError("Network error. Please try again.");
+    } finally {
+      setVerifyLoading(false);
+    }
   };
 
   const handleVerify = async (e: React.FormEvent) => {
@@ -82,6 +140,7 @@ export default function Login() {
         setVerifyError(data.error || "Verification failed.");
         return;
       }
+      if (handleAuthResponse(data)) return;
       login(data.token, data.user);
       setLocation("/dashboard");
     } catch {
@@ -96,6 +155,8 @@ export default function Login() {
     setVerifyError(null);
     setCode("");
     setPendingToken("");
+    setTermsAccepted(false);
+    setTermsContent("");
     loginMutation.reset();
   };
 
@@ -188,6 +249,74 @@ export default function Login() {
                 </Button>
               </form>
 
+              <p className="text-center text-sm text-muted-foreground mt-8">
+                <Link href="/privacy" className="hover:text-foreground transition-colors underline underline-offset-2">
+                  Privacy Policy
+                </Link>
+              </p>
+
+            </motion.div>
+          ) : step === "terms" ? (
+            <motion.div
+              key="terms"
+              initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -20 }}
+              transition={{ duration: 0.35 }}
+              className="w-full max-w-md mx-auto"
+            >
+              <div className="w-16 h-16 bg-primary/10 rounded-2xl flex items-center justify-center mx-auto mb-6">
+                <ScrollText className="w-8 h-8 text-primary" />
+              </div>
+
+              <h2 className="text-3xl font-bold font-display tracking-tight text-foreground mb-2 text-center">
+                Terms &amp; Conditions
+              </h2>
+              <p className="text-muted-foreground mb-6 text-center">
+                Please review and accept our Terms &amp; Conditions{termsVersion ? <> (version {termsVersion})</> : null} to continue.
+              </p>
+
+              {verifyError && (
+                <div className="bg-destructive/10 border-l-4 border-destructive text-destructive p-4 rounded-r-xl mb-6 flex items-start gap-3">
+                  <AlertCircle className="w-5 h-5 shrink-0 mt-0.5" />
+                  <p className="text-sm font-medium">{verifyError}</p>
+                </div>
+              )}
+
+              <div className="rounded-xl border border-border bg-muted/30 p-4 max-h-64 overflow-y-auto mb-4 whitespace-pre-wrap text-sm leading-relaxed text-foreground/90">
+                {termsContent || "Loading the latest terms…"}
+              </div>
+
+              <a
+                href="/terms"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-1.5 text-sm text-primary hover:underline mb-5"
+              >
+                Open full Terms &amp; Conditions page <ExternalLink className="w-3.5 h-3.5" />
+              </a>
+
+              <form onSubmit={handleAcceptTerms} className="space-y-5">
+                <label className="flex items-start gap-3 cursor-pointer select-none">
+                  <Checkbox
+                    checked={termsAccepted}
+                    onCheckedChange={(v) => setTermsAccepted(v === true)}
+                    className="mt-0.5"
+                  />
+                  <span className="text-sm text-foreground">
+                    I have read and agree to the Terms &amp; Conditions.
+                  </span>
+                </label>
+                <Button type="submit" className="w-full" size="lg" isLoading={verifyLoading} disabled={!termsAccepted}>
+                  Accept &amp; Continue
+                </Button>
+              </form>
+
+              <button
+                type="button"
+                className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground mt-6 mx-auto transition-colors"
+                onClick={goBack}
+              >
+                <ArrowLeft className="w-4 h-4" /> Back to sign in
+              </button>
             </motion.div>
           ) : (
             <motion.div

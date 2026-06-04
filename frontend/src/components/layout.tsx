@@ -42,6 +42,7 @@ import {
   ScrollText,
   GraduationCap,
   Trophy,
+  Scale,
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { User } from "@/lib";
@@ -118,6 +119,7 @@ const NAV_STRUCTURE: NavEntry[] = [
       { name: "Appearance", path: "/appearance", icon: Paintbrush, roles: ["super_admin", "admin"] },
       { name: "AI Assistant", path: "/ai-settings", icon: Sparkles, roles: ["super_admin", "admin"] },
       { name: "Storage Providers", path: "/storage-providers", icon: HardDrive, roles: ["super_admin", "admin"] },
+      { name: "Legal & Compliance", path: "/legal", icon: Scale, roles: ["super_admin", "admin"] },
     ],
   },
   {

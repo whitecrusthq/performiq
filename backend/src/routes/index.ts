@@ -31,6 +31,7 @@ import documentsRouter from "./documents";
 import quizRouter from "./quiz";
 import aiSettingsRouter from "./ai-settings";
 import storageProvidersRouter from "./storage-providers";
+import legalRouter from "./legal";
 
 const router: IRouter = Router();
 
@@ -66,5 +67,6 @@ router.use(documentsRouter);
 router.use(quizRouter);
 router.use(aiSettingsRouter);
 router.use(storageProvidersRouter);
+router.use(legalRouter);
 
 export default router;

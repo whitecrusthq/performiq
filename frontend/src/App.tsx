@@ -43,6 +43,9 @@ import Quiz from "@/pages/quiz";
 import QuizResults from "@/pages/quiz-results";
 import AiSettings from "@/pages/ai-settings";
 import StorageProviders from "@/pages/storage-providers";
+import Legal from "@/pages/legal";
+import PrivacyPolicy from "@/pages/privacy-policy";
+import Terms from "@/pages/terms";
 
 const queryClient = new QueryClient();
 
@@ -70,6 +73,8 @@ function Router() {
       <Route path="/setup-2fa" component={SetupTwoFactor} />
       <Route path="/careers" component={Careers} />
       <Route path="/careers/track/:token" component={Careers} />
+      <Route path="/privacy" component={PrivacyPolicy} />
+      <Route path="/terms" component={Terms} />
       
       {/* Protected Routes wrapped in Layout */}
       <Route path="/dashboard">
@@ -167,6 +172,9 @@ function Router() {
       </Route>
       <Route path="/storage-providers">
         <AppLayout><ProtectedRoute component={StorageProviders} /></AppLayout>
+      </Route>
+      <Route path="/legal">
+        <AppLayout><ProtectedRoute component={Legal} /></AppLayout>
       </Route>
 
       <Route component={NotFound} />

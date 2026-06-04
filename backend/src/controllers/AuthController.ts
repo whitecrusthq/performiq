@@ -1,11 +1,12 @@
 import bcrypt from "bcryptjs";
 import sequelize from "../db/sequelize.js";
 import { User, CustomRole, Site } from "../models/index.js";
-import { generateToken, generate2FAPendingToken } from "../middlewares/auth.js";
+import { generateToken, generate2FAPendingToken, generateTermsPendingToken } from "../middlewares/auth.js";
 import { sendOtpEmail } from "../lib/mailgun.js";
 import { generateOtp, storeOtp, verifyOtp } from "../lib/otp-store.js";
 import { verifyToken as verifyTotpToken, consumeBackupCode } from "../lib/totp.js";
 import SecurityController from "./SecurityController.js";
+import LegalController from "./LegalController.js";
 
 const OTP_ENABLED = !!(process.env.MAILGUN_API_KEY && process.env.MAILGUN_DOMAIN);
 
@@ -62,6 +63,27 @@ async function rotateSession(userId: number): Promise<number> {
   );
   const u = await User.findByPk(userId, { attributes: ["id", "tokenVersion"] });
   return (u?.tokenVersion as number) ?? 1;
+}
+
+/**
+ * Final step shared by every login path (password / OTP / 2FA). Runs the Terms &
+ * Conditions acceptance gate as the very last check before a session token is
+ * issued: if the user hasn't accepted the current published terms version, no
+ * session is granted — instead a short-lived "terms-accept" pending token is
+ * returned and the frontend shows the acceptance step.
+ */
+async function finalizeLogin(user: User) {
+  const gate = await LegalController.getTermsGateState(user.id);
+  if (gate.required) {
+    // Bind the pending token to the exact version the user is being shown, so a
+    // mid-flow publish can't let them "accept" newer, unseen terms.
+    const pendingToken = generateTermsPendingToken({ id: user.id, email: user.email, version: gate.version });
+    return { requiresTermsAcceptance: true as const, pendingToken, termsVersion: gate.version };
+  }
+  const customRole = await getCustomRole(user);
+  const tokenVersion = await rotateSession(user.id);
+  const token = generateToken({ id: user.id, role: user.role, email: user.email, customRoleName: customRole?.name ?? null, tokenVersion });
+  return { token, user: formatAuthUser(user, customRole) };
 }
 
 export default class AuthController {
@@ -130,10 +152,7 @@ export default class AuthController {
       }
     }
 
-    const customRole = await getCustomRole(user);
-    const tokenVersion = await rotateSession(user.id);
-    const token = generateToken({ id: user.id, role: user.role, email: user.email, customRoleName: customRole?.name ?? null, tokenVersion });
-    return { token, user: formatAuthUser(user, customRole) };
+    return finalizeLogin(user);
   }
 
   static async verifyOtp(email: string, otp: string) {
@@ -147,10 +166,7 @@ export default class AuthController {
     if (user.isActive === false) {
       return { error: "This account has been deactivated. Please contact your administrator.", status: 403 };
     }
-    const customRole = await getCustomRole(user);
-    const tokenVersion = await rotateSession(user.id);
-    const token = generateToken({ id: user.id, role: user.role, email: user.email, customRoleName: customRole?.name ?? null, tokenVersion });
-    return { token, user: formatAuthUser(user, customRole) };
+    return finalizeLogin(user);
   }
 
   static async verify2FA(userId: number, code: string) {
@@ -178,10 +194,41 @@ export default class AuthController {
       }
     }
 
-    const customRole = await getCustomRole(user);
-    const tokenVersion = await rotateSession(user.id);
-    const token = generateToken({ id: user.id, role: user.role, email: user.email, customRoleName: customRole?.name ?? null, tokenVersion });
-    return { token, user: formatAuthUser(user, customRole) };
+    return finalizeLogin(user);
+  }
+
+  /**
+   * Records acceptance of the current terms for a user identified by a valid
+   * "terms-accept" pending token, then issues the real session token. Re-checks
+   * active state so a user deactivated mid-flow cannot complete login.
+   */
+  static async acceptTerms(userId: number, acceptedVersion: number, ip: string | null) {
+    const user = await User.findByPk(userId);
+    if (!user) return { error: "User not found", status: 404 };
+    if (user.isActive === false) {
+      return { error: "This account has been deactivated. Please contact your administrator.", status: 403 };
+    }
+    // Compare against the current server-side version (never trust the client).
+    const gate = await LegalController.getTermsGateState(userId);
+    // If terms were re-published between prompt and submit, the user is confirming
+    // an outdated version they never saw — refuse and re-prompt with the new one.
+    if (gate.required && gate.version !== acceptedVersion) {
+      const pendingToken = generateTermsPendingToken({ id: user.id, email: user.email, version: gate.version });
+      return { requiresTermsAcceptance: true as const, pendingToken, termsVersion: gate.version };
+    }
+    if (gate.required && gate.version >= 1) {
+      await LegalController.recordAcceptance(userId, gate.version, ip);
+    }
+    return finalizeLogin(user);
+  }
+
+  /**
+   * Public wrapper around the shared login finalizer so non-standard entry points
+   * (e.g. forced 2FA setup) run the same Terms & Conditions gate before issuing a
+   * session, instead of minting a JWT directly and bypassing compliance.
+   */
+  static async finalize(user: User) {
+    return finalizeLogin(user);
   }
 
   static async changePassword(userId: number, currentPassword: string, newPassword: string) {
