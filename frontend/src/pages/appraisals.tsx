@@ -3,20 +3,28 @@ import { useListAppraisals, useCreateAppraisal, useListCycles, useListUsers } fr
 import { useQueryClient } from "@tanstack/react-query";
 import { PageHeader, Card, StatusBadge, Button, EmptyState, Label } from "@/components/shared";
 import { format } from "date-fns";
-import { ClipboardList, Plus, X, Search, ChevronDown, ArrowUp, ArrowDown, UserPlus, Trash2, Users, User, Check } from "lucide-react";
+import { ClipboardList, Plus, X, Search, ChevronDown, ArrowUp, ArrowDown, UserPlus, Trash2, Users, User, Check, Calendar, Clock } from "lucide-react";
 import { BulkActionBar } from "@/components/bulk-action-bar";
 import { useAuth } from "@/hooks/use-auth";
 import { Link } from "wouter";
 import { apiFetch } from "@/lib/utils";
+import { matchesPerson } from "@/lib/search";
+import { SearchableSelect, personMatcher } from "@/components/searchable-select";
 
 const authHeader = () => ({ Authorization: `Bearer ${localStorage.getItem("token")}` });
 
 const STATUS_OPTIONS = [
+  { value: "scheduled",         label: "Scheduled" },
   { value: "self_review",       label: "Self Review" },
   { value: "manager_review",    label: "Manager Review" },
   { value: "pending_approval",  label: "Pending Approval" },
   { value: "completed",         label: "Completed" },
 ];
+
+function toDatetimeLocalValue(d: Date): string {
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
 
 export default function Appraisals() {
   const { user } = useAuth();
@@ -37,6 +45,8 @@ export default function Appraisals() {
   const [selectedEmployeeIds, setSelectedEmployeeIds] = useState<Set<number>>(new Set());
   const [categoryBudgets, setCategoryBudgets] = useState<Record<string, Record<number, string>>>({});
   const [bulkCreating, setBulkCreating] = useState(false);
+  const [scheduleEnabled, setScheduleEnabled] = useState(false);
+  const [scheduledStartAt, setScheduledStartAt] = useState("");
 
   // Criteria groups
   const [criteriaGroups, setCriteriaGroups] = useState<any[]>([]);
@@ -55,8 +65,7 @@ export default function Appraisals() {
   const filteredAppraisals = useMemo(() => {
     if (!appraisals) return [];
     return appraisals.filter(a => {
-      const q = search.toLowerCase();
-      const matchSearch = !q || (a.employee?.name ?? "").toLowerCase().includes(q) || (a.employee?.department ?? "").toLowerCase().includes(q);
+      const matchSearch = matchesPerson(search, a.employee, [a.employee?.department, a.employee?.jobTitle]);
       const matchStatus = !filterStatus || a.status === filterStatus;
       const matchCycle = !filterCycle || String(a.cycleId) === filterCycle;
       return matchSearch && matchStatus && matchCycle;
@@ -115,17 +124,20 @@ export default function Appraisals() {
   const setReviewerAtStep = (idx: number, val: string) =>
     setReviewerSteps(prev => prev.map((v, i) => i === idx ? val : v));
 
+  const [categorySearch, setCategorySearch] = useState("");
+
   const employeesByCategory = useMemo(() => {
     if (!users) return {};
     const grouped: Record<string, typeof users> = {};
     for (const u of users) {
       if (u.role === "super_admin") continue;
-      const cat = (u.jobTitle || "Uncategorized").trim();
+      if (categorySearch && !matchesPerson(categorySearch, u as any, [(u as any).jobTitle, (u as any).department])) continue;
+      const cat = ((u as any).jobTitle || "Uncategorized").trim();
       if (!grouped[cat]) grouped[cat] = [];
       grouped[cat].push(u);
     }
     return grouped;
-  }, [users]);
+  }, [users, categorySearch]);
 
   const toggleCategoryEmployees = (category: string) => {
     const emps = employeesByCategory[category] || [];
@@ -171,6 +183,7 @@ export default function Appraisals() {
             reviewerIds,
             criteriaGroupId: formData.criteriaGroupId ? parseInt(formData.criteriaGroupId) : undefined,
             budgetsByCategory: Object.keys(budgetsByCat).length > 0 ? budgetsByCat : undefined,
+            scheduledStartAt: scheduleEnabled && scheduledStartAt ? new Date(scheduledStartAt).toISOString() : undefined,
           }),
         });
         queryClient.invalidateQueries({ queryKey: ["/api/appraisals"] });
@@ -192,6 +205,7 @@ export default function Appraisals() {
       reviewerIds,
       criteriaGroupId: formData.criteriaGroupId ? parseInt(formData.criteriaGroupId) : undefined,
       budgetValues: Object.keys(budgetMap).length > 0 ? budgetMap : undefined,
+      scheduledStartAt: scheduleEnabled && scheduledStartAt ? new Date(scheduledStartAt).toISOString() : undefined,
     } as Record<string, unknown>;
     createMutation.mutate(
       { data: payload },
@@ -212,6 +226,8 @@ export default function Appraisals() {
     setAssignMode("individual");
     setSelectedEmployeeIds(new Set());
     setCategoryBudgets({});
+    setScheduleEnabled(false);
+    setScheduledStartAt("");
   };
 
   if (isLoading) return <div className="p-8">Loading appraisals...</div>;
@@ -336,7 +352,16 @@ export default function Appraisals() {
                         ? (app as any).reviewers.map((r: any) => r.name).join(', ')
                         : 'Unassigned'}
                     </td>
-                    <td className="p-4"><StatusBadge status={app.status} type="appraisal" /></td>
+                    <td className="p-4">
+                      <StatusBadge status={app.status} type="appraisal" />
+                      {(app.status as string) === "scheduled" && (app as any).scheduledStartAt && (
+                        <div className="text-xs text-muted-foreground mt-1 flex items-start gap-1 whitespace-nowrap">
+                          <Clock className="w-3 h-3 mt-0.5 shrink-0" />
+                          <span className="hidden sm:inline">{format(new Date((app as any).scheduledStartAt), "PPp")}</span>
+                          <span className="sm:hidden">{format(new Date((app as any).scheduledStartAt), "MMM d, p")}</span>
+                        </div>
+                      )}
+                    </td>
                     <td className="p-4">
                       {app.overallScore !== null ? (
                         <span className="font-bold text-lg">{Number(app.overallScore).toFixed(1)}<span className="text-sm text-muted-foreground font-normal">/5</span> <span className="text-sm text-muted-foreground font-normal">({(Number(app.overallScore) / 5 * 100).toFixed(0)}%)</span></span>
@@ -393,22 +418,44 @@ export default function Appraisals() {
               {assignMode === "individual" ? (
                 <div>
                   <Label>Select Employee</Label>
-                  <select 
-                    className="w-full px-4 py-2.5 rounded-xl bg-background border border-border outline-none focus:ring-2 focus:ring-primary/20"
+                  <SearchableSelect
+                    required
+                    placeholder="Search employee by name, email, staff ID, job title…"
+                    emptyText="No employees match"
                     value={formData.employeeId}
-                    onChange={e => setFormData({...formData, employeeId: e.target.value})}
-                    required={assignMode === "individual"}
-                  >
-                    <option value="">-- Choose employee --</option>
-                    {users?.map(u => (
-                      <option key={u.id} value={u.id}>{u.name} ({u.jobTitle || u.role})</option>
-                    ))}
-                  </select>
+                    onChange={v => setFormData({ ...formData, employeeId: v })}
+                    matcher={personMatcher}
+                    options={(users ?? [])
+                      .filter((u: any) => u.role !== "super_admin" && u.isActive !== false)
+                      .map((u: any) => ({
+                        value: String(u.id),
+                        label: u.name,
+                        description: [u.jobTitle || u.role, u.department, u.email].filter(Boolean).join(" • "),
+                        raw: u,
+                      }))}
+                  />
                 </div>
               ) : (
                 <div>
                   <Label>Select Employees by Category <span className="text-muted-foreground font-normal text-xs">({selectedEmployeeIds.size} selected)</span></Label>
-                  <div className="mt-2 space-y-3 max-h-52 overflow-y-auto border border-border rounded-xl p-3 bg-muted/10">
+                  <div className="relative mt-1 mb-2">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none" />
+                    <input
+                      value={categorySearch}
+                      onChange={e => setCategorySearch(e.target.value)}
+                      placeholder="Filter employees by name, email, department…"
+                      className="w-full pl-9 pr-9 py-2 rounded-xl border border-border bg-background text-sm outline-none focus:ring-2 focus:ring-primary/20"
+                    />
+                    {categorySearch && (
+                      <button type="button" onClick={() => setCategorySearch("")} className="absolute right-2 top-1/2 -translate-y-1/2 p-1 rounded-md text-muted-foreground hover:bg-muted">
+                        <X className="w-3.5 h-3.5" />
+                      </button>
+                    )}
+                  </div>
+                  <div className="space-y-3 max-h-52 overflow-y-auto border border-border rounded-xl p-3 bg-muted/10">
+                    {Object.keys(employeesByCategory).length === 0 && (
+                      <p className="text-sm text-muted-foreground text-center py-4">No employees match "{categorySearch}".</p>
+                    )}
                     {Object.entries(employeesByCategory).map(([category, emps]) => {
                       const allChecked = emps.every(e => selectedEmployeeIds.has(e.id));
                       const someChecked = emps.some(e => selectedEmployeeIds.has(e.id));
@@ -447,30 +494,37 @@ export default function Appraisals() {
               )}
               <div>
                 <Label>Select Cycle</Label>
-                <select 
-                  className="w-full px-4 py-2.5 rounded-xl bg-background border border-border outline-none focus:ring-2 focus:ring-primary/20"
-                  value={formData.cycleId}
-                  onChange={e => setFormData({...formData, cycleId: e.target.value})}
+                <SearchableSelect
                   required
-                >
-                  <option value="">-- Choose cycle --</option>
-                  {cycles?.filter(c => c.status === 'active').map(c => (
-                    <option key={c.id} value={c.id}>{c.name}</option>
-                  ))}
-                </select>
+                  placeholder="Search cycle by name…"
+                  emptyText="No active cycles match"
+                  value={formData.cycleId}
+                  onChange={v => setFormData({ ...formData, cycleId: v })}
+                  options={(cycles ?? [])
+                    .filter((c: any) => c.status === "active")
+                    .map((c: any) => ({
+                      value: String(c.id),
+                      label: c.name,
+                      description: c.startDate && c.endDate ? `${c.startDate} → ${c.endDate}` : undefined,
+                    }))}
+                />
               </div>
               <div>
                 <Label>Criteria Group <span className="text-muted-foreground font-normal text-xs">(optional — uses all criteria if not selected)</span></Label>
-                <select
-                  className="w-full px-4 py-2.5 rounded-xl bg-background border border-border outline-none focus:ring-2 focus:ring-primary/20"
+                <SearchableSelect
+                  placeholder="Search criteria group…"
+                  emptyText="No criteria groups match"
                   value={formData.criteriaGroupId}
-                  onChange={e => setFormData({...formData, criteriaGroupId: e.target.value})}
-                >
-                  <option value="">-- All criteria --</option>
-                  {criteriaGroups.map((g: any) => (
-                    <option key={g.id} value={g.id}>{g.name} ({g.criteria?.length ?? 0} criteria)</option>
-                  ))}
-                </select>
+                  onChange={v => setFormData({ ...formData, criteriaGroupId: v })}
+                  options={[
+                    { value: "", label: "All criteria", description: "Use every criterion in the system" },
+                    ...criteriaGroups.map((g: any) => ({
+                      value: String(g.id),
+                      label: g.name,
+                      description: `${g.criteria?.length ?? 0} criteria`,
+                    })),
+                  ]}
+                />
               </div>
               {formData.criteriaGroupId && (() => {
                 const group = criteriaGroups.find((g: any) => String(g.id) === formData.criteriaGroupId);
@@ -569,24 +623,31 @@ export default function Appraisals() {
                   </div>
                   <div className="space-y-2">
                     {reviewerSteps.map((stepVal, idx) => {
-                      const eligible = users?.filter(u =>
+                      const eligible = users?.filter((u: any) =>
                         (u.role === 'manager' || u.role === 'admin' || u.role === 'super_admin') &&
                         u.id !== parseInt(formData.employeeId) &&
+                        u.isActive !== false &&
                         !reviewerSteps.some((v, i) => i !== idx && v === String(u.id))
                       ) ?? [];
                       return (
                         <div key={idx} className="flex items-center gap-2">
                           <span className="flex items-center justify-center w-6 h-6 rounded-full bg-primary/10 text-primary text-xs font-bold shrink-0">{idx + 1}</span>
-                          <select
-                            className="flex-1 px-3 py-2 rounded-xl bg-background border border-border text-sm outline-none focus:ring-2 focus:ring-primary/20"
-                            value={stepVal}
-                            onChange={e => setReviewerAtStep(idx, e.target.value)}
-                          >
-                            <option value="">-- Select manager/admin --</option>
-                            {eligible.map(u => (
-                              <option key={u.id} value={String(u.id)}>{u.name} ({u.role})</option>
-                            ))}
-                          </select>
+                          <div className="flex-1 min-w-0">
+                            <SearchableSelect
+                              placeholder="Search manager / admin…"
+                              emptyText="No eligible reviewers match"
+                              value={stepVal}
+                              onChange={v => setReviewerAtStep(idx, v)}
+                              matcher={personMatcher}
+                              options={eligible.map((u: any) => ({
+                                value: String(u.id),
+                                label: u.name,
+                                description: [u.role, u.jobTitle, u.department].filter(Boolean).join(" • "),
+                                badge: u.role,
+                                raw: u,
+                              }))}
+                            />
+                          </div>
                           <button type="button" onClick={() => moveReviewerStep(idx, -1)} disabled={idx === 0} className="p-1.5 rounded-lg hover:bg-muted disabled:opacity-30 disabled:cursor-not-allowed" title="Move up">
                             <ArrowUp className="w-3.5 h-3.5" />
                           </button>
@@ -635,15 +696,64 @@ export default function Appraisals() {
                   ))}
                 </div>
               </div>
+              <div className="rounded-xl border border-border p-3 bg-muted/10">
+                <label className="flex items-start sm:items-center gap-2 cursor-pointer flex-wrap">
+                  <input
+                    type="checkbox"
+                    checked={scheduleEnabled}
+                    onChange={e => {
+                      const enabled = e.target.checked;
+                      setScheduleEnabled(enabled);
+                      if (enabled && !scheduledStartAt) {
+                        const t = new Date(); t.setHours(t.getHours() + 1, 0, 0, 0);
+                        setScheduledStartAt(toDatetimeLocalValue(t));
+                      }
+                    }}
+                    className="accent-primary mt-1 sm:mt-0 shrink-0"
+                  />
+                  <Calendar className="w-4 h-4 text-primary mt-1 sm:mt-0 shrink-0" />
+                  <span className="text-sm font-medium">Schedule start for later</span>
+                  <span className="text-xs text-muted-foreground basis-full sm:basis-auto sm:ml-1">Hold off until a specific date / time</span>
+                </label>
+                {scheduleEnabled && (
+                  <div className="mt-3 flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3">
+                    <div className="relative w-full sm:w-auto">
+                      <Clock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none" />
+                      <input
+                        type="datetime-local"
+                        value={scheduledStartAt}
+                        min={toDatetimeLocalValue(new Date())}
+                        onChange={e => setScheduledStartAt(e.target.value)}
+                        className="w-full sm:w-auto pl-9 pr-3 py-2 rounded-xl border border-border bg-background text-sm outline-none focus:ring-2 focus:ring-primary/20"
+                        required={scheduleEnabled}
+                      />
+                    </div>
+                    {scheduledStartAt && (() => {
+                      const d = new Date(scheduledStartAt);
+                      const inPast = d.getTime() <= Date.now();
+                      return inPast
+                        ? <p className="text-xs text-amber-600">That time is in the past — the appraisal will start immediately.</p>
+                        : <p className="text-xs text-muted-foreground">Will start {format(d, "PPp")} ({Math.round((d.getTime() - Date.now()) / 60000)} min from now)</p>;
+                    })()}
+                  </div>
+                )}
+              </div>
               <div className="pt-4 flex justify-end gap-3">
                 <Button type="button" variant="ghost" onClick={() => { setIsDialogOpen(false); resetForm(); }}>Cancel</Button>
-                {assignMode === "category" ? (
-                  <Button type="submit" isLoading={bulkCreating} disabled={selectedEmployeeIds.size === 0}>
-                    Start {selectedEmployeeIds.size} Appraisal{selectedEmployeeIds.size !== 1 ? "s" : ""}
-                  </Button>
-                ) : (
-                  <Button type="submit" isLoading={createMutation.isPending}>Start Appraisal</Button>
-                )}
+                {(() => {
+                  const willSchedule = scheduleEnabled && !!scheduledStartAt && new Date(scheduledStartAt).getTime() > Date.now();
+                  const verb = willSchedule ? "Schedule" : "Start";
+                  if (assignMode === "category") {
+                    return (
+                      <Button type="submit" isLoading={bulkCreating} disabled={selectedEmployeeIds.size === 0}>
+                        {verb} {selectedEmployeeIds.size} Appraisal{selectedEmployeeIds.size !== 1 ? "s" : ""}
+                      </Button>
+                    );
+                  }
+                  return (
+                    <Button type="submit" isLoading={createMutation.isPending}>{verb} Appraisal</Button>
+                  );
+                })()}
               </div>
             </form>
           </Card>

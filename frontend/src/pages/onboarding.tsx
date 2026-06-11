@@ -10,6 +10,7 @@ import {
 } from "lucide-react";
 import { format } from "date-fns";
 import { apiFetch } from "@/lib/utils";
+import { matchesPerson } from "@/lib/search";
 
 const CATEGORY_COLORS: Record<string, string> = {
   "Pre-boarding & Documentation":    "bg-purple-100 text-purple-700",
@@ -47,16 +48,9 @@ function EmployeePicker({
     if (selected && !open) setQuery("");
   }, [selected, open]);
 
-  const norm = (s: any) => (s ?? "").toString().toLowerCase();
   const q = query.trim().toLowerCase();
   const matches = q
-    ? users.filter(u =>
-        norm(u.name).includes(q) ||
-        norm(u.email).includes(q) ||
-        norm(u.jobTitle).includes(q) ||
-        norm(u.department).includes(q) ||
-        norm(u.staffId).includes(q)
-      ).slice(0, 50)
+    ? users.filter(u => matchesPerson(query, u, [u.jobTitle, u.department])).slice(0, 50)
     : users.slice(0, 50);
 
   return (
@@ -1335,7 +1329,7 @@ export default function Onboarding() {
   const filtered = workflows
     .filter(w => w.type === tab)
     .filter(w => statusFilter === "all" || w.status === statusFilter)
-    .filter(w => !search || w.title.toLowerCase().includes(search.toLowerCase()) || w.employee?.name.toLowerCase().includes(search.toLowerCase()));
+    .filter(w => !search || w.title.toLowerCase().includes(search.toLowerCase()) || matchesPerson(search, w.employee));
 
   const stats = {
     total: workflows.filter(w => w.type === tab).length,

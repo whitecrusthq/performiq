@@ -5,6 +5,7 @@ import { fileURLToPath } from "url";
 import app from "./app";
 import { connectDatabase } from "./db/sequelize.js";
 import { logger } from "./lib/logger";
+import AppraisalController from "./controllers/AppraisalController.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -38,6 +39,18 @@ async function startServer() {
 
     logger.info({ port }, "Server listening");
 
+    const ACTIVATOR_MS = 60_000;
+    const tickActivator = async () => {
+      try {
+        const n = await AppraisalController.activateDueScheduled();
+        if (n > 0) logger.info({ activated: n }, "Activated scheduled appraisals");
+      } catch (err) {
+        logger.warn({ err }, "Scheduled appraisal activator failed");
+      }
+    };
+    void tickActivator();
+    setInterval(tickActivator, ACTIVATOR_MS).unref?.();
+
     if (process.env.NODE_ENV === "development") {
       const frontendDir = path.resolve(__dirname, "../../frontend");
       const viteBin = path.resolve(frontendDir, "node_modules/.bin/vite");
@@ -52,6 +65,18 @@ async function startServer() {
         logger.warn({ code }, "PerformIQ Vite dev server exited");
       });
       logger.info({ frontendPort }, "PerformIQ Vite dev server spawned");
+
+      const shutdown = (signal: string) => {
+        logger.info({ signal }, "Shutting down");
+        try {
+          vite.kill("SIGTERM");
+        } catch {
+          // ignore
+        }
+        process.exit(0);
+      };
+      process.on("SIGTERM", () => shutdown("SIGTERM"));
+      process.on("SIGINT", () => shutdown("SIGINT"));
     }
   });
 }

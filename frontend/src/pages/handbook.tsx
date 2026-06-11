@@ -1,7 +1,7 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { PageHeader, Card, Button, Input, Label } from "@/components/shared";
 import { useAuth } from "@/hooks/use-auth";
-import { apiFetch } from "@/lib/utils";
+import { apiFetch, resolveUploadUrl } from "@/lib/utils";
 import {
   BookOpen, Upload, FileText, Trash2, Sparkles, Plus, X, Check, Search,
   Filter, FolderOpen, ExternalLink, Edit2, HelpCircle,
@@ -288,6 +288,48 @@ export default function Handbook() {
   );
 }
 
+function FilePicker({ file, onChange }: { file: File | null; onChange: (f: File | null) => void }) {
+  const inputRef = useRef<HTMLInputElement>(null);
+  return (
+    <div className="flex flex-wrap items-center gap-2">
+      <input
+        ref={inputRef}
+        type="file"
+        className="hidden"
+        accept=".pdf,.doc,.docx,.txt,.md,.markdown,.csv,.xls,.xlsx,.ppt,.pptx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/plain"
+        onChange={e => onChange(e.target.files?.[0] ?? null)}
+      />
+      <Button
+        type="button"
+        variant="outline"
+        size="sm"
+        onClick={() => inputRef.current?.click()}
+      >
+        <Upload className="h-4 w-4 mr-2" />
+        {file ? "Choose a different file" : "Choose file"}
+      </Button>
+      {file ? (
+        <div className="flex items-center gap-2 text-sm min-w-0">
+          <FileText className="h-4 w-4 text-primary shrink-0" />
+          <span className="truncate max-w-[14rem] sm:max-w-xs" title={file.name}>{file.name}</span>
+          <span className="text-xs text-muted-foreground whitespace-nowrap">{formatBytes(file.size)}</span>
+          <button
+            type="button"
+            onClick={() => { onChange(null); if (inputRef.current) inputRef.current.value = ""; }}
+            className="p-1 rounded hover:bg-muted text-muted-foreground"
+            title="Remove"
+            aria-label="Remove selected file"
+          >
+            <X className="h-3.5 w-3.5" />
+          </button>
+        </div>
+      ) : (
+        <span className="text-xs text-muted-foreground">No file selected</span>
+      )}
+    </div>
+  );
+}
+
 function UploadDialog({
   categories, onClose, onSaved,
 }: { categories: string[]; onClose: () => void; onSaved: () => void }) {
@@ -308,8 +350,13 @@ function UploadDialog({
       const r1 = await apiFetch("/api/storage/uploads/request-url", { method: "POST" });
       if (!r1.ok) { setErr((await r1.json()).error ?? "Could not get upload URL"); setBusy(false); return; }
       const { uploadURL, objectPath } = await r1.json();
-      const put = await fetch(uploadURL, { method: "PUT", body: file, headers: { "Content-Type": file.type || "application/octet-stream" } });
-      if (!put.ok) { setErr(`Upload failed: ${put.status}`); setBusy(false); return; }
+      const put = await fetch(resolveUploadUrl(uploadURL), { method: "PUT", body: file, headers: { "Content-Type": file.type || "application/octet-stream" } });
+      if (!put.ok) {
+        const body = await put.json().catch(() => null as any);
+        setErr(body?.error ? `Upload failed: ${body.error}` : `Upload failed: ${put.status}`);
+        setBusy(false);
+        return;
+      }
       const r2 = await apiFetch("/api/documents", {
         method: "POST",
         body: JSON.stringify({
@@ -345,7 +392,7 @@ function UploadDialog({
           <textarea className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm min-h-[70px]" value={description} onChange={e => setDescription(e.target.value)} />
         </Field>
         <Field label="File (PDF, DOCX, etc.)">
-          <input type="file" onChange={e => setFile(e.target.files?.[0] ?? null)} className="text-sm" />
+          <FilePicker file={file} onChange={setFile} />
         </Field>
         <Field label="Quiz reference text (optional — used by the AI question generator)">
           <textarea

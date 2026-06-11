@@ -7,9 +7,10 @@ import {
   CreditCard, FileText, Edit2, Check, Phone, Mail, MapPin,
   Building2, Hash, Plus, RefreshCw, Trash2, FolderOpen, AlertCircle,
   ShieldAlert, Paperclip, Upload, Eye, ChevronDown, Download, Clock,
-  ArrowRightLeft, CheckCircle2, XCircle, Ban, FileUp, Loader2,
+  ArrowRightLeft, CheckCircle2, XCircle, Ban, FileUp, Loader2, UserPlus,
 } from "lucide-react";
-import { apiFetch } from "@/lib/utils";
+import { apiFetch, resolveUploadUrl } from "@/lib/utils";
+import { matchesPerson } from "@/lib/search";
 
 function csvEscape(val: any): string {
   if (val == null || val === "") return "";
@@ -221,7 +222,7 @@ function StaffPanel({ staffId, canEdit, onClose, onUpdated }: {
     setUploadingPhoto(true);
     try {
       const urlRes = await apiFetchJson("/api/storage/uploads/request-url", { method: "POST" });
-      await fetch(urlRes.uploadURL, { method: "PUT", headers: { "Content-Type": file.type }, body: file });
+      await fetch(resolveUploadUrl(urlRes.uploadURL), { method: "PUT", headers: { "Content-Type": file.type }, body: file });
       const objectId = urlRes.objectPath.split("/").pop();
       const photoUrl = `/api/storage/objects/${objectId}`;
       await apiFetchJson(`/api/users/${staffId}/profile-photo`, {
@@ -306,7 +307,7 @@ function StaffPanel({ staffId, canEdit, onClose, onUpdated }: {
       const uploadedAttachments: any[] = [];
       for (const pf of pendingFiles) {
         const urlRes = await apiFetchJson("/api/storage/uploads/request-url", { method: "POST" });
-        await fetch(urlRes.uploadURL, {
+        await fetch(resolveUploadUrl(urlRes.uploadURL), {
           method: "PUT",
           headers: { "Content-Type": pf.file.type },
           body: pf.file,
@@ -335,7 +336,7 @@ function StaffPanel({ staffId, canEdit, onClose, onUpdated }: {
   const handleAddAttachment = async (recordId: number, file: File) => {
     try {
       const urlRes = await apiFetchJson("/api/storage/uploads/request-url", { method: "POST" });
-      await fetch(urlRes.uploadURL, {
+      await fetch(resolveUploadUrl(urlRes.uploadURL), {
         method: "PUT",
         headers: { "Content-Type": file.type },
         body: file,
@@ -752,7 +753,7 @@ function StaffPanel({ staffId, canEdit, onClose, onUpdated }: {
                           setUploadingReviewDoc(true);
                           try {
                             const urlRes = await apiFetchJson("/api/storage/uploads/request-url", { method: "POST" });
-                            await fetch(urlRes.uploadURL, { method: "PUT", headers: { "Content-Type": file.type }, body: file });
+                            await fetch(resolveUploadUrl(urlRes.uploadURL), { method: "PUT", headers: { "Content-Type": file.type }, body: file });
                             const objectId = urlRes.objectPath.split("/").pop();
                             const docPath = `/api/storage/objects/${objectId}`;
                             await apiFetchJson(`/api/confirmation-reviews/${activeReview.id}/document`, {
@@ -2098,6 +2099,7 @@ export default function Staff() {
   const isAdmin = effectiveLevel === "admin" || effectiveLevel === "super_admin";
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
   const [showBulkImport, setShowBulkImport] = useState(false);
+  const [showAddStaff, setShowAddStaff] = useState(false);
   const [selectedId, setSelectedId] = useState<number | null>(() => {
     const p = new URLSearchParams(window.location.search);
     const id = p.get("id");
@@ -2111,12 +2113,17 @@ export default function Staff() {
     queryFn: () => apiFetchJson("/api/users"),
   });
 
+  const { data: sites = [] } = useQuery<any[]>({
+    queryKey: ["sites-list"],
+    queryFn: () => apiFetchJson("/api/sites"),
+    enabled: isAdmin,
+  });
+
   const departments = useMemo(() => [...new Set((users as any[]).map(u => u.department).filter(Boolean))].sort(), [users]);
 
   const filtered = useMemo(() => {
-    const q = search.toLowerCase();
     return (users as any[]).filter(u => {
-      const matchQ = !q || u.name?.toLowerCase().includes(q) || u.email?.toLowerCase().includes(q) || u.staffId?.toLowerCase().includes(q);
+      const matchQ = matchesPerson(search, u, [u.jobTitle, u.department]);
       const matchDept = !filterDept || u.department === filterDept;
       const matchRole = !filterRole || u.role === filterRole;
       return matchQ && matchDept && matchRole;
@@ -2188,6 +2195,12 @@ export default function Staff() {
             <button onClick={() => setShowBulkImport(true)}
               className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 transition-colors">
               <FileUp className="w-4 h-4" /> Import Staff
+            </button>
+          )}
+          {isAdmin && (
+            <button onClick={() => setShowAddStaff(true)}
+              className="flex items-center gap-1.5 px-3 py-2 rounded-xl border border-primary/40 bg-primary/10 text-primary text-sm font-medium hover:bg-primary/20 transition-colors">
+              <UserPlus className="w-4 h-4" /> Add Staff
             </button>
           )}
           <button onClick={exportStaffList}
@@ -2345,6 +2358,162 @@ export default function Staff() {
           onComplete={() => qc.invalidateQueries({ queryKey: ["users"] })}
         />
       )}
+
+      {showAddStaff && (
+        <AddStaffModal
+          sites={sites as any[]}
+          onClose={() => setShowAddStaff(false)}
+          onCreated={() => {
+            qc.invalidateQueries({ queryKey: ["staff-list"] });
+            qc.invalidateQueries({ queryKey: ["users"] });
+          }}
+        />
+      )}
+    </div>
+  );
+}
+
+// ── Add Single Staff Modal ────────────────────────────────────────────────────
+function AddStaffModal({ sites, onClose, onCreated }: { sites: any[]; onClose: () => void; onCreated: () => void }) {
+  const { toast } = useToast();
+  const { user } = useAuth();
+  const [form, setForm] = useState({
+    name: "", email: "", password: "", role: "employee",
+    siteId: "", department: "", jobTitle: "", phone: "", staffId: "",
+  });
+  const [saving, setSaving] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+
+  const set = (k: keyof typeof form) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) =>
+    setForm(f => ({ ...f, [k]: e.target.value }));
+
+  const submit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setErr(null);
+    if (!form.name.trim() || !form.email.trim() || !form.password || !form.siteId) {
+      setErr("Name, email, password and site are required.");
+      return;
+    }
+    if (form.password.length < 8) {
+      setErr("Password must be at least 8 characters.");
+      return;
+    }
+    setSaving(true);
+    try {
+      await apiFetchJson("/api/users", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: form.name.trim(),
+          email: form.email.trim().toLowerCase(),
+          password: form.password,
+          role: form.role,
+          siteId: form.siteId,
+          department: form.department || null,
+          jobTitle: form.jobTitle || null,
+          phone: form.phone || null,
+          staffId: form.staffId || null,
+        }),
+      });
+      toast({ title: "Staff added", description: `${form.name} can now sign in with the email and password you set.` });
+      onCreated();
+      onClose();
+    } catch (e: any) {
+      setErr(e?.message || "Could not create staff member.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4" onClick={onClose}>
+      <div className="bg-card rounded-2xl shadow-xl w-full max-w-2xl max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+        <div className="flex items-center justify-between px-6 py-4 border-b border-border">
+          <div className="flex items-center gap-2">
+            <UserPlus className="w-5 h-5 text-primary" />
+            <h2 className="text-lg font-bold">Add Staff Member</h2>
+          </div>
+          <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-muted">
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+
+        <form onSubmit={submit} className="p-6 space-y-4">
+          {err && (
+            <div className="bg-destructive/10 border-l-4 border-destructive text-destructive p-3 rounded-r-xl flex items-start gap-2 text-sm">
+              <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
+              <span>{err}</span>
+            </div>
+          )}
+
+          <div className="grid sm:grid-cols-2 gap-4">
+            <div className="space-y-1.5">
+              <label className="text-sm font-medium">Full name *</label>
+              <input value={form.name} onChange={set("name")} required
+                className="w-full px-3 py-2 rounded-xl border border-border bg-background text-sm outline-none focus:ring-2 focus:ring-primary/20" />
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-sm font-medium">Email *</label>
+              <input type="email" value={form.email} onChange={set("email")} required
+                className="w-full px-3 py-2 rounded-xl border border-border bg-background text-sm outline-none focus:ring-2 focus:ring-primary/20" />
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-sm font-medium">Initial password *</label>
+              <input type="password" value={form.password} onChange={set("password")} required minLength={8}
+                placeholder="At least 8 characters" autoComplete="new-password"
+                className="w-full px-3 py-2 rounded-xl border border-border bg-background text-sm outline-none focus:ring-2 focus:ring-primary/20" />
+              <p className="text-xs text-muted-foreground">Share this securely. They can change it from their profile after first sign-in.</p>
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-sm font-medium">Role *</label>
+              <select value={form.role} onChange={set("role")}
+                className="w-full px-3 py-2 rounded-xl border border-border bg-background text-sm outline-none">
+                <option value="employee">Employee</option>
+                <option value="manager">Manager</option>
+                <option value="admin">Admin</option>
+                {user?.role === "super_admin" && <option value="super_admin">Super Admin</option>}
+              </select>
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-sm font-medium">Site *</label>
+              <select value={form.siteId} onChange={set("siteId")} required
+                className="w-full px-3 py-2 rounded-xl border border-border bg-background text-sm outline-none">
+                <option value="">Select a site…</option>
+                {sites.map((s: any) => <option key={s.id} value={s.id}>{s.name}</option>)}
+              </select>
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-sm font-medium">Staff ID</label>
+              <input value={form.staffId} onChange={set("staffId")}
+                className="w-full px-3 py-2 rounded-xl border border-border bg-background text-sm outline-none focus:ring-2 focus:ring-primary/20" />
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-sm font-medium">Department</label>
+              <input value={form.department} onChange={set("department")}
+                className="w-full px-3 py-2 rounded-xl border border-border bg-background text-sm outline-none focus:ring-2 focus:ring-primary/20" />
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-sm font-medium">Job title</label>
+              <input value={form.jobTitle} onChange={set("jobTitle")}
+                className="w-full px-3 py-2 rounded-xl border border-border bg-background text-sm outline-none focus:ring-2 focus:ring-primary/20" />
+            </div>
+            <div className="space-y-1.5 sm:col-span-2">
+              <label className="text-sm font-medium">Phone</label>
+              <input value={form.phone} onChange={set("phone")}
+                className="w-full px-3 py-2 rounded-xl border border-border bg-background text-sm outline-none focus:ring-2 focus:ring-primary/20" />
+            </div>
+          </div>
+
+          <div className="flex items-center justify-end gap-2 pt-2 border-t border-border">
+            <button type="button" onClick={onClose}
+              className="px-4 py-2 rounded-xl text-sm font-medium hover:bg-muted">Cancel</button>
+            <button type="submit" disabled={saving}
+              className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 disabled:opacity-60">
+              {saving ? <><Loader2 className="w-4 h-4 animate-spin" /> Saving…</> : <><UserPlus className="w-4 h-4" /> Add Staff</>}
+            </button>
+          </div>
+        </form>
+      </div>
     </div>
   );
 }

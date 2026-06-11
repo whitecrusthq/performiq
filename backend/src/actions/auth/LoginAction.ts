@@ -36,6 +36,10 @@ export class LoginAction {
         res.json({ requires2FASetup: true, pendingToken: result.pendingToken, email: result.email });
         return;
       }
+      if ("requiresTermsAcceptance" in result) {
+        res.json({ requiresTermsAcceptance: true, pendingToken: result.pendingToken, termsVersion: result.termsVersion });
+        return;
+      }
       recordAuthEvent(req, {
         userId: result.user?.id ?? null,
         email: result.user?.email ?? normalizedEmail,

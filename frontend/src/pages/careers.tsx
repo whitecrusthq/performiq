@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { useLocation, useRoute } from "wouter";
-import { apiFetch } from "@/lib/utils";
+import { apiFetch, resolveUploadUrl } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -194,7 +194,7 @@ function ApplicationForm({ job, company, onBack, onSuccess }: {
         const urlData = await urlRes.json();
         if (!urlRes.ok) throw new Error("Failed to get upload URL");
 
-        await fetch(urlData.uploadURL, {
+        await fetch(resolveUploadUrl(urlData.uploadURL), {
           method: "PUT",
           body: resumeFile,
           headers: { "Content-Type": resumeFile.type },

@@ -26,6 +26,7 @@ import {
   MessageSquareWarning,
   ShieldAlert,
   Paintbrush,
+  HardDrive,
   IdCard,
   ArrowRightLeft,
   Award,
@@ -41,6 +42,7 @@ import {
   ScrollText,
   GraduationCap,
   Trophy,
+  Scale,
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { User } from "@/lib";
@@ -97,6 +99,8 @@ const NAV_STRUCTURE: NavEntry[] = [
       { name: "Onboarding", path: "/onboarding", icon: UserPlus, roles: ["super_admin", "admin"], customRoles: ["hr manager"] },
       { name: "Staff Transfer", path: "/transfers", icon: ArrowRightLeft, roles: ["super_admin", "admin", "manager"], customRoles: ["hr manager"] },
       { name: "HR Support", path: "/hr-queries", icon: MessageSquareWarning, roles: ["super_admin", "admin", "manager", "employee"], customRoles: ["hr manager"] },
+      { name: "HR Support Dashboard", path: "/hr-support-dashboard", icon: BarChart3, roles: ["super_admin", "admin"], customRoles: ["hr manager"] },
+      { name: "HR Knowledge Base", path: "/hr-knowledge-base", icon: BookOpen, roles: ["super_admin", "admin"], customRoles: ["hr manager"] },
       { name: "Anniversaries", path: "/anniversaries", icon: Award, roles: ["super_admin", "admin", "manager"] },
     ],
   },
@@ -114,6 +118,8 @@ const NAV_STRUCTURE: NavEntry[] = [
       { name: "Notifications", path: "/notifications", icon: Bell, roles: ["super_admin", "admin"] },
       { name: "Appearance", path: "/appearance", icon: Paintbrush, roles: ["super_admin", "admin"] },
       { name: "AI Assistant", path: "/ai-settings", icon: Sparkles, roles: ["super_admin", "admin"] },
+      { name: "Storage Providers", path: "/storage-providers", icon: HardDrive, roles: ["super_admin", "admin"] },
+      { name: "Legal & Compliance", path: "/legal", icon: Scale, roles: ["super_admin", "admin"] },
     ],
   },
   {

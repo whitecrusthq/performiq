@@ -27,6 +27,8 @@ import Timesheets from "@/pages/timesheets";
 import Onboarding from "@/pages/onboarding";
 import Staff from "@/pages/staff";
 import HrQueries from "@/pages/hr-queries";
+import HrKnowledgeBase from "@/pages/hr-knowledge-base";
+import HrSupportDashboard from "@/pages/hr-support-dashboard";
 import Profile from "@/pages/profile";
 import Security from "@/pages/security";
 import AuditLog from "@/pages/audit-log";
@@ -40,6 +42,10 @@ import Handbook from "@/pages/handbook";
 import Quiz from "@/pages/quiz";
 import QuizResults from "@/pages/quiz-results";
 import AiSettings from "@/pages/ai-settings";
+import StorageProviders from "@/pages/storage-providers";
+import Legal from "@/pages/legal";
+import PrivacyPolicy from "@/pages/privacy-policy";
+import Terms from "@/pages/terms";
 
 const queryClient = new QueryClient();
 
@@ -67,6 +73,8 @@ function Router() {
       <Route path="/setup-2fa" component={SetupTwoFactor} />
       <Route path="/careers" component={Careers} />
       <Route path="/careers/track/:token" component={Careers} />
+      <Route path="/privacy" component={PrivacyPolicy} />
+      <Route path="/terms" component={Terms} />
       
       {/* Protected Routes wrapped in Layout */}
       <Route path="/dashboard">
@@ -120,6 +128,12 @@ function Router() {
       <Route path="/hr-queries">
         <AppLayout><ProtectedRoute component={HrQueries} /></AppLayout>
       </Route>
+      <Route path="/hr-knowledge-base">
+        <AppLayout><ProtectedRoute component={HrKnowledgeBase} /></AppLayout>
+      </Route>
+      <Route path="/hr-support-dashboard">
+        <AppLayout><ProtectedRoute component={HrSupportDashboard} /></AppLayout>
+      </Route>
       <Route path="/profile">
         <AppLayout><ProtectedRoute component={Profile} /></AppLayout>
       </Route>
@@ -155,6 +169,12 @@ function Router() {
       </Route>
       <Route path="/ai-settings">
         <AppLayout><ProtectedRoute component={AiSettings} /></AppLayout>
+      </Route>
+      <Route path="/storage-providers">
+        <AppLayout><ProtectedRoute component={StorageProviders} /></AppLayout>
+      </Route>
+      <Route path="/legal">
+        <AppLayout><ProtectedRoute component={Legal} /></AppLayout>
       </Route>
 
       <Route component={NotFound} />

@@ -12,6 +12,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { apiFetch as apiFetchBase } from "@/lib/utils";
+import { matchesPerson } from "@/lib/search";
 
 async function apiFetch(url: string, opts: RequestInit = {}) {
   const r = await apiFetchBase(url, opts);
@@ -129,10 +130,7 @@ function SubmitDialog({
   const [search, setSearch] = useState("");
 
   const filtered = (availableApprovers as any[]).filter(a =>
-    !selected.some(s => s.id === a.id) &&
-    (a.name?.toLowerCase().includes(search.toLowerCase()) ||
-     a.email?.toLowerCase().includes(search.toLowerCase()) ||
-     a.department?.toLowerCase().includes(search.toLowerCase()))
+    !selected.some(s => s.id === a.id) && matchesPerson(search, a, [a.department, a.jobTitle])
   );
 
   const addApprover = (a: any) => { setSelected(prev => [...prev, a]); setSearch(""); };

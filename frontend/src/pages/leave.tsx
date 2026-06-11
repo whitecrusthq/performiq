@@ -5,6 +5,7 @@ import { CalendarDays, Plus, X, CheckCircle2, XCircle, Clock, Ban, ChevronRight,
 import { BulkActionBar } from "@/components/bulk-action-bar";
 import { useAuth } from "@/hooks/use-auth";
 import { apiFetch } from "@/lib/utils";
+import { matchesPerson } from "@/lib/search";
 
 type LeaveStatus = "pending" | "approved" | "rejected" | "cancelled";
 
@@ -1169,7 +1170,7 @@ export default function Leave() {
           {isManager && teamBalances.length > 0 && (() => {
             const filteredPolicies = balanceFilterType === "all" ? policies : policies.filter(p => p.leaveType === balanceFilterType);
             const filteredTeam = balanceFilterName
-              ? teamBalances.filter((emp: any) => emp.name?.toLowerCase().includes(balanceFilterName.toLowerCase()))
+              ? teamBalances.filter((emp: any) => matchesPerson(balanceFilterName, emp, [emp.department, emp.jobTitle]))
               : teamBalances;
             return (
             <>

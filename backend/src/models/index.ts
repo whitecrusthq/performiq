@@ -37,6 +37,7 @@ import WorkflowTask from "./WorkflowTask.js";
 import OnboardingDocument from "./OnboardingDocument.js";
 import HrQuery from "./HrQuery.js";
 import HrQueryMessage from "./HrQueryMessage.js";
+import HrKbDocument from "./HrKbDocument.js";
 import SecuritySettings from "./SecuritySettings.js";
 import AppSettings from "./AppSettings.js";
 import TransferRequest from "./TransferRequest.js";
@@ -45,6 +46,9 @@ import JobRequisition from "./JobRequisition.js";
 import Candidate from "./Candidate.js";
 import NotificationSettings from "./NotificationSettings.js";
 import AuthAuditLog from "./AuthAuditLog.js";
+import StorageProvider from "./StorageProvider.js";
+import LegalDocument from "./LegalDocument.js";
+import TermsAcceptance from "./TermsAcceptance.js";
 
 export {
   sequelize,
@@ -86,6 +90,7 @@ export {
   OnboardingDocument,
   HrQuery,
   HrQueryMessage,
+  HrKbDocument,
   SecuritySettings,
   AppSettings,
   TransferRequest,
@@ -94,4 +99,7 @@ export {
   Candidate,
   NotificationSettings,
   AuthAuditLog,
+  StorageProvider,
+  LegalDocument,
+  TermsAcceptance,
 };

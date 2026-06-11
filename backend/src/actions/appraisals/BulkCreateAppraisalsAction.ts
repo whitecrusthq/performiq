@@ -8,7 +8,7 @@ export class BulkCreateAppraisalsAction {
       if (!["admin", "super_admin", "manager"].includes(req.user!.role)) {
         res.status(403).json({ error: "Forbidden" }); return;
       }
-      const { cycleId, employeeIds, reviewerIds, workflowType, criteriaGroupId, budgetsByCategory } = req.body;
+      const { cycleId, employeeIds, reviewerIds, workflowType, criteriaGroupId, budgetsByCategory, scheduledStartAt } = req.body;
       if (!Array.isArray(employeeIds) || employeeIds.length === 0) {
         res.status(400).json({ error: "employeeIds must be a non-empty array" }); return;
       }
@@ -23,6 +23,7 @@ export class BulkCreateAppraisalsAction {
         criteriaGroupId: criteriaGroupId ? Number(criteriaGroupId) : null,
         budgetsByCategory,
         currentUser: req.user!,
+        scheduledStartAt: scheduledStartAt ?? null,
       });
       res.status(201).json(result);
     } catch (err: any) {

@@ -2,12 +2,12 @@ import { useEffect, useState } from "react";
 import { useLocation } from "wouter";
 import { useAuth } from "@/hooks/use-auth";
 import { Button, Input, Label } from "@/components/shared";
-import { AlertCircle, ShieldCheck, Smartphone, KeyRound, Copy, Check, Download } from "lucide-react";
+import { AlertCircle, ShieldCheck, Smartphone, KeyRound, Copy, Check, Download, ScrollText, ExternalLink } from "lucide-react";
 import { apiFetch } from "@/lib/utils";
 import { useAppSettings } from "@/hooks/use-app-settings";
 import { BrandMark } from "@/components/brand-mark";
 
-type Stage = "loading" | "scan" | "verify" | "backup" | "error";
+type Stage = "loading" | "scan" | "verify" | "backup" | "terms" | "error";
 
 export default function SetupTwoFactor() {
   const { login } = useAuth();
@@ -22,6 +22,11 @@ export default function SetupTwoFactor() {
   const [backupCodes, setBackupCodes] = useState<string[]>([]);
   const [copied, setCopied] = useState(false);
   const [acknowledgedBackup, setAcknowledgedBackup] = useState(false);
+  const [needsTerms, setNeedsTerms] = useState(false);
+  const [termsPendingToken, setTermsPendingToken] = useState("");
+  const [termsVersion, setTermsVersion] = useState(0);
+  const [termsContent, setTermsContent] = useState("");
+  const [termsAccepted, setTermsAccepted] = useState(false);
 
   const pendingToken = typeof window !== "undefined" ? sessionStorage.getItem("pending2FAToken") || "" : "";
   const email = typeof window !== "undefined" ? sessionStorage.getItem("pending2FAEmail") || "" : "";
@@ -72,8 +77,60 @@ export default function SetupTwoFactor() {
       setBackupCodes(data.backupCodes || []);
       sessionStorage.removeItem("pending2FAToken");
       sessionStorage.removeItem("pending2FAEmail");
-      login(data.token, data.user);
+      if (data.requiresTermsAcceptance && data.pendingToken) {
+        // Enforced 2FA succeeded but the user still owes a terms acceptance —
+        // collect it after they save their backup codes, before any session.
+        setNeedsTerms(true);
+        setTermsPendingToken(data.pendingToken);
+        setTermsVersion(data.termsVersion ?? 0);
+        loadTermsContent();
+      } else {
+        login(data.token, data.user);
+      }
       setStage("backup");
+    } catch {
+      setError("Network error. Please try again.");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const loadTermsContent = async () => {
+    try {
+      const r = await apiFetch("/api/legal/terms");
+      const data = await r.json();
+      if (data.published) setTermsContent(data.content ?? "");
+    } catch {
+      /* The full page link still works even if the inline preview fails. */
+    }
+  };
+
+  const handleAcceptTerms = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!termsAccepted) return;
+    setError(null);
+    setSubmitting(true);
+    try {
+      const r = await apiFetch("/api/auth/terms/accept", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ pendingToken: termsPendingToken }),
+      });
+      const data = await r.json();
+      if (!r.ok) {
+        setError(data.error || "Could not record your acceptance. Please sign in again.");
+        return;
+      }
+      if (data.requiresTermsAcceptance && data.pendingToken) {
+        // Terms were re-published mid-flow — re-prompt with the new version.
+        setTermsPendingToken(data.pendingToken);
+        setTermsVersion(data.termsVersion ?? 0);
+        setTermsAccepted(false);
+        loadTermsContent();
+        return;
+      }
+      login(data.token, data.user);
+      setLocation("/dashboard");
     } catch {
       setError("Network error. Please try again.");
     } finally {
@@ -223,10 +280,52 @@ export default function SetupTwoFactor() {
                 className="w-full"
                 size="lg"
                 disabled={!acknowledgedBackup}
-                onClick={() => setLocation("/dashboard")}
+                onClick={() => (needsTerms ? setStage("terms") : setLocation("/dashboard"))}
               >
-                Continue to dashboard
+                {needsTerms ? "Continue" : "Continue to dashboard"}
               </Button>
+            </div>
+          )}
+
+          {stage === "terms" && (
+            <div>
+              <div className="flex items-center gap-3 mb-2">
+                <div className="w-10 h-10 bg-primary/10 rounded-xl flex items-center justify-center">
+                  <ScrollText className="w-5 h-5 text-primary" />
+                </div>
+                <h2 className="text-xl font-bold font-display tracking-tight">Terms &amp; Conditions</h2>
+              </div>
+              <p className="text-muted-foreground mb-5">
+                Please review and accept our Terms &amp; Conditions{termsVersion ? <> (version {termsVersion})</> : null} to continue.
+              </p>
+
+              <div className="rounded-xl border bg-muted/30 p-4 max-h-64 overflow-y-auto mb-4 whitespace-pre-wrap text-sm leading-relaxed text-foreground/90">
+                {termsContent || "Loading the latest terms…"}
+              </div>
+
+              <a
+                href="/terms"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-1.5 text-sm text-primary hover:underline mb-5"
+              >
+                Open full Terms &amp; Conditions page <ExternalLink className="w-3.5 h-3.5" />
+              </a>
+
+              <form onSubmit={handleAcceptTerms} className="space-y-5">
+                <label className="flex items-start gap-3 cursor-pointer select-none">
+                  <input
+                    type="checkbox"
+                    className="mt-1"
+                    checked={termsAccepted}
+                    onChange={(e) => setTermsAccepted(e.target.checked)}
+                  />
+                  <span className="text-sm text-foreground">I have read and agree to the Terms &amp; Conditions.</span>
+                </label>
+                <Button type="submit" className="w-full" size="lg" isLoading={submitting} disabled={!termsAccepted}>
+                  Accept &amp; Continue
+                </Button>
+              </form>
             </div>
           )}
         </div>

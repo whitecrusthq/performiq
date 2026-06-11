@@ -29,6 +29,10 @@ export class Verify2FAAction {
         res.status(result.status!).json({ error: result.error });
         return;
       }
+      if ("requiresTermsAcceptance" in result) {
+        res.json({ requiresTermsAcceptance: true, pendingToken: result.pendingToken, termsVersion: result.termsVersion });
+        return;
+      }
       recordAuthEvent(req, {
         userId: result.user?.id ?? payload.id,
         email: result.user?.email ?? payload.email,

@@ -16,6 +16,7 @@ import attendanceRouter from "./attendance";
 import timesheetsRouter from "./timesheets";
 import onboardingRouter from "./onboarding";
 import hrQueriesRouter from "./hr-queries";
+import hrKbRouter from "./hr-kb";
 import securityRouter from "./security";
 import appSettingsRouter from "./app-settings";
 import storageRouter from "./storage";
@@ -29,6 +30,8 @@ import careersRouter from "./careers";
 import documentsRouter from "./documents";
 import quizRouter from "./quiz";
 import aiSettingsRouter from "./ai-settings";
+import storageProvidersRouter from "./storage-providers";
+import legalRouter from "./legal";
 
 const router: IRouter = Router();
 
@@ -49,6 +52,7 @@ router.use(attendanceRouter);
 router.use(timesheetsRouter);
 router.use(onboardingRouter);
 router.use(hrQueriesRouter);
+router.use(hrKbRouter);
 router.use(securityRouter);
 router.use(appSettingsRouter);
 router.use(storageRouter);
@@ -62,5 +66,7 @@ router.use(careersRouter);
 router.use(documentsRouter);
 router.use(quizRouter);
 router.use(aiSettingsRouter);
+router.use(storageProvidersRouter);
+router.use(legalRouter);
 
 export default router;
