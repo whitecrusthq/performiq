@@ -44,6 +44,27 @@ function applyTheme(hsl: string) {
   document.documentElement.style.setProperty("--ring", hsl);
 }
 
+const DEFAULT_FAVICON = "/favicon.svg";
+
+// Point the browser-tab / URL favicon at the configured brand logo so it matches
+// the in-app logo. Falls back to the bundled default when no logo is set.
+function applyFavicon(logoUrl: string | null) {
+  let link = document.querySelector<HTMLLinkElement>('link[rel="icon"]');
+  if (!link) {
+    link = document.createElement("link");
+    link.rel = "icon";
+    document.head.appendChild(link);
+  }
+  const href = logoUrl || DEFAULT_FAVICON;
+  if (logoUrl) {
+    // Let the browser infer the type from the image (PNG/JPG/etc).
+    link.removeAttribute("type");
+  } else {
+    link.setAttribute("type", "image/svg+xml");
+  }
+  if (link.getAttribute("href") !== href) link.setAttribute("href", href);
+}
+
 export function AppSettingsProvider({ children }: { children: ReactNode }) {
   // Seed from localStorage so the first render already shows the user's
   // saved company name, logo letter, and theme — no flash of defaults.
@@ -65,6 +86,7 @@ export function AppSettingsProvider({ children }: { children: ReactNode }) {
           };
           setSettings(s);
           applyTheme(s.primaryHsl);
+          applyFavicon(s.logoUrl);
           try { localStorage.setItem(CACHE_KEY, JSON.stringify(s)); } catch { /* ignore quota */ }
         }
       })
@@ -75,6 +97,7 @@ export function AppSettingsProvider({ children }: { children: ReactNode }) {
     // Re-apply the cached theme on mount in case the inline bootstrap script
     // didn't run (e.g. localStorage was cleared between then and React mount).
     applyTheme(settings.primaryHsl);
+    applyFavicon(settings.logoUrl);
     load();
   }, []);
 
