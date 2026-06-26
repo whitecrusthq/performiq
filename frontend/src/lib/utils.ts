@@ -23,6 +23,20 @@ export function resolveUploadUrl(uploadURL: string): string {
   return `${base}${uploadURL}`;
 }
 
+// Resolve a stored object/file URL (e.g. "/api/storage/objects/<id>") for use as
+// a browser-navigable href or media src. When the SPA is hosted on a different
+// origin than the backend (e.g. Vercel), a relative "/api/..." link would resolve
+// against the static host (whose catch-all rewrite serves index.html → SPA 404)
+// instead of the backend. Prefix it with the API base so it reaches the backend.
+// Absolute URLs and non-API paths are returned unchanged.
+export function resolveObjectUrl(url: string | null | undefined): string {
+  if (!url) return "";
+  if (/^https?:\/\//i.test(url)) return url;
+  if (!url.startsWith("/api/")) return url;
+  const base = (import.meta.env.VITE_API_URL || "").replace(/\/+$/, "");
+  return `${base}${url}`;
+}
+
 export async function apiFetch(path: string, init?: RequestInit): Promise<Response> {
   const base = (import.meta.env.VITE_API_URL || "").replace(/\/+$/, "");
   const r = await fetch(`${base}${path}`, {
