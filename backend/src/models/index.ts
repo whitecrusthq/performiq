@@ -49,6 +49,7 @@ import AuthAuditLog from "./AuthAuditLog.js";
 import StorageProvider from "./StorageProvider.js";
 import LegalDocument from "./LegalDocument.js";
 import TermsAcceptance from "./TermsAcceptance.js";
+import AttendanceSetting from "./AttendanceSetting.js";
 
 export {
   sequelize,
@@ -102,4 +103,5 @@ export {
   StorageProvider,
   LegalDocument,
   TermsAcceptance,
+  AttendanceSetting,
 };

@@ -1,9 +1,37 @@
 import { Op } from "sequelize";
-import { AttendanceLog, AttendanceLocationPing, User, Site } from "../models/index.js";
+import { AttendanceLog, AttendanceLocationPing, Department, User, Site } from "../models/index.js";
+import AttendanceScheduleController from "./AttendanceScheduleController.js";
+import { computeExpectedClockOut, localDateStr, resolveSchedule } from "../lib/attendance-time.js";
 
 export default class AttendanceController {
+  // The currently-open session for a user (clocked in, not yet out). Not keyed
+  // by calendar date so night shifts that cross midnight resolve correctly.
+  static async findOpenSession(userId: number) {
+    return AttendanceLog.findOne({
+      where: { userId, clockOut: null, clockIn: { [Op.ne]: null } },
+      order: [["clockIn", "DESC"]],
+    });
+  }
+
+  // The session that contains a given timestamp (clockIn ≤ ts ≤ clockOut, or
+  // still open). Used to attach location pings — including offline pings that
+  // are flushed after the session already auto-closed.
+  static async findSessionContaining(userId: number, ts: Date) {
+    return AttendanceLog.findOne({
+      where: {
+        userId,
+        clockIn: { [Op.lte]: ts },
+        [Op.or]: [{ clockOut: null }, { clockOut: { [Op.gte]: ts } }],
+      },
+      order: [["clockIn", "DESC"]],
+    });
+  }
+
   static async getTodayStatus(userId: number) {
-    const today = new Date().toISOString().split("T")[0];
+    const open = await this.findOpenSession(userId);
+    if (open) return open;
+    const tz = await AttendanceScheduleController.getTimezone();
+    const today = localDateStr(new Date(), tz);
     const log = await AttendanceLog.findOne({
       where: { userId, date: today },
       order: [["clockIn", "DESC"]],
@@ -13,53 +41,67 @@ export default class AttendanceController {
 
   static async clockIn(userId: number, data: { lat?: number; lng?: number; faceImage?: string; photoTime?: string }) {
     const { lat, lng, faceImage, photoTime } = data;
-    const today = new Date().toISOString().split("T")[0];
-    const existing = await AttendanceLog.findOne({
-      where: { userId, date: today },
-      order: [["clockIn", "DESC"]],
-    });
-    if (existing && existing.clockIn && !existing.clockOut) {
+    const open = await this.findOpenSession(userId);
+    if (open) {
       return { error: "Already clocked in", status: 400 };
     }
-    const emp = await User.findOne({ where: { id: userId }, attributes: ["siteId"] });
+    const emp = await User.findOne({
+      where: { id: userId },
+      attributes: ["siteId", "department", "shiftType", "clockOutSlot"],
+    });
+    const tz = await AttendanceScheduleController.getTimezone();
+    let dept: Department | null = null;
+    if (emp?.department) {
+      dept = await Department.findOne({
+        where: { name: emp.department },
+        attributes: ["shiftType", "clockOutSlot"],
+      });
+    }
+    const resolved = resolveSchedule(emp?.shiftType, emp?.clockOutSlot, dept?.shiftType, dept?.clockOutSlot);
+    const clockIn = new Date();
+    const expectedClockOut = resolved ? computeExpectedClockOut(clockIn, resolved.slot, tz) : null;
     const log = await AttendanceLog.create({
       userId,
-      date: today,
+      date: localDateStr(clockIn, tz),
       siteId: emp?.siteId ?? null,
-      clockIn: new Date(),
+      clockIn,
       clockInLat: lat != null ? String(lat) : null,
       clockInLng: lng != null ? String(lng) : null,
       faceImageIn: faceImage ?? null,
       clockInPhotoTime: photoTime ? new Date(photoTime) : null,
+      shiftType: resolved?.shiftType ?? null,
+      expectedClockOut,
+      clockOutSource: "manual",
+      autoClockedOut: false,
     });
     return { data: log };
   }
 
   static async clockOut(userId: number, data: { notes?: string; lat?: number; lng?: number; faceImage?: string; photoTime?: string }) {
     const { notes, lat, lng, faceImage, photoTime } = data;
-    const today = new Date().toISOString().split("T")[0];
-    const existing = await AttendanceLog.findOne({
-      where: { userId, date: today },
-      order: [["clockIn", "DESC"]],
-    });
-    if (!existing || !existing.clockIn || existing.clockOut) {
+    const existing = await this.findOpenSession(userId);
+    if (!existing) {
       return { error: "Not currently clocked in", status: 400 };
     }
     const clockOut = new Date();
     const durationMinutes = Math.round((clockOut.getTime() - new Date(existing.clockIn!).getTime()) / 60000);
+    const hasLoc = lat != null && lng != null;
     const [, updatedRows] = await AttendanceLog.update({
       clockOut,
       durationMinutes,
       notes: notes ?? existing.notes,
-      clockOutLat: lat != null ? String(lat) : null,
-      clockOutLng: lng != null ? String(lng) : null,
+      clockOutLat: hasLoc ? String(lat) : null,
+      clockOutLng: hasLoc ? String(lng) : null,
+      clockOutLocationTime: hasLoc ? clockOut : null,
       faceImageOut: faceImage ?? null,
       clockOutPhotoTime: photoTime ? new Date(photoTime) : null,
+      clockOutSource: "manual",
+      autoClockedOut: false,
     }, { where: { id: existing.id }, returning: true });
     return { data: updatedRows[0] };
   }
 
-  static async listLogs(userId: number, role: string, filters: { startDate?: string; endDate?: string; userId?: string; siteId?: string; department?: string }) {
+  static async listLogs(userId: number, role: string, filters: { startDate?: string; endDate?: string; userId?: string; siteId?: string; department?: string; autoClosedOnly?: boolean }) {
     let rows = await AttendanceLog.findAll({ order: [["date", "DESC"]] });
     let rowsJson = rows.map(r => r.toJSON() as any);
 
@@ -77,6 +119,9 @@ export default class AttendanceController {
     }
     if (filters.startDate) rowsJson = rowsJson.filter((r: any) => r.date >= filters.startDate!);
     if (filters.endDate) rowsJson = rowsJson.filter((r: any) => r.date <= filters.endDate!);
+
+    // Audit filter — only auto-closed sessions (anti-hour-inflation review).
+    if (filters.autoClosedOnly) rowsJson = rowsJson.filter((r: any) => r.autoClockedOut === true);
 
     // Site filter (uses siteId stamped on the attendance log at clock-in time)
     if (filters.siteId) {
@@ -112,15 +157,11 @@ export default class AttendanceController {
   static async locationPing(userId: number, data: { lat: number; lng: number; recordedAt?: string }) {
     const { lat, lng, recordedAt } = data;
     const pingTime = recordedAt ? new Date(recordedAt) : new Date();
-    const pingDate = pingTime.toISOString().split("T")[0];
 
-    const active = await AttendanceLog.findOne({
-      where: { userId, date: pingDate },
-      order: [["clockIn", "DESC"]],
-    });
+    const active = (await this.findSessionContaining(userId, pingTime)) ?? (await this.findOpenSession(userId));
 
     if (!active || !active.clockIn) {
-      return { error: "No clock-in found for this date", status: 400 };
+      return { error: "No active clock-in found for this time", status: 400 };
     }
 
     const ping = await AttendanceLocationPing.create({
@@ -137,11 +178,7 @@ export default class AttendanceController {
     const results: any[] = [];
     for (const p of pings) {
       const pingTime = new Date(p.recordedAt);
-      const pingDate = pingTime.toISOString().split("T")[0];
-      const active = await AttendanceLog.findOne({
-        where: { userId, date: pingDate },
-        order: [["clockIn", "DESC"]],
-      });
+      const active = await this.findSessionContaining(userId, pingTime);
       if (!active?.clockIn) continue;
       const inserted = await AttendanceLocationPing.create({
         attendanceLogId: active.id,

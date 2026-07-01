@@ -6,9 +6,9 @@ export class UpdateDepartmentAction {
   static async handle(req: AuthRequest, res: Response): Promise<void> {
     try {
       const id = parseInt(req.params.id as string);
-      const { name, description } = req.body;
+      const { name, description, shiftType, clockOutSlot } = req.body;
       if (!name?.trim()) { res.status(400).json({ error: "Department name is required" }); return; }
-      const updated = await DepartmentController.update(id, name, description);
+      const updated = await DepartmentController.update(id, name, description, { shiftType, clockOutSlot });
       if (!updated) { res.status(404).json({ error: "Department not found" }); return; }
       res.json(updated);
     } catch (err: any) {
