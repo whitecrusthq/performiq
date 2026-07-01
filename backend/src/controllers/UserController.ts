@@ -16,6 +16,7 @@ function formatUser(u: User, customRole?: CustomRole | null) {
     customRoleId: u.customRoleId,
     customRole: customRole ? { id: customRole.id, name: customRole.name, permissionLevel: customRole.permissionLevel } : null,
     managerId: u.managerId, siteId: u.siteId, department: u.department, jobTitle: u.jobTitle,
+    shiftType: u.shiftType ?? null, clockOutSlot: u.clockOutSlot ?? null,
     phone: u.phone, staffId: u.staffId, profilePhoto: u.profilePhoto, isLocked: u.isLocked, createdAt: u.createdAt,
     surname: u.surname, firstName: u.firstName, middleName: u.middleName,
     address: u.address,
@@ -62,7 +63,7 @@ export default class UserController {
   }
 
   static async create(data: any, actorRole: string) {
-    const { name, email, password, role, customRoleId, managerId, siteId, department, jobTitle, phone, staffId } = data;
+    const { name, email, password, role, customRoleId, managerId, siteId, department, jobTitle, phone, staffId, shiftType, clockOutSlot } = data;
     if (!siteId) return { error: "Site is required", status: 400 };
     const passwordHash = await bcrypt.hash(password, 10);
     let effectiveRole = role || "employee";
@@ -73,11 +74,14 @@ export default class UserController {
     if (!canAssignRole(actorRole, effectiveRole)) {
       return { error: "Only a Super Admin can assign the Super Admin role", status: 403 };
     }
+    const st = typeof shiftType === "string" ? shiftType.trim() : "";
     const user = await User.create({
       name, email, passwordHash, role: effectiveRole,
       customRoleId: customRoleId ? Number(customRoleId) : null,
       managerId, siteId: Number(siteId), department, jobTitle,
       phone: phone || null, staffId: staffId || null,
+      shiftType: st === "night" ? "night" : st === "day" ? "day" : null,
+      clockOutSlot: typeof clockOutSlot === "string" && clockOutSlot.trim() ? clockOutSlot.trim() : null,
     });
     const result = await getUserWithRole(user.id);
     return { data: result, status: 201 };
@@ -93,13 +97,20 @@ export default class UserController {
       return { error: "Only a Super Admin can edit Super Admin accounts", status: 403 };
     }
 
-    const { name, email, password, role, customRoleId, managerId, siteId, department, jobTitle, phone, staffId, require2Fa } = data;
+    const { name, email, password, role, customRoleId, managerId, siteId, department, jobTitle, phone, staffId, require2Fa, shiftType, clockOutSlot } = data;
     const updates: Record<string, any> = {
       name, email, managerId, siteId: siteId ? Number(siteId) : null,
       department, jobTitle, phone: phone || null, staffId: staffId || null,
     };
     updates.customRoleId = customRoleId ? Number(customRoleId) : null;
     if (typeof require2Fa === "boolean") updates.require2Fa = require2Fa;
+    if (shiftType !== undefined) {
+      const st = typeof shiftType === "string" ? shiftType.trim() : "";
+      updates.shiftType = st === "night" ? "night" : st === "day" ? "day" : null;
+    }
+    if (clockOutSlot !== undefined) {
+      updates.clockOutSlot = typeof clockOutSlot === "string" && clockOutSlot.trim() ? clockOutSlot.trim() : null;
+    }
 
     if (customRoleId) {
       const cr = await CustomRole.findByPk(Number(customRoleId));

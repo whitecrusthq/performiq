@@ -38,7 +38,9 @@ export default function Users() {
   const [sites, setSites] = useState<Site[]>([]);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
-  const [formData, setFormData] = useState({ name: "", email: "", password: "", role: "employee" as any, customRoleId: "", siteId: "", department: "", jobTitle: "", phone: "", staffId: "", require2Fa: false });
+  const [formData, setFormData] = useState({ name: "", email: "", password: "", role: "employee" as any, customRoleId: "", siteId: "", department: "", jobTitle: "", phone: "", staffId: "", require2Fa: false, shiftType: "", clockOutSlot: "" });
+  const [daySlots, setDaySlots] = useState<string[]>([]);
+  const [nightSlots, setNightSlots] = useState<string[]>([]);
   const [isNewDept, setIsNewDept] = useState(false);
   const [mutationError, setMutationError] = useState<string | null>(null);
 
@@ -66,6 +68,10 @@ export default function Users() {
       .then(r => r.json())
       .then(data => Array.isArray(data) && setDepartments(data.map((d: any) => d.name ?? d)))
       .catch(() => {});
+    apiFetch("/api/attendance/schedule-settings")
+      .then(r => r.ok ? r.json() : null)
+      .then(d => { if (d?.settings) { setDaySlots(d.settings.daySweepTimes ?? []); setNightSlots(d.settings.nightSweepTimes ?? []); } })
+      .catch(() => {});
     apiFetch("/api/sites")
       .then(r => r.json())
       .then(data => Array.isArray(data) && setSites(data))
@@ -86,6 +92,8 @@ export default function Users() {
       phone: formData.phone || null,
       staffId: formData.staffId || null,
       require2Fa: !!formData.require2Fa,
+      shiftType: formData.shiftType || null,
+      clockOutSlot: formData.shiftType ? (formData.clockOutSlot || null) : null,
     };
     if (editingId) {
       const updateData = formData.password.trim() !== "" ? { ...base, password: formData.password } : base;
@@ -207,7 +215,7 @@ export default function Users() {
   return (
     <div>
       <PageHeader title="User Management" description="Manage platform access and organizational structure.">
-        <Button onClick={() => { setMutationError(null); setFormData({ name: "", email: "", password: "", role: "employee", customRoleId: "", siteId: "", department: "", jobTitle: "", phone: "", staffId: "", require2Fa: false }); setEditingId(null); setIsNewDept(false); setIsDialogOpen(true); }}>
+        <Button onClick={() => { setMutationError(null); setFormData({ name: "", email: "", password: "", role: "employee", customRoleId: "", siteId: "", department: "", jobTitle: "", phone: "", staffId: "", require2Fa: false, shiftType: "", clockOutSlot: "" }); setEditingId(null); setIsNewDept(false); setIsDialogOpen(true); }}>
           <Plus className="w-4 h-4 mr-2" /> Add User
         </Button>
       </PageHeader>
@@ -357,7 +365,7 @@ export default function Users() {
                         variant="outline"
                         size="sm"
                         className="gap-1.5"
-                        onClick={() => { setMutationError(null); setFormData({ name: u.name, email: u.email, password: "", role: u.role, customRoleId: u.customRole?.id?.toString() || "", siteId: (u as any).siteId?.toString() || "", department: u.department||"", jobTitle: u.jobTitle||"", phone: u.phone||"", staffId: u.staffId||"", require2Fa: !!(u as any).require2Fa }); setEditingId(u.id); setIsNewDept(false); setIsDialogOpen(true); }}
+                        onClick={() => { setMutationError(null); setFormData({ name: u.name, email: u.email, password: "", role: u.role, customRoleId: u.customRole?.id?.toString() || "", siteId: (u as any).siteId?.toString() || "", department: u.department||"", jobTitle: u.jobTitle||"", phone: u.phone||"", staffId: u.staffId||"", require2Fa: !!(u as any).require2Fa, shiftType: (u as any).shiftType||"", clockOutSlot: (u as any).clockOutSlot||"" }); setEditingId(u.id); setIsNewDept(false); setIsDialogOpen(true); }}
                       >
                         <Edit className="w-3.5 h-3.5" /> Edit
                       </Button>
@@ -568,6 +576,36 @@ export default function Users() {
                   <div className="text-xs text-muted-foreground mt-0.5">Recommended for admins and other privileged accounts. They'll be forced to set up an authenticator app on their next sign-in.</div>
                 </div>
               </label>
+              <div className="rounded-xl border border-border bg-muted/30 p-3 space-y-2">
+                <div className="text-sm font-medium">Auto clock-out override</div>
+                <div className="text-xs text-muted-foreground">Overrides this user's department schedule. Leave as "Use department" to inherit.</div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <Label>Shift type</Label>
+                    <select
+                      className="w-full px-4 py-2 border rounded-xl bg-background"
+                      value={formData.shiftType}
+                      onChange={e => setFormData({ ...formData, shiftType: e.target.value, clockOutSlot: "" })}
+                    >
+                      <option value="">Use department</option>
+                      <option value="day">Day shift</option>
+                      <option value="night">Night shift (crosses midnight)</option>
+                    </select>
+                  </div>
+                  <div>
+                    <Label>Auto clock-out time</Label>
+                    <select
+                      className="w-full px-4 py-2 border rounded-xl bg-background disabled:opacity-50"
+                      value={formData.clockOutSlot}
+                      disabled={!formData.shiftType}
+                      onChange={e => setFormData({ ...formData, clockOutSlot: e.target.value })}
+                    >
+                      <option value="">Select time…</option>
+                      {(formData.shiftType === "night" ? nightSlots : daySlots).map(s => <option key={s} value={s}>{s}</option>)}
+                    </select>
+                  </div>
+                </div>
+              </div>
               {mutationError && (
                 <div className="flex items-start gap-2 rounded-xl bg-destructive/10 border border-destructive/20 text-destructive px-4 py-3 text-sm">
                   <AlertCircle className="w-4 h-4 mt-0.5 shrink-0" />

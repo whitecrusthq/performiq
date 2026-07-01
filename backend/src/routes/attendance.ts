@@ -1,6 +1,8 @@
 import { Router } from "express";
-import { requireAuth } from "../middlewares/auth.js";
+import { requireAuth, requireRole } from "../middlewares/auth.js";
 import { GetTodayStatusAction } from "../actions/attendance/GetTodayStatusAction.js";
+import { GetScheduleSettingsAction } from "../actions/attendance/GetScheduleSettingsAction.js";
+import { UpdateScheduleSettingsAction } from "../actions/attendance/UpdateScheduleSettingsAction.js";
 import { ClockInAction } from "../actions/attendance/ClockInAction.js";
 import { ClockOutAction } from "../actions/attendance/ClockOutAction.js";
 import { ListAttendanceLogsAction } from "../actions/attendance/ListAttendanceLogsAction.js";
@@ -11,6 +13,8 @@ import { GetPingsAction } from "../actions/attendance/GetPingsAction.js";
 
 const router = Router();
 
+router.get("/attendance/schedule-settings", requireAuth, requireRole("admin"), GetScheduleSettingsAction.handle);
+router.put("/attendance/schedule-settings", requireAuth, requireRole("admin"), UpdateScheduleSettingsAction.handle);
 router.get("/attendance/today", requireAuth, GetTodayStatusAction.handle);
 router.post("/attendance/clock-in", requireAuth, ClockInAction.handle);
 router.post("/attendance/clock-out", requireAuth, ClockOutAction.handle);

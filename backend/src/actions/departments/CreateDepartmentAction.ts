@@ -5,9 +5,9 @@ import DepartmentController from "../../controllers/DepartmentController.js";
 export class CreateDepartmentAction {
   static async handle(req: AuthRequest, res: Response): Promise<void> {
     try {
-      const { name, description } = req.body;
+      const { name, description, shiftType, clockOutSlot } = req.body;
       if (!name?.trim()) { res.status(400).json({ error: "Department name is required" }); return; }
-      const created = await DepartmentController.create(name, description);
+      const created = await DepartmentController.create(name, description, { shiftType, clockOutSlot });
       res.status(201).json(created);
     } catch (err: any) {
       if (err.name === "SequelizeUniqueConstraintError" || err.original?.code === "23505") { res.status(409).json({ error: "A department with that name already exists" }); return; }
