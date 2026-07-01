@@ -5,10 +5,10 @@ import LeaveController from "../../controllers/LeaveController.js";
 export class ListLeaveRequestsAction {
   static async handle(req: AuthRequest, res: Response) {
     try {
-      const { role, id } = req.user!;
+      const { role, id, customRoleName } = req.user!;
       const department = req.query.department as string | undefined;
       const employeeId = req.query.employeeId ? Number(req.query.employeeId) : undefined;
-      const enriched = await LeaveController.listLeaveRequests(id, role, department, employeeId);
+      const enriched = await LeaveController.listLeaveRequests(id, role, customRoleName, department, employeeId);
       res.json(enriched);
     } catch (err) {
       console.error(err);

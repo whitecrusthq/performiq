@@ -8,14 +8,17 @@ export class GetLeaveRequestAction {
     try {
       const row = await LeaveController.getLeaveRequest(Number(req.params.id));
       if (!row) { res.status(404).json({ error: "Not found" }); return; }
-      const { role, id } = req.user!;
-      if (role === "employee" && row.employeeId !== id) { res.status(403).json({ error: "Forbidden" }); return; }
-      if (role === "manager") {
-        const team = await User.findAll({ where: { managerId: id }, attributes: ["id"] });
-        const teamIds = new Set(team.map(t => t.id));
+      const { role, id, customRoleName } = req.user!;
+      // Department-based access: admin/super_admin (null) see any request; everyone
+      // else may only view requests from employees in their visible scope, or any
+      // request where they are personally an approver or cover officer.
+      const visibleIds = await LeaveController.getVisibleEmployeeIds(id, role, customRoleName);
+      if (visibleIds !== null) {
+        const visibleSet = new Set(visibleIds);
         const approvers = await LeaveApprover.findAll({ where: { leaveRequestId: row.id } });
         const isInChain = approvers.some(a => a.approverId === id);
-        if (row.employeeId !== id && !teamIds.has(row.employeeId) && !isInChain) {
+        const isCover = row.coverUserId1 === id || row.coverUserId2 === id;
+        if (!visibleSet.has(row.employeeId) && !isInChain && !isCover) {
           res.status(403).json({ error: "Forbidden" }); return;
         }
       }
