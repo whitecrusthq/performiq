@@ -346,7 +346,7 @@ export default function Appraisals() {
                         </div>
                       </div>
                     </td>
-                    <td className="p-4 text-sm font-medium">{app.cycle.name}</td>
+                    <td className="p-4 text-sm font-medium">{app.cycle?.name ?? 'No cycle'}</td>
                     <td className="p-4 hidden md:table-cell text-sm text-muted-foreground">
                       {(app as any).reviewers?.length > 0
                         ? (app as any).reviewers.map((r: any) => r.name).join(', ')
