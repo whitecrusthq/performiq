@@ -106,6 +106,41 @@ export function resolveSchedule(
   return { shiftType, slot };
 }
 
-export function computeExpectedClockOut(clockIn: Date, slot: string, tz: string): Date | null {
-  return nextOccurrenceOf(slot, clockIn, tz);
+// Shift-aware expected clock-out.
+// - Day shift: the slot on the clock-in's own calendar day (same-day rule). If
+//   the slot has already passed at clock-in, the expected time is in the past,
+//   so the next sweep closes the session promptly (anti-gaming).
+// - Night shift (reverse): the next occurrence of the (morning) slot at/after
+//   clock-in — an evening clock-in resolves to the following morning, an early
+//   pre-slot morning clock-in resolves to the same morning.
+export function computeExpectedClockOut(
+  clockIn: Date,
+  slot: string,
+  tz: string,
+  shiftType: ShiftType = "day",
+): Date | null {
+  const p = parseHHMM(slot);
+  if (!p) return null;
+  if (shiftType === "night") return nextOccurrenceOf(slot, clockIn, tz);
+  const lp = partsInTz(clockIn, tz);
+  return zonedWallTimeToUtc(lp.year, lp.month, lp.day, p.h, p.m, tz);
+}
+
+// Local minutes since midnight for an instant in tz.
+export function localMinutesOfDay(date: Date, tz: string): number {
+  const p = partsInTz(date, tz);
+  return p.hour * 60 + p.minute;
+}
+
+// Night shifts run in reverse: clock-in is valid from 6 PM (18:00) onward
+// through the early morning, up to (but not including) the assigned morning
+// slot. Daytime clock-ins in [slot, 18:00) are rejected — otherwise a
+// night-shift user clocking in mid-day would get a ~22h open session.
+export function isNightClockInAllowed(clockIn: Date, slot: string, tz: string): boolean {
+  const p = parseHHMM(slot);
+  if (!p) return true;
+  const mins = localMinutesOfDay(clockIn, tz);
+  const slotMins = p.h * 60 + p.m;
+  const EVENING = 18 * 60;
+  return mins >= EVENING || mins < slotMins;
 }

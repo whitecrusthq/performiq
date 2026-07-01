@@ -1,7 +1,7 @@
 import { Op } from "sequelize";
 import { AttendanceLog, AttendanceLocationPing, Department, User, Site } from "../models/index.js";
 import AttendanceScheduleController from "./AttendanceScheduleController.js";
-import { computeExpectedClockOut, localDateStr, resolveSchedule } from "../lib/attendance-time.js";
+import { computeExpectedClockOut, isNightClockInAllowed, localDateStr, resolveSchedule } from "../lib/attendance-time.js";
 
 export default class AttendanceController {
   // The currently-open session for a user (clocked in, not yet out). Not keyed
@@ -59,7 +59,12 @@ export default class AttendanceController {
     }
     const resolved = resolveSchedule(emp?.shiftType, emp?.clockOutSlot, dept?.shiftType, dept?.clockOutSlot);
     const clockIn = new Date();
-    const expectedClockOut = resolved ? computeExpectedClockOut(clockIn, resolved.slot, tz) : null;
+    if (resolved?.shiftType === "night" && !isNightClockInAllowed(clockIn, resolved.slot, tz)) {
+      return { error: "Night-shift clock-in is only allowed from 6 PM onward", status: 400 };
+    }
+    const expectedClockOut = resolved
+      ? computeExpectedClockOut(clockIn, resolved.slot, tz, resolved.shiftType)
+      : null;
     const log = await AttendanceLog.create({
       userId,
       date: localDateStr(clockIn, tz),
