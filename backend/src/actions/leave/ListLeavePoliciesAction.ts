@@ -3,9 +3,14 @@ import { AuthRequest } from "../../middlewares/auth.js";
 import LeaveController from "../../controllers/LeaveController.js";
 
 export class ListLeavePoliciesAction {
-  static async handle(_req: AuthRequest, res: Response) {
+  static async handle(req: AuthRequest, res: Response) {
     try {
-      const policies = await LeaveController.listPolicies();
+      const u = req.user!;
+      const policies = await LeaveController.listPolicies({
+        id: u.id,
+        role: u.role,
+        customRoleName: (u as any).customRoleName ?? null,
+      });
       res.json(policies);
     } catch (err) {
       console.error(err);
