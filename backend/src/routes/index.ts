@@ -32,6 +32,7 @@ import quizRouter from "./quiz";
 import aiSettingsRouter from "./ai-settings";
 import storageProvidersRouter from "./storage-providers";
 import legalRouter from "./legal";
+import cronRouter from "./cron";
 
 const router: IRouter = Router();
 
@@ -68,5 +69,6 @@ router.use(quizRouter);
 router.use(aiSettingsRouter);
 router.use(storageProvidersRouter);
 router.use(legalRouter);
+router.use(cronRouter);
 
 export default router;

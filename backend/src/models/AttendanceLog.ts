@@ -18,6 +18,11 @@ class AttendanceLog extends Model {
   declare clockInPhotoTime: Date | null;
   declare clockOutPhotoTime: Date | null;
   declare notes: string | null;
+  declare shiftType: string | null;
+  declare clockOutSource: string;
+  declare autoClockedOut: boolean;
+  declare clockOutLocationTime: Date | null;
+  declare expectedClockOut: Date | null;
   declare faceReviewStatus: string | null;
   declare faceReviewedBy: number | null;
   declare faceReviewedAt: Date | null;
@@ -42,6 +47,11 @@ AttendanceLog.init(
     clockInPhotoTime: { type: DataTypes.DATE, field: "clock_in_photo_time" },
     clockOutPhotoTime: { type: DataTypes.DATE, field: "clock_out_photo_time" },
     notes: { type: DataTypes.TEXT },
+    shiftType: { type: DataTypes.TEXT, field: "shift_type" },
+    clockOutSource: { type: DataTypes.TEXT, allowNull: false, defaultValue: "manual", field: "clock_out_source" },
+    autoClockedOut: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: false, field: "auto_clocked_out" },
+    clockOutLocationTime: { type: DataTypes.DATE, field: "clock_out_location_time" },
+    expectedClockOut: { type: DataTypes.DATE, field: "expected_clock_out" },
     faceReviewStatus: { type: DataTypes.TEXT, defaultValue: "pending", field: "face_review_status" },
     faceReviewedBy: { type: DataTypes.INTEGER, field: "face_reviewed_by" },
     faceReviewedAt: { type: DataTypes.DATE, field: "face_reviewed_at" },

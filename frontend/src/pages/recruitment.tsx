@@ -6,7 +6,7 @@ import {
   Calendar, MapPin, Building2, Eye, Trash2, Edit2, Send, Globe,
 } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
-import { apiFetch } from "@/lib/utils";
+import { apiFetch, resolveObjectUrl } from "@/lib/utils";
 
 interface Site { id: number; name: string }
 interface UserOption { id: number; name: string; department?: string | null }
@@ -465,7 +465,7 @@ export default function Recruitment() {
                   {candidateDetail.resumeUrl && (
                     <div>
                       <p className="text-xs text-muted-foreground mb-1">CV / Resume</p>
-                      <a href={candidateDetail.resumeUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1.5 text-sm text-blue-600 hover:underline bg-blue-50 rounded-lg px-3 py-2">
+                      <a href={resolveObjectUrl(candidateDetail.resumeUrl)} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1.5 text-sm text-blue-600 hover:underline bg-blue-50 rounded-lg px-3 py-2">
                         <Eye className="w-3.5 h-3.5" /> View CV
                       </a>
                     </div>

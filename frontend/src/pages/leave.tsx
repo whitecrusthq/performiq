@@ -155,7 +155,8 @@ export default function Leave() {
   const [returningDaysFilter, setReturningDaysFilter] = useState<string>("3");
   const [returningSortOrder, setReturningSortOrder] = useState<"asc" | "desc">("asc");
 
-  const isManager = user && ["super_admin", "admin", "manager"].includes(user.role);
+  const isHR = ((user as any)?.customRoleName || "").toLowerCase() === "hr manager";
+  const isManager = user && (["super_admin", "admin", "manager"].includes(user.role) || isHR);
   const isAdmin = user?.role === "admin" || user?.role === "super_admin";
 
   const departments = [...new Set(allUsers.map(u => u.department).filter(Boolean))] as string[];

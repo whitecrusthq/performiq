@@ -411,7 +411,16 @@ function FaceReviewModal({ log, isManager, open, onClose, onReview, reviewing }:
 function StatusBadge({ log }: { log: any }) {
   if (!log) return <Badge variant="outline">Not clocked in</Badge>;
   if (log.clockIn && !log.clockOut) return <Badge className="bg-green-500 text-white">Clocked In</Badge>;
-  if (log.clockOut) return <Badge variant="secondary">Clocked Out</Badge>;
+  if (log.clockOut) return (
+    <div className="flex flex-col items-start gap-1">
+      <Badge variant="secondary">Clocked Out</Badge>
+      {log.autoClockedOut && (
+        <Badge className="bg-amber-500 text-white text-[10px] gap-1" title="System closed this session because the user never clocked out">
+          <AlertCircle className="w-3 h-3" /> Auto clocked out
+        </Badge>
+      )}
+    </div>
+  );
   return <Badge variant="outline">—</Badge>;
 }
 
@@ -478,6 +487,17 @@ function LocationCell({ log }: { log: any }) {
             </a>
           : log.clockOut ? <span className="text-xs text-muted-foreground">Out: —</span> : null}
       </div>
+      {log.autoClockedOut && (
+        <div className="flex items-start gap-1 text-[11px] text-amber-600 dark:text-amber-400">
+          <AlertCircle className="w-3 h-3 shrink-0 mt-0.5" />
+          <span>
+            {log.clockOutLocationTime
+              ? <>Last confirmed location at {new Date(log.clockOutLocationTime).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                  {log.clockOut && (new Date(log.clockOut).getTime() - new Date(log.clockOutLocationTime).getTime()) > 15 * 60 * 1000 ? " (stale)" : ""}</>
+              : "No location recorded before auto clock-out"}
+          </span>
+        </div>
+      )}
       <PingsCell logId={log.id} />
     </div>
   );
@@ -541,10 +561,13 @@ export default function Attendance() {
   const qc = useQueryClient();
   const isManager = user?.role === "manager" || user?.role === "admin" || user?.role === "super_admin";
 
+  const isAdmin = user?.role === "admin" || user?.role === "super_admin";
+
   const [filterDate, setFilterDate] = useState("");
   const [filterUserId, setFilterUserId] = useState("");
   const [filterSiteId, setFilterSiteId] = useState("");
   const [filterDepartment, setFilterDepartment] = useState("");
+  const [autoOnly, setAutoOnly] = useState(false);
   const [elapsed, setElapsed] = useState("");
 
   // Camera capture state
@@ -572,13 +595,14 @@ export default function Attendance() {
   });
 
   const { data: logs = [], isLoading: logsLoading } = useQuery({
-    queryKey: ["attendance", filterDate, filterUserId, filterSiteId, filterDepartment],
+    queryKey: ["attendance", filterDate, filterUserId, filterSiteId, filterDepartment, autoOnly],
     queryFn: () => {
       const params = new URLSearchParams();
       if (filterDate) { params.set("startDate", filterDate); params.set("endDate", filterDate); }
       if (filterUserId) params.set("userId", filterUserId);
       if (filterSiteId) params.set("siteId", filterSiteId);
       if (filterDepartment) params.set("department", filterDepartment);
+      if (autoOnly) params.set("autoClosedOnly", "true");
       return apiFetch(`/api/attendance?${params}`);
     },
   });
@@ -602,6 +626,43 @@ export default function Attendance() {
   });
 
   const isClockedIn = today?.clockIn && !today?.clockOut;
+
+  // ── Admin auto-clockout schedule settings ─────────────────────────────────────
+  const { data: schedule } = useQuery({
+    queryKey: ["attendance-schedule-settings"],
+    queryFn: () => apiFetch("/api/attendance/schedule-settings"),
+    enabled: isAdmin,
+  });
+
+  const [dayTimesStr, setDayTimesStr] = useState("");
+  const [nightTimesStr, setNightTimesStr] = useState("");
+  const [graceStr, setGraceStr] = useState("");
+  const [tzStr, setTzStr] = useState("");
+
+  useEffect(() => {
+    if (!schedule?.settings) return;
+    setDayTimesStr((schedule.settings.daySweepTimes ?? []).join(", "));
+    setNightTimesStr((schedule.settings.nightSweepTimes ?? []).join(", "));
+    setGraceStr(String(schedule.settings.graceMinutes ?? 0));
+    setTzStr(schedule.settings.timezone ?? "");
+  }, [schedule]);
+
+  const saveSchedule = useMutation({
+    mutationFn: () => apiFetch("/api/attendance/schedule-settings", {
+      method: "PUT",
+      body: JSON.stringify({
+        daySweepTimes: dayTimesStr.split(",").map(s => s.trim()).filter(Boolean),
+        nightSweepTimes: nightTimesStr.split(",").map(s => s.trim()).filter(Boolean),
+        graceMinutes: Number(graceStr) || 0,
+        timezone: tzStr.trim(),
+      }),
+    }),
+    onSuccess: (data) => {
+      qc.setQueryData(["attendance-schedule-settings"], data);
+      toast({ title: "Schedule settings saved", description: "Auto clock-out schedule updated." });
+    },
+    onError: (e: any) => toast({ title: "Error", description: e.message, variant: "destructive" }),
+  });
 
   // ── Flush offline queue ───────────────────────────────────────────────────────
   const flushQueue = useCallback(async () => {
@@ -659,6 +720,17 @@ export default function Attendance() {
     if (isClockedIn) { startPingSchedule(); } else { stopPingSchedule(); setPingCount(0); }
     return stopPingSchedule;
   }, [isClockedIn, startPingSchedule, stopPingSchedule]);
+
+  // ── One-off fresh ping just before the expected auto clock-out ─────────────────
+  // Ensures the last-known location captured on an auto clock-out is as fresh as
+  // possible (fires ~1 min before expectedClockOut while still clocked in).
+  useEffect(() => {
+    if (!isClockedIn || !today?.expectedClockOut) return;
+    const delay = new Date(today.expectedClockOut).getTime() - 60_000 - Date.now();
+    if (delay <= 0 || delay > 24 * 60 * 60 * 1000) return;
+    const t = setTimeout(() => { void sendPing(); }, delay);
+    return () => clearTimeout(t);
+  }, [isClockedIn, today?.expectedClockOut, sendPing]);
 
   // ── Clock in / out after face capture confirmed ───────────────────────────────
   const clockIn = useMutation({
@@ -883,6 +955,43 @@ export default function Attendance() {
         </div>
       </div>
 
+      {/* Admin: auto clock-out schedule settings */}
+      {isAdmin && (
+        <div className="rounded-xl border border-border p-5 space-y-4">
+          <div className="flex items-center gap-2">
+            <Clock className="w-4 h-4 text-primary" />
+            <h3 className="font-semibold">Auto clock-out schedule</h3>
+          </div>
+          <p className="text-xs text-muted-foreground -mt-1">
+            Employees who forget to clock out are automatically clocked out at the configured time for their shift. These times are the selectable slots assigned per department (Departments page) or per user (Users page). Comma-separate multiple times in 24-hour <span className="font-mono">HH:MM</span> format.
+          </p>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <label className="text-sm font-medium">Day-shift clock-out times</label>
+              <Input value={dayTimesStr} onChange={e => setDayTimesStr(e.target.value)} placeholder="17:00, 19:00, 21:00" className="mt-1" />
+            </div>
+            <div>
+              <label className="text-sm font-medium">Night-shift clock-out times</label>
+              <Input value={nightTimesStr} onChange={e => setNightTimesStr(e.target.value)} placeholder="07:30, 08:30" className="mt-1" />
+              <p className="text-[11px] text-muted-foreground mt-1">Night shifts cross midnight — these resolve to the next morning after clock-in.</p>
+            </div>
+            <div>
+              <label className="text-sm font-medium">Grace period (minutes)</label>
+              <Input type="number" min={0} max={240} value={graceStr} onChange={e => setGraceStr(e.target.value)} placeholder="0" className="mt-1" />
+              <p className="text-[11px] text-muted-foreground mt-1">Extra minutes after the scheduled time before auto clock-out fires.</p>
+            </div>
+            <div>
+              <label className="text-sm font-medium">Timezone</label>
+              <Input value={tzStr} onChange={e => setTzStr(e.target.value)} placeholder="Africa/Lagos" className="mt-1" />
+              <p className="text-[11px] text-muted-foreground mt-1">IANA timezone used to interpret clock-out times.</p>
+            </div>
+          </div>
+          <Button onClick={() => saveSchedule.mutate()} disabled={saveSchedule.isPending} className="gap-2">
+            {saveSchedule.isPending ? "Saving…" : "Save schedule settings"}
+          </Button>
+        </div>
+      )}
+
       {/* Filters */}
       <div className="flex flex-wrap gap-3 items-center">
         <div className="flex items-center gap-2">
@@ -940,6 +1049,16 @@ export default function Attendance() {
             )}
           </>
         )}
+        <Button
+          variant={autoOnly ? "default" : "outline"}
+          size="sm"
+          className="h-9 px-3 text-xs gap-1.5"
+          onClick={() => setAutoOnly(v => !v)}
+          title="Show only sessions that were automatically clocked out"
+        >
+          <AlertCircle className="w-3.5 h-3.5" />
+          {autoOnly ? "Auto clock-outs only" : "Auto clock-outs"}
+        </Button>
       </div>
 
       {/* Logs Table */}
@@ -970,7 +1089,10 @@ export default function Attendance() {
                 </tr>
               ) : (logs as any[]).map((log: any) => (
                 <tr key={log.id} className="hover:bg-muted/30 transition-colors align-top">
-                  <td className="px-4 py-3 font-medium">{fmtDate(log.date)}</td>
+                  <td className="px-4 py-3 font-medium">
+                    {fmtDate(log.date)}
+                    {log.shiftType && <div className="text-[10px] text-muted-foreground capitalize">{log.shiftType} shift</div>}
+                  </td>
                   {isManager && <td className="px-4 py-3 text-muted-foreground">{log.user?.name ?? log.user?.email ?? "—"}</td>}
                   <td className="px-4 py-3">{fmtTime(log.clockIn)}</td>
                   <td className="px-4 py-3">{fmtTime(log.clockOut)}</td>

@@ -11,6 +11,8 @@ class User extends Model {
   declare managerId: number | null;
   declare siteId: number | null;
   declare department: string | null;
+  declare shiftType: string | null;
+  declare clockOutSlot: string | null;
   declare jobTitle: string | null;
   declare phone: string | null;
   declare staffId: string | null;
@@ -89,6 +91,8 @@ User.init(
     managerId: { type: DataTypes.INTEGER, field: "manager_id" },
     siteId: { type: DataTypes.INTEGER, field: "site_id" },
     department: { type: DataTypes.TEXT },
+    shiftType: { type: DataTypes.TEXT, field: "shift_type" },
+    clockOutSlot: { type: DataTypes.TEXT, field: "clock_out_slot" },
     jobTitle: { type: DataTypes.TEXT, field: "job_title" },
     phone: { type: DataTypes.TEXT },
     staffId: { type: DataTypes.TEXT, field: "staff_id" },

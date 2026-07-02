@@ -6,6 +6,7 @@ import app from "./app";
 import { connectDatabase } from "./db/sequelize.js";
 import { logger } from "./lib/logger";
 import AppraisalController from "./controllers/AppraisalController.js";
+import AttendanceScheduleController from "./controllers/AttendanceScheduleController.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -50,6 +51,18 @@ async function startServer() {
     };
     void tickActivator();
     setInterval(tickActivator, ACTIVATOR_MS).unref?.();
+
+    const SWEEP_MS = 60_000;
+    const tickSweep = async () => {
+      try {
+        const n = await AttendanceScheduleController.runSweep();
+        if (n > 0) logger.info({ autoClosed: n }, "Auto-closed attendance sessions");
+      } catch (err) {
+        logger.warn({ err }, "Attendance auto-clockout sweep failed");
+      }
+    };
+    void tickSweep();
+    setInterval(tickSweep, SWEEP_MS).unref?.();
 
     if (process.env.NODE_ENV === "development") {
       const frontendDir = path.resolve(__dirname, "../../frontend");

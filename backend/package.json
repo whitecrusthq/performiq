@@ -7,6 +7,7 @@
     "dev": "npm run build && npm run start",
     "build": "node ./build.mjs",
     "start": "node --enable-source-maps ./dist/index.mjs",
+    "test": "node --import tsx --test $(find src -name '*.test.ts')",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "db:migrate": "npx sequelize-cli db:migrate",
     "db:migrate:undo": "npx sequelize-cli db:migrate:undo",

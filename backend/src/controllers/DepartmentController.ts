@@ -14,18 +14,24 @@ export default class DepartmentController {
     });
   }
 
-  static async create(name: string, description?: string) {
+  static async create(name: string, description?: string, schedule?: { shiftType?: string | null; clockOutSlot?: string | null }) {
+    const st = schedule?.shiftType?.trim();
     return Department.create({
       name: name.trim(),
       description: description?.trim() || null,
+      shiftType: st === "night" ? "night" : st === "day" ? "day" : null,
+      clockOutSlot: schedule?.clockOutSlot?.trim() || null,
     });
   }
 
-  static async update(id: number, name: string, description?: string) {
-    const [count, rows] = await Department.update(
-      { name: name.trim(), description: description?.trim() || null },
-      { where: { id }, returning: true }
-    );
+  static async update(id: number, name: string, description?: string, schedule?: { shiftType?: string | null; clockOutSlot?: string | null }) {
+    const updates: Record<string, any> = { name: name.trim(), description: description?.trim() || null };
+    if (schedule) {
+      const st = schedule.shiftType?.trim();
+      updates.shiftType = st === "night" ? "night" : st === "day" ? "day" : null;
+      updates.clockOutSlot = schedule.clockOutSlot?.trim() || null;
+    }
+    const [count, rows] = await Department.update(updates, { where: { id }, returning: true });
     if (count === 0) return null;
     return rows[0];
   }
