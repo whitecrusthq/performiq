@@ -217,7 +217,7 @@ export default function AppraisalDetail() {
           <div className="flex flex-col gap-2 items-start md:items-end bg-background p-4 rounded-xl border border-border shadow-sm">
             <div className="flex items-center gap-2">
               <span className="text-sm font-medium text-muted-foreground">Cycle:</span>
-              <span className="font-semibold">{appraisal.cycle.name}</span>
+              <span className="font-semibold">{appraisal.cycle?.name ?? 'No cycle'}</span>
             </div>
             <div className="flex items-start gap-2">
               <span className="text-sm font-medium text-muted-foreground flex items-center gap-1 mt-1 shrink-0">

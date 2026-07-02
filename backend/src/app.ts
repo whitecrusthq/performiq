@@ -75,6 +75,18 @@ const uploadLimiter = rateLimit({
 app.use("/api/storage/proxy-upload", uploadLimiter);
 app.use("/api/careers/upload-url", uploadLimiter);
 
+// The sweep endpoint is triggered by an external scheduler and authenticated by
+// a shared secret inside the handler; cap volume per IP to blunt brute-forcing
+// of the secret. A once-a-minute cron stays well under this ceiling.
+const cronLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 20,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: "Too many requests, please try again later." },
+});
+app.use("/api/cron/sweep", cronLimiter);
+
 app.use("/api", router);
 
 if (process.env.NODE_ENV === "development") {

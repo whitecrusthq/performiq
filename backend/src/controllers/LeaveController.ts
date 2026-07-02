@@ -222,22 +222,40 @@ export default class LeaveController {
     return { cycleYear: cycleKeys[0], balances };
   }
 
-  static async getTeamBalance(userId: number, role: string) {
+  /**
+   * Department-based leave visibility scope.
+   *  - super_admin / admin: sees everyone (returns null = no restriction).
+   *  - manager or HR (custom role "hr manager"): sees everyone in their OWN department (+ self).
+   *  - everyone else (regular employees): sees only themselves.
+   * A department-scoped user with no department falls back to self-only.
+   */
+  static async getVisibleEmployeeIds(userId: number, role: string, customRoleName?: string | null): Promise<number[] | null> {
+    if (role === "admin" || role === "super_admin") return null;
+    const isHR = !!customRoleName && customRoleName.toLowerCase() === "hr manager";
+    if (role === "manager" || isHR) {
+      const me = await User.findByPk(userId, { attributes: ["id", "department"] });
+      const dept = (me as any)?.department ?? null;
+      if (!dept) return [userId];
+      const peers = await User.findAll({ where: { department: dept }, attributes: ["id"] });
+      return [...new Set([userId, ...peers.map(p => p.id)])];
+    }
+    return [userId];
+  }
+
+  static async getTeamBalance(userId: number, role: string, customRoleName?: string | null) {
     const policies = await LeavePolicy.findAll();
     const policyMap = Object.fromEntries(policies.map(p => [p.leaveType, p]));
     const cycleKeys = [...new Set(policies.map(p => getCycleKey(p)))];
     if (cycleKeys.length === 0) cycleKeys.push(new Date().getFullYear());
     const cycleYear = cycleKeys[0];
 
+    const visibleIds = await LeaveController.getVisibleEmployeeIds(userId, role, customRoleName);
     let employeeIds: number[];
-    if (role === "admin" || role === "super_admin") {
+    if (visibleIds === null) {
       const allEmployees = await User.findAll({ attributes: ["id"] });
       employeeIds = allEmployees.map(e => e.id);
-    } else if (role === "manager") {
-      const team = await User.findAll({ where: { managerId: userId }, attributes: ["id"] });
-      employeeIds = [userId, ...team.map(t => t.id)];
     } else {
-      employeeIds = [userId];
+      employeeIds = visibleIds;
     }
 
     if (employeeIds.length === 0) {
@@ -287,25 +305,22 @@ export default class LeaveController {
     return { cycleYear, employees: employeeBalances };
   }
 
-  static async listLeaveRequests(userId: number, role: string, department?: string, employeeId?: number) {
+  static async listLeaveRequests(userId: number, role: string, customRoleName?: string | null, department?: string, employeeId?: number) {
     let rows = await LeaveRequest.findAll({ order: [["createdAt", "DESC"]] });
 
-    if (role === "employee") {
-      rows = rows.filter(r =>
-        r.employeeId === userId ||
-        r.coverUserId1 === userId ||
-        r.coverUserId2 === userId
-      );
-    } else if (role === "manager") {
-      const subordinates = await User.findAll({ where: { managerId: userId }, attributes: ["id"] });
-      const subIds = new Set([userId, ...subordinates.map(s => s.id)]);
+    // Department-based scoping. admin/super_admin (visibleIds === null) see all.
+    // Everyone else sees: requests from employees in their visible scope, plus any
+    // request where they are personally involved as an approver or cover officer.
+    const visibleIds = await LeaveController.getVisibleEmployeeIds(userId, role, customRoleName);
+    if (visibleIds !== null) {
+      const visibleSet = new Set(visibleIds);
       const approverRows = await LeaveApprover.findAll({
         where: { approverId: userId },
         attributes: ["leaveRequestId"],
       });
       const approverRequestIds = new Set(approverRows.map(a => a.leaveRequestId));
       rows = rows.filter(r =>
-        subIds.has(r.employeeId) ||
+        visibleSet.has(r.employeeId) ||
         approverRequestIds.has(r.id) ||
         r.coverUserId1 === userId ||
         r.coverUserId2 === userId
