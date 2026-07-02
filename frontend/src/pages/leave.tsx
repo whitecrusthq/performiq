@@ -159,7 +159,10 @@ export default function Leave() {
   const isManager = user && (["super_admin", "admin", "manager"].includes(user.role) || isHR);
   const isAdmin = user?.role === "admin" || user?.role === "super_admin";
 
-  const departments = [...new Set(allUsers.map(u => u.department).filter(Boolean))] as string[];
+  const myDepartment = ((user as any)?.department || null) as string | null;
+  const departments = (isAdmin
+    ? [...new Set(allUsers.map(u => u.department).filter(Boolean))]
+    : (myDepartment ? [myDepartment] : [])) as string[];
 
   const leaveLabel = (name: string) => {
     const found = leaveTypes.find(t => t.name === name);
@@ -514,6 +517,7 @@ export default function Leave() {
                 >
                   <option value="all">All Employees</option>
                   {allUsers
+                    .filter(u => isAdmin || u.department === myDepartment || u.id === user?.id)
                     .filter(u => filterDepartment === "all" || u.department === filterDepartment)
                     .map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
                 </select>
