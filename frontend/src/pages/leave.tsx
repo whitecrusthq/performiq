@@ -429,7 +429,7 @@ export default function Leave() {
     { key: "requests", label: "Leave Requests", icon: <CalendarDays className="w-4 h-4" /> },
     ...(isManager ? [{ key: "returning" as TabType, label: "Returning Soon", icon: <UserCheck className="w-4 h-4" />, badge: returningRequests.length }] : []),
     { key: "balance", label: "Leave Balance", icon: <BarChart3 className="w-4 h-4" /> },
-    ...(isAdmin ? [{ key: "policies" as TabType, label: "Leave Policies", icon: <Settings className="w-4 h-4" /> }] : []),
+    ...(isManager ? [{ key: "policies" as TabType, label: "Leave Policies", icon: <Settings className="w-4 h-4" /> }] : []),
     { key: "covering", label: "Covering For", icon: <Users className="w-4 h-4" />, badge: myPendingCoverCount },
     ...(isManager ? [{ key: "all-covers" as TabType, label: "All Cover Assignments", icon: <UserCheck className="w-4 h-4" /> }] : []),
     ...(isManager ? [{ key: "cover-analytics" as TabType, label: "Cover Analytics", icon: <BarChart3 className="w-4 h-4" /> }] : []),
@@ -1277,54 +1277,65 @@ export default function Leave() {
       )}
 
       {/* POLICIES TAB */}
-      {activeTab === "policies" && isAdmin && (
+      {activeTab === "policies" && isManager && (
         <div className="space-y-6">
-          {/* Leave Types Section */}
-          <div className="flex items-center justify-between">
-            <h3 className="text-lg font-bold text-foreground">Leave Types</h3>
-            <Button onClick={() => { setLeaveTypeForm({ name: "", label: "" }); setEditingLeaveType(null); setMutationError(null); setIsLeaveTypeDialogOpen(true); }}>
-              <Plus className="w-4 h-4 mr-2" /> Add Leave Type
-            </Button>
-          </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-            {leaveTypes.map(lt => (
-              <Card key={lt.id} className="p-4 flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <Tag className="w-4 h-4 text-blue-500" />
-                  <div>
-                    <p className="font-medium text-foreground text-sm">{lt.label}</p>
-                    <p className="text-xs text-muted-foreground">{lt.name}{lt.isDefault ? " · Default" : ""}</p>
-                  </div>
-                </div>
-                <div className="flex gap-1">
-                  <button
-                    onClick={() => { setEditingLeaveType(lt); setLeaveTypeForm({ name: lt.name, label: lt.label }); setMutationError(null); setIsLeaveTypeDialogOpen(true); }}
-                    className="p-1.5 rounded-lg hover:bg-muted text-muted-foreground" title="Edit"
-                  >
-                    <Pencil className="w-4 h-4" />
-                  </button>
-                  {!lt.isDefault && (
-                    <button onClick={() => handleDeleteLeaveType(lt)} className="p-1.5 rounded-lg hover:bg-red-50 text-red-400" title="Delete">
-                      <Trash2 className="w-4 h-4" />
-                    </button>
-                  )}
-                </div>
-              </Card>
-            ))}
-          </div>
+          {isAdmin && (
+            <>
+              {/* Leave Types Section */}
+              <div className="flex items-center justify-between">
+                <h3 className="text-lg font-bold text-foreground">Leave Types</h3>
+                <Button onClick={() => { setLeaveTypeForm({ name: "", label: "" }); setEditingLeaveType(null); setMutationError(null); setIsLeaveTypeDialogOpen(true); }}>
+                  <Plus className="w-4 h-4 mr-2" /> Add Leave Type
+                </Button>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                {leaveTypes.map(lt => (
+                  <Card key={lt.id} className="p-4 flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <Tag className="w-4 h-4 text-blue-500" />
+                      <div>
+                        <p className="font-medium text-foreground text-sm">{lt.label}</p>
+                        <p className="text-xs text-muted-foreground">{lt.name}{lt.isDefault ? " · Default" : ""}</p>
+                      </div>
+                    </div>
+                    <div className="flex gap-1">
+                      <button
+                        onClick={() => { setEditingLeaveType(lt); setLeaveTypeForm({ name: lt.name, label: lt.label }); setMutationError(null); setIsLeaveTypeDialogOpen(true); }}
+                        className="p-1.5 rounded-lg hover:bg-muted text-muted-foreground" title="Edit"
+                      >
+                        <Pencil className="w-4 h-4" />
+                      </button>
+                      {!lt.isDefault && (
+                        <button onClick={() => handleDeleteLeaveType(lt)} className="p-1.5 rounded-lg hover:bg-red-50 text-red-400" title="Delete">
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      )}
+                    </div>
+                  </Card>
+                ))}
+              </div>
 
-          <hr className="border-border" />
+              <hr className="border-border" />
+            </>
+          )}
 
           <div className="flex items-center justify-between">
             <h3 className="text-lg font-bold text-foreground">Leave Cycle Settings</h3>
-            <Button onClick={() => {
-              setPolicyForm({ leaveType: "annual", daysAllocated: 0, cycleMode: "dates", cycleStartMonth: 1, cycleStartDay: 1, cycleEndMonth: 12, cycleEndDay: 31, cycleDays: 365, rolloverEnabled: false, maxRolloverDays: 0 });
-              setMutationError(null);
-              setIsPolicyDialogOpen(true);
-            }}>
-              <Plus className="w-4 h-4 mr-2" /> Add Policy
-            </Button>
+            {isAdmin && (
+              <Button onClick={() => {
+                setPolicyForm({ leaveType: "annual", daysAllocated: 0, cycleMode: "dates", cycleStartMonth: 1, cycleStartDay: 1, cycleEndMonth: 12, cycleEndDay: 31, cycleDays: 365, rolloverEnabled: false, maxRolloverDays: 0 });
+                setMutationError(null);
+                setIsPolicyDialogOpen(true);
+              }}>
+                <Plus className="w-4 h-4 mr-2" /> Add Policy
+              </Button>
+            )}
           </div>
+          {!isAdmin && (
+            <p className="text-sm text-muted-foreground -mt-4">
+              Read-only view of the leave policies that apply to people in your department.
+            </p>
+          )}
 
           {policies.length === 0 ? (
             <Card className="p-12 flex flex-col items-center gap-3 text-center">
@@ -1342,22 +1353,24 @@ export default function Leave() {
                 <Card key={p.id} className="p-5 flex flex-col gap-3">
                   <div className="flex items-start justify-between">
                     <h4 className="font-semibold text-foreground">{leaveLabel(p.leaveType)}</h4>
-                    <div className="flex gap-1">
-                      <button
-                        onClick={() => { setPolicyForm(p); setIsPolicyDialogOpen(true); }}
-                        className="p-1.5 rounded-lg hover:bg-muted text-muted-foreground"
-                        title="Edit"
-                      >
-                        <Settings className="w-4 h-4" />
-                      </button>
-                      <button
-                        onClick={() => handleDeletePolicy(p.id)}
-                        className="p-1.5 rounded-lg hover:bg-destructive/10 text-muted-foreground hover:text-destructive"
-                        title="Delete"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
-                    </div>
+                    {isAdmin && (
+                      <div className="flex gap-1">
+                        <button
+                          onClick={() => { setPolicyForm(p); setIsPolicyDialogOpen(true); }}
+                          className="p-1.5 rounded-lg hover:bg-muted text-muted-foreground"
+                          title="Edit"
+                        >
+                          <Settings className="w-4 h-4" />
+                        </button>
+                        <button
+                          onClick={() => handleDeletePolicy(p.id)}
+                          className="p-1.5 rounded-lg hover:bg-destructive/10 text-muted-foreground hover:text-destructive"
+                          title="Delete"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
+                    )}
                   </div>
 
                   {bal && (

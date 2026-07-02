@@ -121,8 +121,19 @@ export default class LeaveController {
     return { success: true };
   }
 
-  static async listPolicies() {
-    return LeavePolicy.findAll({ order: [["leaveType", "ASC"]] });
+  static async listPolicies(user?: { id: number; role: string; customRoleName?: string | null }) {
+    const policies = await LeavePolicy.findAll({ order: [["leaveType", "ASC"]] });
+    if (!user) return policies;
+
+    const visibleIds = await LeaveController.getVisibleEmployeeIds(user.id, user.role, user.customRoleName);
+    if (visibleIds === null) return policies;
+
+    const allocations = await LeaveAllocation.findAll({
+      where: { employeeId: visibleIds },
+      attributes: ["leaveType"],
+    });
+    const applicableTypes = new Set(allocations.map((a: any) => a.leaveType));
+    return policies.filter(p => applicableTypes.has(p.leaveType));
   }
 
   static async upsertPolicy(data: { leaveType: string; daysAllocated: number; cycleStartMonth?: number; cycleStartDay?: number; cycleEndMonth?: number; cycleEndDay?: number }) {
