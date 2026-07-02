@@ -235,7 +235,7 @@ export default function Appraisals() {
   return (
     <div>
       <PageHeader title="Appraisals" description="Manage performance reviews and evaluations.">
-        {user?.role !== 'employee' && (
+        {isAdmin && (
           <Button onClick={() => setIsDialogOpen(true)}>
             <Plus className="w-4 h-4 mr-2" /> Start Appraisal
           </Button>

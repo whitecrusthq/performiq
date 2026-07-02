@@ -12,8 +12,8 @@ import { RemoveReviewerAction } from "../actions/appraisals/RemoveReviewerAction
 const router = Router();
 
 router.get("/appraisals", requireAuth, ListAppraisalsAction.handle);
-router.post("/appraisals", requireAuth, CreateAppraisalAction.handle);
-router.post("/appraisals/bulk", requireAuth, BulkCreateAppraisalsAction.handle);
+router.post("/appraisals", requireAuth, requireRole("admin"), CreateAppraisalAction.handle);
+router.post("/appraisals/bulk", requireAuth, requireRole("admin"), BulkCreateAppraisalsAction.handle);
 router.get("/appraisals/:id", requireAuth, GetAppraisalAction.handle);
 router.put("/appraisals/:id", requireAuth, UpdateAppraisalAction.handle);
 router.post("/appraisals/:id/reviewers", requireAuth, requireRole("admin"), AddReviewerAction.handle);
