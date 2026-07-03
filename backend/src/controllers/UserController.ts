@@ -204,6 +204,32 @@ export default class UserController {
     return { data: await getUserWithRole(id) };
   }
 
+  static async reset2FA(id: number, actorId: number, actorRole: string) {
+    const target = await User.findByPk(id);
+    if (!target) return { error: "User not found", status: 404 };
+    // Same protection model as setActive: only a super_admin may reset
+    // another super_admin's 2FA.
+    if (target.role === "super_admin" && actorRole !== "super_admin" && id !== actorId) {
+      return { error: "Only a Super Admin can reset 2FA for Super Admin accounts.", status: 403 };
+    }
+    if (!target.twoFactorEnabled && !target.twoFactorSecret && !target.twoFactorPendingSecret) {
+      return { error: "This user does not have two-factor authentication set up.", status: 400 };
+    }
+    await User.update(
+      {
+        twoFactorEnabled: false,
+        twoFactorSecret: null,
+        twoFactorPendingSecret: null,
+        twoFactorBackupCodes: null,
+        // Invalidate any existing sessions so the user must log in again
+        // (and, if 2FA is enforced for them, immediately re-enroll).
+        tokenVersion: sequelize.literal("token_version + 1") as any,
+      },
+      { where: { id } }
+    );
+    return { data: await getUserWithRole(id) };
+  }
+
   static async delete(id: number, actorId: number, actorRole: string) {
     if (id === actorId) return { error: "Cannot delete yourself", status: 400 };
     const targetUser = await User.findByPk(id);

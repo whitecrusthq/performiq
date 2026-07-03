@@ -9,6 +9,7 @@ import { UpdateProfilePhotoAction } from "../actions/users/UpdateProfilePhotoAct
 import { UpdateHrProfileAction } from "../actions/users/UpdateHrProfileAction.js";
 import { DeleteUserAction } from "../actions/users/DeleteUserAction.js";
 import { SetUserActiveAction } from "../actions/users/SetUserActiveAction.js";
+import { Reset2FAAction } from "../actions/users/Reset2FAAction.js";
 import { GetDocumentsAction } from "../actions/users/GetDocumentsAction.js";
 import { CreateDocumentAction } from "../actions/users/CreateDocumentAction.js";
 import { DeleteDocumentAction } from "../actions/users/DeleteDocumentAction.js";
@@ -39,6 +40,7 @@ router.put("/users/:id/profile-photo", requireAuth, UpdateProfilePhotoAction.han
 router.put("/users/:id/hr-profile", requireAuth, UpdateHrProfileAction.handle);
 router.delete("/users/:id", requireAuth, requireRole("admin"), DeleteUserAction.handle);
 router.patch("/users/:id/active", requireAuth, requireRole("admin"), SetUserActiveAction.handle);
+router.post("/users/:id/reset-2fa", requireAuth, requireRole("admin"), Reset2FAAction.handle);
 
 router.get("/users/:id/documents", requireAuth, GetDocumentsAction.handle);
 router.post("/users/:id/documents", requireAuth, CreateDocumentAction.handle);
