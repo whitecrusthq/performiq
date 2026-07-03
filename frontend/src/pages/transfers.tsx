@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from "react";
 import { PageHeader, Card, Button, Input, Label } from "@/components/shared";
-import { ArrowRightLeft, Plus, X, CheckCircle2, XCircle, Clock, Ban, MapPin, Building2, Calendar, User, ChevronDown, Search } from "lucide-react";
+import { ArrowRightLeft, Plus, X, CheckCircle2, XCircle, Clock, Ban, MapPin, Building2, Calendar, User, ChevronDown, ChevronRight, Search, ArrowUp, ArrowDown, UserPlus } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
 import { apiFetch } from "@/lib/utils";
 import { matchesPerson } from "@/lib/search";
@@ -135,6 +135,21 @@ function EmployeePicker({
     </div>
   );
 }
+interface ApproverStep {
+  id: number;
+  orderIndex: number;
+  status: "pending" | "approved" | "rejected";
+  note?: string | null;
+  reviewedAt?: string | null;
+  approver?: { id: number; name: string; role?: string; jobTitle?: string | null } | null;
+}
+
+const STEP_CONFIG: Record<string, { color: string }> = {
+  pending:  { color: "bg-amber-50 text-amber-700 border-amber-200" },
+  approved: { color: "bg-green-50 text-green-700 border-green-200" },
+  rejected: { color: "bg-red-50 text-red-700 border-red-200" },
+};
+
 interface TransferRequest {
   id: number;
   employeeId: number;
@@ -156,6 +171,8 @@ interface TransferRequest {
   approvedBy?: { id: number; name: string } | null;
   fromSite?: Site | null;
   toSite?: Site | null;
+  approvers?: ApproverStep[];
+  currentApproverId?: number | null;
 }
 
 export default function Transfers() {
@@ -182,8 +199,26 @@ export default function Transfers() {
     effectiveDate: "",
     endDate: "",
   });
+  const [approverSteps, setApproverSteps] = useState<string[]>([""]);
 
   const isAdmin = user?.role === "admin" || user?.role === "super_admin";
+
+  const eligibleApprovers = allUsers.filter(u =>
+    u.isActive !== false && ["manager", "admin", "super_admin"].includes(u.role) && u.id !== user?.id
+  );
+
+  const addApproverStep = () => setApproverSteps(prev => [...prev, ""]);
+  const removeApproverStep = (idx: number) => setApproverSteps(prev => prev.filter((_, i) => i !== idx));
+  const setApproverAtStep = (idx: number, val: string) =>
+    setApproverSteps(prev => prev.map((v, i) => i === idx ? val : v));
+  const moveApproverStep = (idx: number, dir: -1 | 1) =>
+    setApproverSteps(prev => {
+      const next = [...prev];
+      const j = idx + dir;
+      if (j < 0 || j >= next.length) return prev;
+      [next[idx], next[j]] = [next[j], next[idx]];
+      return next;
+    });
 
   const departments = [...new Set(allUsers.map(u => u.department).filter(Boolean))] as string[];
 
@@ -247,12 +282,14 @@ export default function Transfers() {
           reason: form.reason,
           effectiveDate: form.effectiveDate,
           endDate: form.endDate || null,
+          approverIds: approverSteps.map(Number).filter(Boolean),
         }),
       });
       const data = await r.json();
       if (!r.ok) { setMutationError(data.error || "Failed to submit"); setSubmitting(false); return; }
       setIsDialogOpen(false);
       setForm({ employeeId: "", fromSiteId: "", toSiteId: "", fromDepartment: "", toDepartment: "", reason: "", effectiveDate: "", endDate: "" });
+      setApproverSteps([""]);
       load();
     } catch { setMutationError("Network error"); }
     setSubmitting(false);
@@ -311,7 +348,7 @@ export default function Transfers() {
   return (
     <div>
       <PageHeader title="Staff Transfers" description="Request and manage staff transfers between sites, branches, and regions.">
-        <Button onClick={() => { setMutationError(null); setForm({ employeeId: "", fromSiteId: "", toSiteId: "", fromDepartment: "", toDepartment: "", reason: "", effectiveDate: "", endDate: "" }); setIsDialogOpen(true); }}>
+        <Button onClick={() => { setMutationError(null); setForm({ employeeId: "", fromSiteId: "", toSiteId: "", fromDepartment: "", toDepartment: "", reason: "", effectiveDate: "", endDate: "" }); setApproverSteps([""]); setIsDialogOpen(true); }}>
           <Plus className="w-4 h-4 mr-2" /> New Transfer
         </Button>
       </PageHeader>
@@ -443,7 +480,40 @@ export default function Transfers() {
                     <p className="text-sm bg-background rounded-lg p-3 border border-border/50">{t.reason}</p>
                   </div>
 
-                  {t.approvalNotes && (
+                  {t.approvers && t.approvers.length > 0 && (
+                    <div>
+                      <p className="text-xs text-muted-foreground uppercase tracking-wide mb-1.5">Approval Chain <span className="normal-case font-normal">(sequential)</span></p>
+                      <div className="flex flex-wrap items-center gap-1">
+                        {t.approvers.map((step, i) => {
+                          const stepCfg = STEP_CONFIG[step.status] ?? STEP_CONFIG.pending;
+                          const isActive = step.status === "pending" && t.status === "pending" && t.currentApproverId === step.id;
+                          return (
+                            <span key={`${step.id}-${i}`} className="flex items-center gap-1">
+                              {i > 0 && <ChevronRight className="w-3 h-3 text-muted-foreground/50" />}
+                              <span className={`inline-flex items-center gap-1 text-xs font-semibold px-2 py-0.5 rounded-full border ${stepCfg.color} ${isActive ? "ring-1 ring-amber-400" : ""}`}>
+                                <span className="opacity-60 font-normal">{i + 1}.</span>
+                                {step.approver?.name ?? `Approver ${i + 1}`}
+                                {step.status === "approved" && <CheckCircle2 className="w-3 h-3" />}
+                                {step.status === "rejected" && <XCircle className="w-3 h-3" />}
+                                {isActive && <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse" />}
+                              </span>
+                            </span>
+                          );
+                        })}
+                      </div>
+                      {t.approvers.some(a => a.note) && (
+                        <div className="mt-2 space-y-1">
+                          {t.approvers.filter(a => a.note).map((a, i) => (
+                            <p key={i} className="text-xs text-muted-foreground italic">
+                              <span className="font-medium not-italic">{a.approver?.name}:</span> "{a.note}"
+                            </p>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {t.approvalNotes && !(t.approvers && t.approvers.some(a => a.note === t.approvalNotes)) && (
                     <div>
                       <p className="text-xs text-muted-foreground uppercase tracking-wide mb-1">Review Notes</p>
                       <p className="text-sm bg-background rounded-lg p-3 border border-border/50 italic">{t.approvalNotes}</p>
@@ -451,7 +521,10 @@ export default function Transfers() {
                   )}
 
                   {t.status === "pending" && (() => {
-                    const canApprove = isAdmin || (user?.id === t.employee?.managerId);
+                    const hasChain = (t.approvers?.length ?? 0) > 0;
+                    const canApprove = isAdmin || (hasChain
+                      ? t.currentApproverId === user?.id
+                      : user?.id === t.employee?.managerId);
                     const canCancel = isAdmin || t.requestedById === user?.id;
                     return (
                       <div className="flex gap-2 pt-2">
@@ -595,6 +668,50 @@ export default function Transfers() {
               />
             </div>
 
+            <div>
+              <Label className="text-sm font-medium">Approval Chain <span className="text-muted-foreground text-xs font-normal">(sequential — Step 1 approves first)</span></Label>
+              <div className="mt-2 space-y-2">
+                {approverSteps.map((stepVal, idx) => {
+                  const alreadyPicked = new Set(approverSteps.filter((v, i) => i !== idx && v));
+                  const available = eligibleApprovers.filter(u => !alreadyPicked.has(String(u.id)));
+                  return (
+                    <div key={idx} className="flex items-center gap-2">
+                      <span className="flex items-center justify-center w-6 h-6 rounded-full bg-amber-100 text-amber-700 text-xs font-bold shrink-0">{idx + 1}</span>
+                      <select
+                        className="flex-1 px-3 py-2 rounded-lg bg-background border border-border text-sm outline-none focus:ring-2 focus:ring-primary/20"
+                        value={stepVal}
+                        onChange={e => setApproverAtStep(idx, e.target.value)}
+                      >
+                        <option value="">-- Select approver --</option>
+                        {available.map(u => (
+                          <option key={u.id} value={String(u.id)}>{u.name} ({u.role}{u.department ? ` · ${u.department}` : ""})</option>
+                        ))}
+                      </select>
+                      <button type="button" onClick={() => moveApproverStep(idx, -1)} disabled={idx === 0} className="p-1.5 rounded-lg hover:bg-muted disabled:opacity-30 disabled:cursor-not-allowed" title="Move up">
+                        <ArrowUp className="w-3.5 h-3.5" />
+                      </button>
+                      <button type="button" onClick={() => moveApproverStep(idx, 1)} disabled={idx === approverSteps.length - 1} className="p-1.5 rounded-lg hover:bg-muted disabled:opacity-30 disabled:cursor-not-allowed" title="Move down">
+                        <ArrowDown className="w-3.5 h-3.5" />
+                      </button>
+                      {approverSteps.length > 1 && (
+                        <button type="button" onClick={() => removeApproverStep(idx)} className="p-1.5 rounded-lg hover:bg-destructive/10 text-muted-foreground hover:text-destructive" title="Remove step">
+                          <X className="w-3.5 h-3.5" />
+                        </button>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+              <button
+                type="button"
+                onClick={addApproverStep}
+                className="mt-2 flex items-center gap-2 text-sm text-primary hover:text-primary/80 font-medium px-2 py-1 rounded-lg hover:bg-primary/5 transition-colors"
+              >
+                <UserPlus className="w-4 h-4" /> Add another approver
+              </button>
+              <p className="text-xs text-muted-foreground mt-1">Leave blank to use the employee's direct manager by default. The transfer only completes after every approver in the chain approves.</p>
+            </div>
+
             <div className="flex gap-3 pt-2">
               <Button type="submit" disabled={submitting} className="flex-1">
                 {submitting ? "Submitting..." : "Submit Transfer Request"}
@@ -616,7 +733,9 @@ export default function Transfers() {
             </h2>
             <p className="text-sm text-muted-foreground">
               {reviewDialog.action === "approved"
-                ? `Approving will move ${reviewDialog.transfer.employee?.name ?? "the employee"} to ${reviewDialog.transfer.toSite?.name ?? "the new site"} on ${fmt(reviewDialog.transfer.effectiveDate)}.`
+                ? ((reviewDialog.transfer.approvers?.filter(a => a.status === "pending").length ?? 0) > 1
+                    ? `Your approval will pass this request to the next approver in the chain. ${reviewDialog.transfer.employee?.name ?? "The employee"} will only be moved to ${reviewDialog.transfer.toSite?.name ?? "the new site"} after the final approval.`
+                    : `Approving will move ${reviewDialog.transfer.employee?.name ?? "the employee"} to ${reviewDialog.transfer.toSite?.name ?? "the new site"} on ${fmt(reviewDialog.transfer.effectiveDate)}.`)
                 : `Are you sure you want to reject this transfer request for ${reviewDialog.transfer.employee?.name ?? "the employee"}?`}
             </p>
             <div>
