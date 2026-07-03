@@ -304,7 +304,7 @@ function FaceReviewModal({ log, isManager, open, onClose, onReview, reviewing }:
           </div>
         )}
 
-        <div className="grid grid-cols-3 gap-4 mt-2">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mt-2">
           {/* Reference photo */}
           <div className="flex flex-col items-center gap-2">
             <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Reference Photo</p>

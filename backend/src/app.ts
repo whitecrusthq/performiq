@@ -89,6 +89,13 @@ app.use("/api/cron/sweep", cronLimiter);
 
 app.use("/api", router);
 
+// Any /api path not matched by the router is a hard 404. Without this, in dev
+// unknown /api paths fall through to the Vite proxy below, and Vite proxies
+// /api back here — an infinite proxy loop that hangs requests.
+app.use("/api", (_req, res) => {
+  res.status(404).json({ error: "Not found" });
+});
+
 if (process.env.NODE_ENV === "development") {
   // Dev only: proxy all non-API requests to the Vite dev server (HMR, etc).
   app.use(
