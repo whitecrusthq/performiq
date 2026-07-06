@@ -37,12 +37,15 @@ async function apiFetch(url: string, opts: RequestInit = {}) {
 }
 
 // ─── Geo ──────────────────────────────────────────────────────────────────────
-function getLocation(): Promise<LatLng> {
+// Resolves with coords, "denied" when the user has blocked location
+// permission, or null on technical failure (timeout / no GPS fix) — in which
+// case the backend falls back to an approximate IP-based location.
+function getLocation(): Promise<LatLng | "denied"> {
   return new Promise(resolve => {
     if (!navigator.geolocation) { resolve(null); return; }
     navigator.geolocation.getCurrentPosition(
       pos => resolve({ lat: pos.coords.latitude, lng: pos.coords.longitude }),
-      () => resolve(null),
+      err => resolve(err.code === err.PERMISSION_DENIED ? "denied" : null),
       { enableHighAccuracy: true, timeout: 8000, maximumAge: 30000 }
     );
   });
@@ -478,12 +481,14 @@ function LocationCell({ log }: { log: any }) {
           ? <a href={mapsUrl(log.clockInLat, log.clockInLng)} target="_blank" rel="noopener noreferrer"
               className="flex items-center gap-1 text-xs text-green-600 dark:text-green-400 hover:underline">
               <MapPin className="w-3 h-3" /> In: {inCoords}
+              {log.clockInLocationSource === "ip" && <span className="text-[10px] text-muted-foreground" title="Approximate location from network (GPS unavailable)">(approx.)</span>}
             </a>
           : <span className="text-xs text-muted-foreground">In: —</span>}
         {outCoords
           ? <a href={mapsUrl(log.clockOutLat, log.clockOutLng)} target="_blank" rel="noopener noreferrer"
               className="flex items-center gap-1 text-xs text-orange-600 dark:text-orange-400 hover:underline">
               <MapPin className="w-3 h-3" /> Out: {outCoords}
+              {log.clockOutLocationSource === "ip" && <span className="text-[10px] text-muted-foreground" title="Approximate location from network (GPS unavailable)">(approx.)</span>}
             </a>
           : log.clockOut ? <span className="text-xs text-muted-foreground">Out: —</span> : null}
       </div>
@@ -690,7 +695,7 @@ export default function Attendance() {
   // ── Ping interval ─────────────────────────────────────────────────────────────
   const sendPing = useCallback(async () => {
     const loc = await getLocation();
-    if (!loc) return;
+    if (!loc || loc === "denied") return;
     const recordedAt = new Date().toISOString();
     if (!navigator.onLine) { enqueuePing({ lat: loc.lat, lng: loc.lng, recordedAt }); setQueuedCount(c => c + 1); return; }
     try {
@@ -736,6 +741,9 @@ export default function Attendance() {
   const clockIn = useMutation({
     mutationFn: async ({ faceImage, photoTime }: { faceImage: string | null; photoTime: string | null }) => {
       const loc = await getLocation();
+      if (loc === "denied") {
+        throw new Error("Location access is required to clock in. Please allow location for this site in your browser settings, then try again.");
+      }
       return apiFetch("/api/attendance/clock-in", {
         method: "POST",
         body: JSON.stringify({
@@ -756,6 +764,9 @@ export default function Attendance() {
   const clockOut = useMutation({
     mutationFn: async ({ faceImage, photoTime }: { faceImage: string | null; photoTime: string | null }) => {
       const loc = await getLocation();
+      if (loc === "denied") {
+        throw new Error("Location access is required to clock out. Please allow location for this site in your browser settings, then try again.");
+      }
       return apiFetch("/api/attendance/clock-out", {
         method: "POST",
         body: JSON.stringify({
@@ -901,12 +912,14 @@ export default function Attendance() {
                 <a href={mapsUrl(today.clockInLat, today.clockInLng)} target="_blank" rel="noopener noreferrer"
                   className="flex items-center gap-1 text-green-600 dark:text-green-400 hover:underline">
                   <MapPin className="w-3 h-3" /> In: {fmtCoords(today.clockInLat, today.clockInLng)}
+                  {today.clockInLocationSource === "ip" && <span className="text-[10px] text-muted-foreground">(approx.)</span>}
                 </a>
               )}
               {today.clockOutLat && (
                 <a href={mapsUrl(today.clockOutLat, today.clockOutLng)} target="_blank" rel="noopener noreferrer"
                   className="flex items-center gap-1 text-orange-600 dark:text-orange-400 hover:underline">
                   <MapPin className="w-3 h-3" /> Out: {fmtCoords(today.clockOutLat, today.clockOutLng)}
+                  {today.clockOutLocationSource === "ip" && <span className="text-[10px] text-muted-foreground">(approx.)</span>}
                 </a>
               )}
             </div>
