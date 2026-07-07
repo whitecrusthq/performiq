@@ -35,11 +35,19 @@ function StatusBadge({ status }: { status: LeaveStatus }) {
   );
 }
 
+// Counts working days (Mon–Fri) between two dates inclusive, excluding weekends.
 function calcDays(start: string, end: string) {
   if (!start || !end) return 0;
   const s = new Date(start), e = new Date(end);
-  if (e < s) return 0;
-  return Math.ceil((e.getTime() - s.getTime()) / 86400000) + 1;
+  if (isNaN(s.getTime()) || isNaN(e.getTime()) || e < s) return 0;
+  let count = 0;
+  const cur = new Date(s);
+  while (cur <= e) {
+    const day = cur.getUTCDay();
+    if (day !== 0 && day !== 6) count++;
+    cur.setUTCDate(cur.getUTCDate() + 1);
+  }
+  return count;
 }
 
 function getCycleDaysRemaining(p: LeavePolicy): number {
@@ -121,7 +129,7 @@ export default function Leave() {
   const [filterEmployee, setFilterEmployee] = useState<string>("all");
   const [mutationError, setMutationError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
-  const [form, setForm] = useState({ leaveType: "annual", startDate: "", endDate: "", reason: "" });
+  const [form, setForm] = useState({ leaveType: "", startDate: "", endDate: "", reason: "" });
   const [approverSteps, setApproverSteps] = useState<string[]>([""]);
   const [coverUserIds, setCoverUserIds] = useState<string[]>(["", ""]);
   const [coverRespondingId, setCoverRespondingId] = useState<number | null>(null);
@@ -138,7 +146,7 @@ export default function Leave() {
   const [balances, setBalances] = useState<LeaveBalanceItem[]>([]);
   const [policies, setPolicies] = useState<LeavePolicy[]>([]);
   const [policyForm, setPolicyForm] = useState<Partial<LeavePolicy> & { leaveType: string }>({
-    leaveType: "annual", daysAllocated: 0, cycleMode: "dates",
+    leaveType: "", daysAllocated: 0, cycleMode: "dates",
     cycleStartMonth: 1, cycleStartDay: 1, cycleEndMonth: 12, cycleEndDay: 31,
     cycleDays: 365, rolloverEnabled: false, maxRolloverDays: 0,
   });
@@ -262,6 +270,21 @@ export default function Leave() {
   useEffect(() => { load(); loadUsers(); loadBalances(); loadPolicies(); loadLeaveTypes(); if (isManager) loadTeamBalances(); }, []);
   useEffect(() => { load(); }, [filterDepartment, filterEmployee]);
 
+  // Keep the selected leave type valid: if the current value isn't a real configured
+  // type (e.g. an empty/stale default), fall back to the first available type. This
+  // prevents a controlled <select> from displaying the first option while its state
+  // still holds a value that was never actually chosen.
+  useEffect(() => {
+    if (leaveTypes.length === 0) return;
+    const valid = new Set(leaveTypes.map(t => t.name));
+    if (!valid.has(form.leaveType)) {
+      setForm(f => ({ ...f, leaveType: leaveTypes[0].name }));
+    }
+    if (!valid.has(policyForm.leaveType)) {
+      setPolicyForm(p => ({ ...p, leaveType: leaveTypes[0].name }));
+    }
+  }, [leaveTypes]);
+
   const days = calcDays(form.startDate, form.endDate);
 
   const addApproverStep = () => setApproverSteps(prev => [...prev, ""]);
@@ -310,7 +333,13 @@ export default function Leave() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setMutationError(null);
-    if (days <= 0) { setMutationError("End date must be on or after start date."); return; }
+    if (!form.startDate || !form.endDate || new Date(form.endDate) < new Date(form.startDate)) {
+      setMutationError("End date must be on or after start date."); return;
+    }
+    if (days <= 0) { setMutationError("The selected dates contain no working days (weekends are not counted)."); return; }
+    if (!form.leaveType || !leaveTypes.some(t => t.name === form.leaveType)) {
+      setMutationError("Please select a leave type."); return;
+    }
     setSubmitting(true);
     try {
       const approverIds = approverSteps.map(Number).filter(Boolean);
@@ -322,7 +351,7 @@ export default function Leave() {
       const data = await r.json();
       if (!r.ok) { setMutationError(data.error || "Failed to submit"); setSubmitting(false); return; }
       setIsDialogOpen(false);
-      setForm({ leaveType: "annual", startDate: "", endDate: "", reason: "" });
+      setForm({ leaveType: leaveTypes[0]?.name ?? "", startDate: "", endDate: "", reason: "" });
       setApproverSteps([""]);
       setCoverUserIds(["", ""]);
       load();
@@ -441,7 +470,7 @@ export default function Leave() {
   return (
     <div>
       <PageHeader title="Leave Management" description="Apply for leave, track balances, and manage leave policies.">
-        <Button onClick={() => { setMutationError(null); setForm({ leaveType: "annual", startDate: "", endDate: "", reason: "" }); setApproverSteps([""]); setCoverUserIds(["", ""]); setIsDialogOpen(true); }}>
+        <Button onClick={() => { setMutationError(null); setForm({ leaveType: leaveTypes[0]?.name ?? "", startDate: "", endDate: "", reason: "" }); setApproverSteps([""]); setCoverUserIds(["", ""]); setIsDialogOpen(true); }}>
           <Plus className="w-4 h-4 mr-2" /> Apply for Leave
         </Button>
       </PageHeader>
@@ -1327,7 +1356,7 @@ export default function Leave() {
             <h3 className="text-lg font-bold text-foreground">Leave Cycle Settings</h3>
             {isAdmin && (
               <Button onClick={() => {
-                setPolicyForm({ leaveType: "annual", daysAllocated: 0, cycleMode: "dates", cycleStartMonth: 1, cycleStartDay: 1, cycleEndMonth: 12, cycleEndDay: 31, cycleDays: 365, rolloverEnabled: false, maxRolloverDays: 0 });
+                setPolicyForm({ leaveType: leaveTypes[0]?.name ?? "", daysAllocated: 0, cycleMode: "dates", cycleStartMonth: 1, cycleStartDay: 1, cycleEndMonth: 12, cycleEndDay: 31, cycleDays: 365, rolloverEnabled: false, maxRolloverDays: 0 });
                 setMutationError(null);
                 setIsPolicyDialogOpen(true);
               }}>
@@ -1529,8 +1558,14 @@ export default function Leave() {
                   onChange={e => setForm({ ...form, leaveType: e.target.value })}
                   required
                 >
+                  {leaveTypes.length === 0 && <option value="">No leave types configured</option>}
                   {leaveTypes.map(t => <option key={t.name} value={t.name}>{t.label}</option>)}
                 </select>
+                {leaveTypes.length === 0 && (
+                  <p className="text-xs text-muted-foreground mt-1">
+                    No leave types have been set up yet. Ask an administrator to create leave types before applying.
+                  </p>
+                )}
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div>

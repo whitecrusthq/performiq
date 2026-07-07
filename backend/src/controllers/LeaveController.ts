@@ -1,6 +1,21 @@
 import { Op } from "sequelize";
 import { LeaveType, LeaveRequest, LeaveApprover, LeavePolicy, LeaveAllocation, User } from "../models/index.js";
 
+// Counts working days (Mon–Fri) between two ISO dates inclusive, excluding
+// weekends. Authoritative day count so the stored value never trusts the client.
+function countWeekdays(start: string, end: string): number {
+  const s = new Date(start), e = new Date(end);
+  if (isNaN(s.getTime()) || isNaN(e.getTime()) || e < s) return 0;
+  let count = 0;
+  const cur = new Date(s);
+  while (cur <= e) {
+    const day = cur.getUTCDay();
+    if (day !== 0 && day !== 6) count++;
+    cur.setUTCDate(cur.getUTCDate() + 1);
+  }
+  return count;
+}
+
 function getCycleKey(policy: { cycleStartMonth: number; cycleStartDay: number; cycleEndMonth: number; cycleEndDay: number }) {
   const today = new Date();
   const year = today.getFullYear();
@@ -366,8 +381,14 @@ export default class LeaveController {
     return Promise.all(rows.map(r => LeaveController.enrichLeaveRequest(r, userMap)));
   }
 
-  static async createLeaveRequest(userId: number, data: { leaveType: string; startDate: string; endDate: string; days: number; reason?: string; approverIds?: number[]; coverUserIds?: number[] }) {
-    const { leaveType, startDate, endDate, days, reason, approverIds, coverUserIds } = data;
+  static async createLeaveRequest(userId: number, data: { leaveType: string; startDate: string; endDate: string; reason?: string; approverIds?: number[]; coverUserIds?: number[] }) {
+    const { leaveType, startDate, endDate, reason, approverIds, coverUserIds } = data;
+
+    // Authoritative: count working days (Mon–Fri) only, never trust the client value.
+    const days = countWeekdays(startDate, endDate);
+    if (days <= 0) {
+      return { error: "The selected dates contain no working days (weekends are not counted).", status: 400 };
+    }
 
     const cleanCoverers = Array.isArray(coverUserIds)
       ? Array.from(new Set(coverUserIds.map(Number).filter(v => Number.isFinite(v) && v !== userId)))
@@ -380,7 +401,7 @@ export default class LeaveController {
       leaveType,
       startDate,
       endDate,
-      days: Number(days),
+      days,
       reason: reason || null,
       status: "pending",
       coverUserId1,
