@@ -41,6 +41,7 @@ import HrKbDocument from "./HrKbDocument.js";
 import SecuritySettings from "./SecuritySettings.js";
 import AppSettings from "./AppSettings.js";
 import TransferRequest from "./TransferRequest.js";
+import TransferApprover from "./TransferApprover.js";
 import ConfirmationReview from "./ConfirmationReview.js";
 import JobRequisition from "./JobRequisition.js";
 import Candidate from "./Candidate.js";
@@ -95,6 +96,7 @@ export {
   SecuritySettings,
   AppSettings,
   TransferRequest,
+  TransferApprover,
   ConfirmationReview,
   JobRequisition,
   Candidate,

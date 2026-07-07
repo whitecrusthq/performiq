@@ -13,6 +13,8 @@ class AttendanceLog extends Model {
   declare clockInLng: string | null;
   declare clockOutLat: string | null;
   declare clockOutLng: string | null;
+  declare clockInLocationSource: string | null;
+  declare clockOutLocationSource: string | null;
   declare faceImageIn: string | null;
   declare faceImageOut: string | null;
   declare clockInPhotoTime: Date | null;
@@ -42,6 +44,8 @@ AttendanceLog.init(
     clockInLng: { type: DataTypes.DECIMAL(10, 7), field: "clock_in_lng" },
     clockOutLat: { type: DataTypes.DECIMAL(10, 7), field: "clock_out_lat" },
     clockOutLng: { type: DataTypes.DECIMAL(10, 7), field: "clock_out_lng" },
+    clockInLocationSource: { type: DataTypes.TEXT, field: "clock_in_location_source" },
+    clockOutLocationSource: { type: DataTypes.TEXT, field: "clock_out_location_source" },
     faceImageIn: { type: DataTypes.TEXT, field: "face_image_in" },
     faceImageOut: { type: DataTypes.TEXT, field: "face_image_out" },
     clockInPhotoTime: { type: DataTypes.DATE, field: "clock_in_photo_time" },

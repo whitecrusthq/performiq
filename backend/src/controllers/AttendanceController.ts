@@ -2,6 +2,7 @@ import { Op } from "sequelize";
 import { AttendanceLog, AttendanceLocationPing, Department, User, Site } from "../models/index.js";
 import AttendanceScheduleController from "./AttendanceScheduleController.js";
 import { computeExpectedClockOut, isNightClockInAllowed, localDateStr, resolveSchedule } from "../lib/attendance-time.js";
+import { getGeoFromIp } from "../lib/ip-geo.js";
 
 export default class AttendanceController {
   // The currently-open session for a user (clocked in, not yet out). Not keyed
@@ -39,7 +40,23 @@ export default class AttendanceController {
     return log ?? null;
   }
 
-  static async clockIn(userId: number, data: { lat?: number; lng?: number; faceImage?: string; photoTime?: string }) {
+  /**
+   * Resolve final coordinates for a clock event. Device GPS coords win; when
+   * absent (e.g. geolocation failed for technical reasons), fall back to an
+   * approximate IP-based lookup. Returns nulls when neither is available.
+   */
+  static async resolveClockLocation(lat: number | null | undefined, lng: number | null | undefined, ip: string | null | undefined) {
+    if (lat != null && lng != null) {
+      return { lat: String(lat), lng: String(lng), source: "gps" as string | null };
+    }
+    const geo = await getGeoFromIp(ip);
+    if (geo?.latitude != null && geo?.longitude != null) {
+      return { lat: String(geo.latitude), lng: String(geo.longitude), source: "ip" as string | null };
+    }
+    return { lat: null, lng: null, source: null as string | null };
+  }
+
+  static async clockIn(userId: number, data: { lat?: number; lng?: number; faceImage?: string; photoTime?: string }, ip?: string | null) {
     const { lat, lng, faceImage, photoTime } = data;
     const open = await this.findOpenSession(userId);
     if (open) {
@@ -65,13 +82,15 @@ export default class AttendanceController {
     const expectedClockOut = resolved
       ? computeExpectedClockOut(clockIn, resolved.slot, tz, resolved.shiftType)
       : null;
+    const loc = await AttendanceController.resolveClockLocation(lat, lng, ip);
     const log = await AttendanceLog.create({
       userId,
       date: localDateStr(clockIn, tz),
       siteId: emp?.siteId ?? null,
       clockIn,
-      clockInLat: lat != null ? String(lat) : null,
-      clockInLng: lng != null ? String(lng) : null,
+      clockInLat: loc.lat,
+      clockInLng: loc.lng,
+      clockInLocationSource: loc.source,
       faceImageIn: faceImage ?? null,
       clockInPhotoTime: photoTime ? new Date(photoTime) : null,
       shiftType: resolved?.shiftType ?? null,
@@ -82,7 +101,7 @@ export default class AttendanceController {
     return { data: log };
   }
 
-  static async clockOut(userId: number, data: { notes?: string; lat?: number; lng?: number; faceImage?: string; photoTime?: string }) {
+  static async clockOut(userId: number, data: { notes?: string; lat?: number; lng?: number; faceImage?: string; photoTime?: string }, ip?: string | null) {
     const { notes, lat, lng, faceImage, photoTime } = data;
     const existing = await this.findOpenSession(userId);
     if (!existing) {
@@ -90,14 +109,15 @@ export default class AttendanceController {
     }
     const clockOut = new Date();
     const durationMinutes = Math.round((clockOut.getTime() - new Date(existing.clockIn!).getTime()) / 60000);
-    const hasLoc = lat != null && lng != null;
+    const loc = await AttendanceController.resolveClockLocation(lat, lng, ip);
     const [, updatedRows] = await AttendanceLog.update({
       clockOut,
       durationMinutes,
       notes: notes ?? existing.notes,
-      clockOutLat: hasLoc ? String(lat) : null,
-      clockOutLng: hasLoc ? String(lng) : null,
-      clockOutLocationTime: hasLoc ? clockOut : null,
+      clockOutLat: loc.lat,
+      clockOutLng: loc.lng,
+      clockOutLocationSource: loc.source,
+      clockOutLocationTime: loc.lat != null ? clockOut : null,
       faceImageOut: faceImage ?? null,
       clockOutPhotoTime: photoTime ? new Date(photoTime) : null,
       clockOutSource: "manual",
