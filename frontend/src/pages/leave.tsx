@@ -35,11 +35,19 @@ function StatusBadge({ status }: { status: LeaveStatus }) {
   );
 }
 
+// Counts working days (Mon–Fri) between two dates inclusive, excluding weekends.
 function calcDays(start: string, end: string) {
   if (!start || !end) return 0;
   const s = new Date(start), e = new Date(end);
-  if (e < s) return 0;
-  return Math.ceil((e.getTime() - s.getTime()) / 86400000) + 1;
+  if (isNaN(s.getTime()) || isNaN(e.getTime()) || e < s) return 0;
+  let count = 0;
+  const cur = new Date(s);
+  while (cur <= e) {
+    const day = cur.getUTCDay();
+    if (day !== 0 && day !== 6) count++;
+    cur.setUTCDate(cur.getUTCDate() + 1);
+  }
+  return count;
 }
 
 function getCycleDaysRemaining(p: LeavePolicy): number {
@@ -310,7 +318,10 @@ export default function Leave() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setMutationError(null);
-    if (days <= 0) { setMutationError("End date must be on or after start date."); return; }
+    if (!form.startDate || !form.endDate || new Date(form.endDate) < new Date(form.startDate)) {
+      setMutationError("End date must be on or after start date."); return;
+    }
+    if (days <= 0) { setMutationError("The selected dates contain no working days (weekends are not counted)."); return; }
     setSubmitting(true);
     try {
       const approverIds = approverSteps.map(Number).filter(Boolean);
