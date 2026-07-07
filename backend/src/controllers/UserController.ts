@@ -4,6 +4,14 @@ import { QueryTypes } from "sequelize";
 
 const ELEVATED_ROLES = ["admin", "super_admin"];
 
+// Normalize a value destined for a DATEONLY column: empty/whitespace strings
+// become null (Postgres rejects "" as a date), otherwise the value passes through.
+function emptyToNull(v: any): any {
+  if (v == null) return null;
+  if (typeof v === "string" && v.trim() === "") return null;
+  return v;
+}
+
 function canAssignRole(actorRole: string, targetRole: string): boolean {
   if (targetRole === "super_admin") return actorRole === "super_admin";
   if (targetRole === "admin") return actorRole === "admin" || actorRole === "super_admin";
@@ -150,14 +158,14 @@ export default class UserController {
       temporaryState: data.temporaryState ?? null, temporaryCountry: data.temporaryCountry ?? null,
       temporaryPostalCode: data.temporaryPostalCode ?? null,
       city: data.city ?? null, stateProvince: data.stateProvince ?? null, country: data.country ?? null,
-      postalCode: data.postalCode ?? null, dateOfBirth: data.dateOfBirth ?? null, gender: data.gender ?? null,
+      postalCode: data.postalCode ?? null, dateOfBirth: emptyToNull(data.dateOfBirth), gender: data.gender ?? null,
       maritalStatus: data.maritalStatus ?? null, maidenName: data.maidenName ?? null, religion: data.religion ?? null,
       stateOfOrigin: data.stateOfOrigin ?? null, nationality: data.nationality ?? null, nationalId: data.nationalId ?? null,
       hobbies: data.hobbies ?? null,
       spouseName: data.spouseName ?? null, spouseOccupation: data.spouseOccupation ?? null,
       numberOfChildren: data.numberOfChildren != null ? Number(data.numberOfChildren) : null,
-      weddingDate: data.weddingDate ?? null,
-      startDate: data.startDate ?? null, probationEndDate: data.probationEndDate ?? null,
+      weddingDate: emptyToNull(data.weddingDate),
+      startDate: emptyToNull(data.startDate), probationEndDate: emptyToNull(data.probationEndDate),
       probationStatus: data.probationStatus ?? null,
       emergencyContactName: data.emergencyContactName ?? null, emergencyContactPhone: data.emergencyContactPhone ?? null,
       emergencyContactRelation: data.emergencyContactRelation ?? null, emergencyContactAddress: data.emergencyContactAddress ?? null,
@@ -201,6 +209,32 @@ export default class UserController {
       updates.deactivationReason = null;
     }
     await User.update(updates, { where: { id } });
+    return { data: await getUserWithRole(id) };
+  }
+
+  static async reset2FA(id: number, actorId: number, actorRole: string) {
+    const target = await User.findByPk(id);
+    if (!target) return { error: "User not found", status: 404 };
+    // Same protection model as setActive: only a super_admin may reset
+    // another super_admin's 2FA.
+    if (target.role === "super_admin" && actorRole !== "super_admin" && id !== actorId) {
+      return { error: "Only a Super Admin can reset 2FA for Super Admin accounts.", status: 403 };
+    }
+    if (!target.twoFactorEnabled && !target.twoFactorSecret && !target.twoFactorPendingSecret) {
+      return { error: "This user does not have two-factor authentication set up.", status: 400 };
+    }
+    await User.update(
+      {
+        twoFactorEnabled: false,
+        twoFactorSecret: null,
+        twoFactorPendingSecret: null,
+        twoFactorBackupCodes: null,
+        // Invalidate any existing sessions so the user must log in again
+        // (and, if 2FA is enforced for them, immediately re-enroll).
+        tokenVersion: sequelize.literal("token_version + 1") as any,
+      },
+      { where: { id } }
+    );
     return { data: await getUserWithRole(id) };
   }
 

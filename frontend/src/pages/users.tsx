@@ -3,7 +3,7 @@ import { useLocation } from "wouter";
 import { useListUsers, useCreateUser, useUpdateUser, useDeleteUser } from "../lib";
 import { useQueryClient } from "@tanstack/react-query";
 import { PageHeader, Card, Button, Input, PasswordInput, Label } from "@/components/shared";
-import { Users as UsersIcon, Plus, Edit, Trash2, X, Search, ChevronDown, AlertCircle, Camera, UserCircle2, ExternalLink, ShieldCheck, Power, PowerOff } from "lucide-react";
+import { Users as UsersIcon, Plus, Edit, Trash2, X, Search, ChevronDown, AlertCircle, Camera, UserCircle2, ExternalLink, ShieldCheck, ShieldOff, Power, PowerOff } from "lucide-react";
 import { BulkActionBar } from "@/components/bulk-action-bar";
 import { useAuth } from "@/hooks/use-auth";
 import { apiFetch } from "@/lib/utils";
@@ -163,6 +163,22 @@ export default function Users() {
       queryClient.invalidateQueries({ queryKey: ["/api/users"] });
     } catch (err: any) {
       toast({ title: "Error", description: err?.message ?? "Failed to update user status.", variant: "destructive" });
+    }
+  };
+
+  const handleReset2FA = async (u: any) => {
+    const ok = confirm(`Reset two-factor authentication for ${u.name}? Their authenticator app and backup codes will stop working, they will be signed out, and they can set up 2FA again at next login.`);
+    if (!ok) return;
+    try {
+      const r = await apiFetch(`/api/users/${u.id}/reset-2fa`, { method: "POST" });
+      if (!r.ok) {
+        const data = await r.json().catch(() => ({}));
+        throw new Error(data?.error || "Failed to reset 2FA");
+      }
+      toast({ title: "2FA reset", description: `${u.name} can now set up two-factor authentication again.` });
+      queryClient.invalidateQueries({ queryKey: ["/api/users"] });
+    } catch (err: any) {
+      toast({ title: "Error", description: err?.message ?? "Failed to reset 2FA.", variant: "destructive" });
     }
   };
 
@@ -392,6 +408,17 @@ export default function Users() {
                           <PowerOff className="w-3.5 h-3.5" /> Disable
                         </Button>
                       )
+                    )}
+                    {(u as any).twoFactorEnabled && canActOnRow(u.role) && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="gap-1.5 text-orange-700 hover:bg-orange-50 hover:text-orange-700 border-orange-200"
+                        title="Reset two-factor authentication (lost phone / new device)"
+                        onClick={() => handleReset2FA(u)}
+                      >
+                        <ShieldOff className="w-3.5 h-3.5" /> Reset 2FA
+                      </Button>
                     )}
                     {canActOnRow(u.role) && (
                       <Button
