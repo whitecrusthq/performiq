@@ -4,6 +4,14 @@ import { QueryTypes } from "sequelize";
 
 const ELEVATED_ROLES = ["admin", "super_admin"];
 
+// Normalize a value destined for a DATEONLY column: empty/whitespace strings
+// become null (Postgres rejects "" as a date), otherwise the value passes through.
+function emptyToNull(v: any): any {
+  if (v == null) return null;
+  if (typeof v === "string" && v.trim() === "") return null;
+  return v;
+}
+
 function canAssignRole(actorRole: string, targetRole: string): boolean {
   if (targetRole === "super_admin") return actorRole === "super_admin";
   if (targetRole === "admin") return actorRole === "admin" || actorRole === "super_admin";
@@ -150,14 +158,14 @@ export default class UserController {
       temporaryState: data.temporaryState ?? null, temporaryCountry: data.temporaryCountry ?? null,
       temporaryPostalCode: data.temporaryPostalCode ?? null,
       city: data.city ?? null, stateProvince: data.stateProvince ?? null, country: data.country ?? null,
-      postalCode: data.postalCode ?? null, dateOfBirth: data.dateOfBirth ?? null, gender: data.gender ?? null,
+      postalCode: data.postalCode ?? null, dateOfBirth: emptyToNull(data.dateOfBirth), gender: data.gender ?? null,
       maritalStatus: data.maritalStatus ?? null, maidenName: data.maidenName ?? null, religion: data.religion ?? null,
       stateOfOrigin: data.stateOfOrigin ?? null, nationality: data.nationality ?? null, nationalId: data.nationalId ?? null,
       hobbies: data.hobbies ?? null,
       spouseName: data.spouseName ?? null, spouseOccupation: data.spouseOccupation ?? null,
       numberOfChildren: data.numberOfChildren != null ? Number(data.numberOfChildren) : null,
-      weddingDate: data.weddingDate ?? null,
-      startDate: data.startDate ?? null, probationEndDate: data.probationEndDate ?? null,
+      weddingDate: emptyToNull(data.weddingDate),
+      startDate: emptyToNull(data.startDate), probationEndDate: emptyToNull(data.probationEndDate),
       probationStatus: data.probationStatus ?? null,
       emergencyContactName: data.emergencyContactName ?? null, emergencyContactPhone: data.emergencyContactPhone ?? null,
       emergencyContactRelation: data.emergencyContactRelation ?? null, emergencyContactAddress: data.emergencyContactAddress ?? null,
