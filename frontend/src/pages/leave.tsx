@@ -9,7 +9,9 @@ import { matchesPerson } from "@/lib/search";
 
 type LeaveStatus = "pending" | "approved" | "rejected" | "cancelled";
 
-interface LeaveTypeOption { id: number; name: string; label: string; isDefault: boolean }
+interface LeaveTypeOption { id: number; name: string; label: string; isDefault: boolean; gradeIds?: number[] }
+
+interface EmployeeGrade { id: number; name: string; description?: string | null }
 
 const STATUS_CONFIG: Record<LeaveStatus, { label: string; color: string; icon: React.ReactNode }> = {
   pending:   { label: "Pending",   color: "bg-amber-100 text-amber-700",   icon: <Clock className="w-3.5 h-3.5" /> },
@@ -106,6 +108,7 @@ interface LeavePolicy {
   cycleMode: string; cycleStartMonth: number; cycleStartDay: number;
   cycleEndMonth: number; cycleEndDay: number; cycleDays: number;
   rolloverEnabled: boolean; maxRolloverDays: number;
+  prorationMode?: string;
 }
 
 interface LeaveBalanceItem {
@@ -148,13 +151,17 @@ export default function Leave() {
   const [policyForm, setPolicyForm] = useState<Partial<LeavePolicy> & { leaveType: string }>({
     leaveType: "", daysAllocated: 0, cycleMode: "dates",
     cycleStartMonth: 1, cycleStartDay: 1, cycleEndMonth: 12, cycleEndDay: 31,
-    cycleDays: 365, rolloverEnabled: false, maxRolloverDays: 0,
+    cycleDays: 365, rolloverEnabled: false, maxRolloverDays: 0, prorationMode: "none",
   });
   const [isPolicyDialogOpen, setIsPolicyDialogOpen] = useState(false);
   const [teamBalances, setTeamBalances] = useState<any[]>([]);
   const [leaveTypes, setLeaveTypes] = useState<LeaveTypeOption[]>([]);
   const [isLeaveTypeDialogOpen, setIsLeaveTypeDialogOpen] = useState(false);
-  const [leaveTypeForm, setLeaveTypeForm] = useState({ name: "", label: "" });
+  const [leaveTypeForm, setLeaveTypeForm] = useState<{ name: string; label: string; gradeIds: number[] }>({ name: "", label: "", gradeIds: [] });
+  const [grades, setGrades] = useState<EmployeeGrade[]>([]);
+  const [gradeForm, setGradeForm] = useState<{ id: number | null; name: string; description: string }>({ id: null, name: "", description: "" });
+  const [isGradeDialogOpen, setIsGradeDialogOpen] = useState(false);
+  const [gradeSubmitting, setGradeSubmitting] = useState(false);
   const [editingLeaveType, setEditingLeaveType] = useState<LeaveTypeOption | null>(null);
   const [ltSubmitting, setLtSubmitting] = useState(false);
   const [expandedPolicyTeam, setExpandedPolicyTeam] = useState<Record<number, boolean>>({});
@@ -232,6 +239,43 @@ export default function Leave() {
     } catch {}
   };
 
+  const loadGrades = async () => {
+    try {
+      const r = await apiFetch("/api/grades");
+      const data = await r.json();
+      if (Array.isArray(data)) setGrades(data);
+    } catch {}
+  };
+
+  // Leave types the current user may actually request: unmapped types are open
+  // to everyone; grade-mapped types only to employees with a matching grade.
+  const myGradeId = (user as any)?.gradeId ?? null;
+  const myLeaveTypes = leaveTypes.filter(t =>
+    !t.gradeIds || t.gradeIds.length === 0 || (myGradeId && t.gradeIds.includes(myGradeId))
+  );
+
+  const handleSaveGrade = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setMutationError(null);
+    setGradeSubmitting(true);
+    try {
+      const url = gradeForm.id ? `/api/grades/${gradeForm.id}` : "/api/grades";
+      const r = await apiFetch(url, {
+        method: gradeForm.id ? "PUT" : "POST",
+        body: JSON.stringify({ name: gradeForm.name, description: gradeForm.description }),
+      });
+      if (r.ok) { setIsGradeDialogOpen(false); loadGrades(); }
+      else { const d = await r.json(); setMutationError(d.error || "Failed to save grade"); }
+    } catch { setMutationError("Network error"); }
+    setGradeSubmitting(false);
+  };
+
+  const handleDeleteGrade = async (g: EmployeeGrade) => {
+    if (!confirm(`Delete grade "${g.name}"? Employees with this grade will become ungraded, and leave types mapped only to it will stop being restricted to it.`)) return;
+    const r = await apiFetch(`/api/grades/${g.id}`, { method: "DELETE" });
+    if (r.ok) { loadGrades(); loadLeaveTypes(); }
+  };
+
   const handleSaveLeaveType = async (e: React.FormEvent) => {
     e.preventDefault();
     setMutationError(null);
@@ -240,7 +284,7 @@ export default function Leave() {
       if (editingLeaveType) {
         const r = await apiFetch(`/api/leave-types/${editingLeaveType.id}`, {
           method: "PUT",
-          body: JSON.stringify({ label: leaveTypeForm.label }),
+          body: JSON.stringify({ label: leaveTypeForm.label, gradeIds: leaveTypeForm.gradeIds }),
         });
         if (r.ok) { setIsLeaveTypeDialogOpen(false); loadLeaveTypes(); setEditingLeaveType(null); }
         else { const d = await r.json(); setMutationError(d.error || "Failed to update"); }
@@ -267,7 +311,7 @@ export default function Leave() {
     } catch {}
   };
 
-  useEffect(() => { load(); loadUsers(); loadBalances(); loadPolicies(); loadLeaveTypes(); if (isManager) loadTeamBalances(); }, []);
+  useEffect(() => { load(); loadUsers(); loadBalances(); loadPolicies(); loadLeaveTypes(); loadGrades(); if (isManager) loadTeamBalances(); }, []);
   useEffect(() => { load(); }, [filterDepartment, filterEmployee]);
 
   // Keep the selected leave type valid: if the current value isn't a real configured
@@ -276,14 +320,15 @@ export default function Leave() {
   // still holds a value that was never actually chosen.
   useEffect(() => {
     if (leaveTypes.length === 0) return;
-    const valid = new Set(leaveTypes.map(t => t.name));
-    if (!valid.has(form.leaveType)) {
-      setForm(f => ({ ...f, leaveType: leaveTypes[0].name }));
+    const validMine = new Set(myLeaveTypes.map(t => t.name));
+    if (!validMine.has(form.leaveType)) {
+      setForm(f => ({ ...f, leaveType: myLeaveTypes[0]?.name ?? "" }));
     }
+    const valid = new Set(leaveTypes.map(t => t.name));
     if (!valid.has(policyForm.leaveType)) {
       setPolicyForm(p => ({ ...p, leaveType: leaveTypes[0].name }));
     }
-  }, [leaveTypes]);
+  }, [leaveTypes, myGradeId]);
 
   const days = calcDays(form.startDate, form.endDate);
 
@@ -337,7 +382,7 @@ export default function Leave() {
       setMutationError("End date must be on or after start date."); return;
     }
     if (days <= 0) { setMutationError("The selected dates contain no working days (weekends are not counted)."); return; }
-    if (!form.leaveType || !leaveTypes.some(t => t.name === form.leaveType)) {
+    if (!form.leaveType || !myLeaveTypes.some(t => t.name === form.leaveType)) {
       setMutationError("Please select a leave type."); return;
     }
     setSubmitting(true);
@@ -351,7 +396,7 @@ export default function Leave() {
       const data = await r.json();
       if (!r.ok) { setMutationError(data.error || "Failed to submit"); setSubmitting(false); return; }
       setIsDialogOpen(false);
-      setForm({ leaveType: leaveTypes[0]?.name ?? "", startDate: "", endDate: "", reason: "" });
+      setForm({ leaveType: myLeaveTypes[0]?.name ?? "", startDate: "", endDate: "", reason: "" });
       setApproverSteps([""]);
       setCoverUserIds(["", ""]);
       load();
@@ -1314,10 +1359,48 @@ export default function Leave() {
         <div className="space-y-6">
           {isAdmin && (
             <>
+              {/* Employee Grades Section */}
+              <div className="flex items-center justify-between">
+                <div>
+                  <h3 className="text-lg font-bold text-foreground">Employee Grades</h3>
+                  <p className="text-sm text-muted-foreground">Categories used to control which leave types each employee can see. Assign a grade to each employee from the Users page.</p>
+                </div>
+                <Button onClick={() => { setGradeForm({ id: null, name: "", description: "" }); setMutationError(null); setIsGradeDialogOpen(true); }}>
+                  <Plus className="w-4 h-4 mr-2" /> Add Grade
+                </Button>
+              </div>
+              {grades.length === 0 ? (
+                <p className="text-sm text-muted-foreground">No grades yet. Without grades, every leave type is visible to all employees.</p>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                  {grades.map(g => (
+                    <Card key={g.id} className="p-4 flex items-center justify-between">
+                      <div>
+                        <p className="font-medium text-foreground text-sm">{g.name}</p>
+                        {g.description && <p className="text-xs text-muted-foreground">{g.description}</p>}
+                      </div>
+                      <div className="flex gap-1">
+                        <button
+                          onClick={() => { setGradeForm({ id: g.id, name: g.name, description: g.description || "" }); setMutationError(null); setIsGradeDialogOpen(true); }}
+                          className="p-1.5 rounded-lg hover:bg-muted text-muted-foreground" title="Edit"
+                        >
+                          <Pencil className="w-4 h-4" />
+                        </button>
+                        <button onClick={() => handleDeleteGrade(g)} className="p-1.5 rounded-lg hover:bg-red-50 text-red-400" title="Delete">
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
+                    </Card>
+                  ))}
+                </div>
+              )}
+
+              <hr className="border-border" />
+
               {/* Leave Types Section */}
               <div className="flex items-center justify-between">
                 <h3 className="text-lg font-bold text-foreground">Leave Types</h3>
-                <Button onClick={() => { setLeaveTypeForm({ name: "", label: "" }); setEditingLeaveType(null); setMutationError(null); setIsLeaveTypeDialogOpen(true); }}>
+                <Button onClick={() => { setLeaveTypeForm({ name: "", label: "", gradeIds: [] }); setEditingLeaveType(null); setMutationError(null); setIsLeaveTypeDialogOpen(true); }}>
                   <Plus className="w-4 h-4 mr-2" /> Add Leave Type
                 </Button>
               </div>
@@ -1329,11 +1412,16 @@ export default function Leave() {
                       <div>
                         <p className="font-medium text-foreground text-sm">{lt.label}</p>
                         <p className="text-xs text-muted-foreground">{lt.name}{lt.isDefault ? " · Default" : ""}</p>
+                        <p className="text-xs text-muted-foreground">
+                          {lt.gradeIds && lt.gradeIds.length > 0
+                            ? `Grades: ${lt.gradeIds.map(id => grades.find(g => g.id === id)?.name).filter(Boolean).join(", ")}`
+                            : "All employees"}
+                        </p>
                       </div>
                     </div>
                     <div className="flex gap-1">
                       <button
-                        onClick={() => { setEditingLeaveType(lt); setLeaveTypeForm({ name: lt.name, label: lt.label }); setMutationError(null); setIsLeaveTypeDialogOpen(true); }}
+                        onClick={() => { setEditingLeaveType(lt); setLeaveTypeForm({ name: lt.name, label: lt.label, gradeIds: lt.gradeIds ?? [] }); setMutationError(null); setIsLeaveTypeDialogOpen(true); }}
                         className="p-1.5 rounded-lg hover:bg-muted text-muted-foreground" title="Edit"
                       >
                         <Pencil className="w-4 h-4" />
@@ -1356,7 +1444,7 @@ export default function Leave() {
             <h3 className="text-lg font-bold text-foreground">Leave Cycle Settings</h3>
             {isAdmin && (
               <Button onClick={() => {
-                setPolicyForm({ leaveType: leaveTypes[0]?.name ?? "", daysAllocated: 0, cycleMode: "dates", cycleStartMonth: 1, cycleStartDay: 1, cycleEndMonth: 12, cycleEndDay: 31, cycleDays: 365, rolloverEnabled: false, maxRolloverDays: 0 });
+                setPolicyForm({ leaveType: leaveTypes[0]?.name ?? "", daysAllocated: 0, cycleMode: "dates", cycleStartMonth: 1, cycleStartDay: 1, cycleEndMonth: 12, cycleEndDay: 31, cycleDays: 365, rolloverEnabled: false, maxRolloverDays: 0, prorationMode: "none" });
                 setMutationError(null);
                 setIsPolicyDialogOpen(true);
               }}>
@@ -1456,6 +1544,14 @@ export default function Leave() {
                           <span className="font-medium">{p.cycleEndDay} {MONTHS[p.cycleEndMonth - 1]}</span>
                         </div>
                       </>
+                    )}
+                    {p.prorationMode && p.prorationMode !== "none" && (
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">New Joiners</span>
+                        <span className="font-medium text-blue-600">
+                          Prorated monthly{p.prorationMode === "monthly_incl" ? " (incl. start month)" : ""}
+                        </span>
+                      </div>
                     )}
                     {p.rolloverEnabled && (
                       <div className="flex justify-between">
@@ -1558,12 +1654,14 @@ export default function Leave() {
                   onChange={e => setForm({ ...form, leaveType: e.target.value })}
                   required
                 >
-                  {leaveTypes.length === 0 && <option value="">No leave types configured</option>}
-                  {leaveTypes.map(t => <option key={t.name} value={t.name}>{t.label}</option>)}
+                  {myLeaveTypes.length === 0 && <option value="">No leave types available</option>}
+                  {myLeaveTypes.map(t => <option key={t.name} value={t.name}>{t.label}</option>)}
                 </select>
-                {leaveTypes.length === 0 && (
+                {myLeaveTypes.length === 0 && (
                   <p className="text-xs text-muted-foreground mt-1">
-                    No leave types have been set up yet. Ask an administrator to create leave types before applying.
+                    {leaveTypes.length === 0
+                      ? "No leave types have been set up yet. Ask an administrator to create leave types before applying."
+                      : "No leave types apply to your employee grade. Ask an administrator if this looks wrong."}
                   </p>
                 )}
               </div>
@@ -1838,6 +1936,22 @@ export default function Leave() {
                 </>
               )}
 
+              <div>
+                <Label>New Joiner Proration</Label>
+                <select
+                  className="w-full px-4 py-2 border rounded-xl bg-background text-sm"
+                  value={policyForm.prorationMode ?? "none"}
+                  onChange={e => setPolicyForm({ ...policyForm, prorationMode: e.target.value })}
+                >
+                  <option value="none">No proration — everyone gets the full allocation</option>
+                  <option value="monthly">Prorate monthly — count from the first full month after resumption</option>
+                  <option value="monthly_incl">Prorate monthly — include the resumption month</option>
+                </select>
+                <p className="text-xs text-muted-foreground mt-1">
+                  Prorated allocations give employees who resumed mid-cycle a share of the yearly days (allocation ÷ 12 × months remaining).
+                </p>
+              </div>
+
               <hr className="border-border" />
 
               <div className="flex items-center justify-between">
@@ -1906,10 +2020,72 @@ export default function Leave() {
                   required
                 />
               </div>
+              <div>
+                <Label>Who can use this leave type?</Label>
+                {grades.length === 0 ? (
+                  <p className="text-xs text-muted-foreground mt-1">No grades exist yet, so this type is visible to all employees. Create grades in the Policies tab to restrict it.</p>
+                ) : (
+                  <>
+                    <div className="mt-2 space-y-1.5 max-h-40 overflow-y-auto border border-border rounded-xl p-3">
+                      {grades.map(g => (
+                        <label key={g.id} className="flex items-center gap-2 text-sm cursor-pointer">
+                          <input
+                            type="checkbox"
+                            className="w-4 h-4 accent-primary"
+                            checked={leaveTypeForm.gradeIds.includes(g.id)}
+                            onChange={e => setLeaveTypeForm(f => ({
+                              ...f,
+                              gradeIds: e.target.checked ? [...f.gradeIds, g.id] : f.gradeIds.filter(id => id !== g.id),
+                            }))}
+                          />
+                          {g.name}
+                        </label>
+                      ))}
+                    </div>
+                    <p className="text-xs text-muted-foreground mt-1">Leave all unchecked to make it available to everyone.</p>
+                  </>
+                )}
+              </div>
               {mutationError && <p className="text-sm text-red-600">{mutationError}</p>}
               <div className="flex gap-3 pt-2">
                 <Button type="button" variant="outline" className="flex-1" onClick={() => setIsLeaveTypeDialogOpen(false)}>Cancel</Button>
                 <Button type="submit" className="flex-1" isLoading={ltSubmitting}>{editingLeaveType ? "Update" : "Create"}</Button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Grade Dialog */}
+      {isGradeDialogOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={() => setIsGradeDialogOpen(false)}>
+          <div className="bg-background rounded-2xl shadow-xl w-full max-w-md mx-4" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between p-6 pb-2">
+              <h2 className="text-lg font-bold text-foreground">{gradeForm.id ? "Edit Grade" : "New Grade"}</h2>
+              <button onClick={() => setIsGradeDialogOpen(false)}><X className="w-5 h-5" /></button>
+            </div>
+            <form onSubmit={handleSaveGrade} className="space-y-4 p-6">
+              <div>
+                <Label>Name</Label>
+                <Input
+                  placeholder="e.g. Senior Staff"
+                  value={gradeForm.name}
+                  onChange={e => setGradeForm({ ...gradeForm, name: e.target.value })}
+                  required
+                />
+              </div>
+              <div>
+                <Label>Description <span className="text-muted-foreground text-xs font-normal">(optional)</span></Label>
+                <Input
+                  placeholder="e.g. Grade level 12 and above"
+                  value={gradeForm.description}
+                  onChange={e => setGradeForm({ ...gradeForm, description: e.target.value })}
+                />
+              </div>
+              {mutationError && <p className="text-sm text-red-600">{mutationError}</p>}
+              <div className="flex gap-3 pt-2">
+                <Button type="button" variant="outline" className="flex-1" onClick={() => setIsGradeDialogOpen(false)}>Cancel</Button>
+                <Button type="submit" className="flex-1" isLoading={gradeSubmitting}>{gradeForm.id ? "Update" : "Create"}</Button>
               </div>
             </form>
           </div>

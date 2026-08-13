@@ -11,6 +11,7 @@ class LeavePolicy extends Model {
   declare cycleEndMonth: number;
   declare cycleEndDay: number;
   declare cycleDays: number;
+  declare prorationMode: string;
   declare rolloverEnabled: boolean;
   declare maxRolloverDays: number;
   declare createdAt: Date;
@@ -28,6 +29,7 @@ LeavePolicy.init(
     cycleEndMonth: { type: DataTypes.INTEGER, allowNull: false, defaultValue: 12, field: "cycle_end_month" },
     cycleEndDay: { type: DataTypes.INTEGER, allowNull: false, defaultValue: 31, field: "cycle_end_day" },
     cycleDays: { type: DataTypes.INTEGER, allowNull: false, defaultValue: 365, field: "cycle_days" },
+    prorationMode: { type: DataTypes.TEXT, allowNull: false, defaultValue: "none", field: "proration_mode" },
     rolloverEnabled: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: false, field: "rollover_enabled" },
     maxRolloverDays: { type: DataTypes.INTEGER, allowNull: false, defaultValue: 0, field: "max_rollover_days" },
     createdAt: { type: DataTypes.DATE, allowNull: false, defaultValue: DataTypes.NOW, field: "created_at" },

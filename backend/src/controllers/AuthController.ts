@@ -15,6 +15,7 @@ function formatAuthUser(user: User, customRole?: CustomRole | null) {
     id: user.id, name: user.name, email: user.email, role: user.role,
     managerId: user.managerId, siteId: user.siteId, department: user.department,
     jobTitle: user.jobTitle, phone: user.phone, staffId: user.staffId, createdAt: user.createdAt,
+    gradeId: user.gradeId ?? null, startDate: user.startDate ?? null,
     twoFactorEnabled: !!user.twoFactorEnabled,
     customRoleId: user.customRoleId ?? null,
     customRole: customRole ? {

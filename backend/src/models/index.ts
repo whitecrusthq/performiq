@@ -51,6 +51,8 @@ import StorageProvider from "./StorageProvider.js";
 import LegalDocument from "./LegalDocument.js";
 import TermsAcceptance from "./TermsAcceptance.js";
 import AttendanceSetting from "./AttendanceSetting.js";
+import EmployeeGrade from "./EmployeeGrade.js";
+import LeaveTypeGrade from "./LeaveTypeGrade.js";
 
 export {
   sequelize,
@@ -106,4 +108,6 @@ export {
   LegalDocument,
   TermsAcceptance,
   AttendanceSetting,
+  EmployeeGrade,
+  LeaveTypeGrade,
 };

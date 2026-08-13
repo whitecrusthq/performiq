@@ -15,10 +15,16 @@ import { GetLeaveRequestAction } from "../actions/leave/GetLeaveRequestAction.js
 import { UpdateLeaveRequestAction } from "../actions/leave/UpdateLeaveRequestAction.js";
 import { DeleteLeaveRequestAction } from "../actions/leave/DeleteLeaveRequestAction.js";
 import { RespondCoverAction } from "../actions/leave/RespondCoverAction.js";
+import { ListGradesAction, CreateGradeAction, UpdateGradeAction, DeleteGradeAction } from "../actions/leave/EmployeeGradeActions.js";
 
 const router = Router();
 
-router.get("/leave-types", ListLeaveTypesAction.handle);
+router.get("/grades", requireAuth, ListGradesAction.handle);
+router.post("/grades", requireAuth, requireRole("admin"), CreateGradeAction.handle);
+router.put("/grades/:id", requireAuth, requireRole("admin"), UpdateGradeAction.handle);
+router.delete("/grades/:id", requireAuth, requireRole("admin"), DeleteGradeAction.handle);
+
+router.get("/leave-types", requireAuth, ListLeaveTypesAction.handle);
 router.post("/leave-types", requireAuth, requireRole("admin"), CreateLeaveTypeAction.handle);
 router.put("/leave-types/:id", requireAuth, requireRole("admin"), UpdateLeaveTypeAction.handle);
 router.delete("/leave-types/:id", requireAuth, requireRole("admin"), DeleteLeaveTypeAction.handle);
