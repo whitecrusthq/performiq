@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { useLocation, Link } from "wouter";
+import { defaultLandingPath } from "@/lib/menu-permissions";
 import { useAuth } from "@/hooks/use-auth";
 import { useLogin } from "../lib";
 import { Button, Input, PasswordInput, Label } from "@/components/shared";
@@ -91,7 +92,7 @@ export default function Login() {
         onSuccess: (data: any) => {
           if (handleAuthResponse(data)) return;
           login(data.token, data.user);
-          setLocation("/dashboard");
+          setLocation(defaultLandingPath(data.user));
         }
       }
     );
@@ -115,7 +116,7 @@ export default function Login() {
       }
       if (handleAuthResponse(data)) return;
       login(data.token, data.user);
-      setLocation("/dashboard");
+      setLocation(defaultLandingPath(data.user));
     } catch {
       setVerifyError("Network error. Please try again.");
     } finally {
@@ -142,7 +143,7 @@ export default function Login() {
       }
       if (handleAuthResponse(data)) return;
       login(data.token, data.user);
-      setLocation("/dashboard");
+      setLocation(defaultLandingPath(data.user));
     } catch {
       setVerifyError("Network error. Please try again.");
     } finally {

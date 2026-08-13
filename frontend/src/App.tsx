@@ -7,6 +7,7 @@ import { AppSettingsProvider } from "@/hooks/use-app-settings";
 import { AppLayout } from "@/components/layout";
 import { FullPageLoader } from "@/components/shared";
 import NotFound from "@/pages/not-found";
+import { defaultLandingPath } from "@/lib/menu-permissions";
 
 import Login from "@/pages/login";
 import SetupTwoFactor from "@/pages/setup-2fa";
@@ -67,7 +68,7 @@ function Router() {
   return (
     <Switch>
       <Route path="/">
-        {user ? <Redirect to="/dashboard" /> : <Redirect to="/login" />}
+        {user ? <Redirect to={defaultLandingPath(user)} /> : <Redirect to="/login" />}
       </Route>
       <Route path="/login" component={Login} />
       <Route path="/setup-2fa" component={SetupTwoFactor} />
