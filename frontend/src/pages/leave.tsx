@@ -163,8 +163,11 @@ export default function Leave() {
   const [gradeForm, setGradeForm] = useState<{ id: number | null; name: string; description: string }>({ id: null, name: "", description: "" });
   const [isGradeDialogOpen, setIsGradeDialogOpen] = useState(false);
   const [gradeSubmitting, setGradeSubmitting] = useState(false);
-  const [hrApprover, setHrApprover] = useState<{ id: number; name: string; department?: string | null } | null>(null);
+  const [hrApprovers, setHrApprovers] = useState<{ id: number; name: string; department?: string | null; isAssigned?: boolean }[]>([]);
   const [hrApproverSaving, setHrApproverSaving] = useState(false);
+  const [adjustTarget, setAdjustTarget] = useState<{ empId: number; name: string; leaveType: string; typeLabel: string; allocated: number } | null>(null);
+  const [adjustValue, setAdjustValue] = useState("");
+  const [adjustSaving, setAdjustSaving] = useState(false);
   const [editingLeaveType, setEditingLeaveType] = useState<LeaveTypeOption | null>(null);
   const [ltSubmitting, setLtSubmitting] = useState(false);
   const [expandedPolicyTeam, setExpandedPolicyTeam] = useState<Record<number, boolean>>({});
@@ -254,18 +257,40 @@ export default function Leave() {
     try {
       const r = await apiFetch("/api/leave-hr-approver");
       const data = await r.json();
-      setHrApprover(data.hrApprover ?? null);
+      if (Array.isArray(data.hrApprovers)) setHrApprovers(data.hrApprovers);
     } catch {}
   };
 
-  const handleSetHrApprover = async (userId: string) => {
+  const handleAdjustAllocation = async () => {
+    if (!adjustTarget) return;
+    const allocated = Number(adjustValue);
+    if (!Number.isFinite(allocated) || allocated < 0) return;
+    setAdjustSaving(true);
+    try {
+      const r = await apiFetch("/api/leave-allocations", {
+        method: "PUT",
+        body: JSON.stringify({ employeeId: adjustTarget.empId, leaveType: adjustTarget.leaveType, allocated }),
+      });
+      if (r.ok) {
+        setAdjustTarget(null);
+        loadBalances();
+        if (isManager) loadTeamBalances();
+      }
+    } catch {}
+    setAdjustSaving(false);
+  };
+
+  const saveHrApprovers = async (userIds: number[], assignedUserId?: number | null) => {
     setHrApproverSaving(true);
     try {
       const r = await apiFetch("/api/leave-hr-approver", {
         method: "PUT",
-        body: JSON.stringify({ userId: userId || null }),
+        body: JSON.stringify({
+          userIds,
+          assignedUserId: assignedUserId ?? hrApprovers.find(h => h.isAssigned && userIds.includes(h.id))?.id ?? null,
+        }),
       });
-      if (r.ok) { const d = await r.json(); setHrApprover(d.hrApprover ?? null); }
+      if (r.ok) { const d = await r.json(); if (Array.isArray(d.hrApprovers)) setHrApprovers(d.hrApprovers); }
     } catch {}
     setHrApproverSaving(false);
   };
@@ -1383,20 +1408,51 @@ export default function Leave() {
         <div className="space-y-6">
           {isAdmin && (
             <>
-              {/* HR Approver Section */}
-              <Card className="p-5 space-y-2">
-                <h3 className="text-lg font-bold text-foreground">HR Approver</h3>
+              {/* HR Approvers Section */}
+              <Card className="p-5 space-y-3">
+                <h3 className="text-lg font-bold text-foreground">HR Approvers</h3>
                 <p className="text-sm text-muted-foreground">
-                  This person is automatically added as the final approval step on every leave request, after the employee's manager or chosen approvers.
+                  Add the HR people who can handle the final approval step, then choose which one is <span className="font-semibold">assigned</span> — that person is added to every new leave request. Leave the list empty to skip the HR step entirely.
                 </p>
+                {hrApprovers.length > 0 && (
+                  <div className="flex flex-wrap gap-2">
+                    {hrApprovers.map(h => (
+                      <span key={h.id} className={`inline-flex items-center gap-2 text-sm rounded-full px-3 py-1 border ${h.isAssigned ? "bg-primary/10 border-primary text-primary font-semibold" : "bg-muted border-transparent"}`}>
+                        <label className="inline-flex items-center gap-1.5 cursor-pointer">
+                          <input
+                            type="radio"
+                            name="assignedHr"
+                            className="w-3.5 h-3.5 accent-primary"
+                            checked={!!h.isAssigned}
+                            disabled={hrApproverSaving}
+                            onChange={() => saveHrApprovers(hrApprovers.map(x => x.id), h.id)}
+                          />
+                          {h.name}{h.department ? ` · ${h.department}` : ""}{h.isAssigned ? " (assigned)" : ""}
+                        </label>
+                        <button
+                          type="button"
+                          className="text-muted-foreground hover:text-destructive font-bold"
+                          disabled={hrApproverSaving}
+                          onClick={() => saveHrApprovers(hrApprovers.filter(x => x.id !== h.id).map(x => x.id))}
+                          aria-label={`Remove ${h.name}`}
+                        >×</button>
+                      </span>
+                    ))}
+                  </div>
+                )}
                 <select
                   className="w-full md:w-96 px-4 py-2 border rounded-xl bg-background text-sm"
-                  value={hrApprover?.id?.toString() ?? ""}
+                  value=""
                   disabled={hrApproverSaving}
-                  onChange={e => handleSetHrApprover(e.target.value)}
+                  onChange={e => {
+                    const id = Number(e.target.value);
+                    if (id && !hrApprovers.some(h => h.id === id)) {
+                      saveHrApprovers([...hrApprovers.map(h => h.id), id]);
+                    }
+                  }}
                 >
-                  <option value="">— No automatic HR approver —</option>
-                  {allUsers.map(u => (
+                  <option value="">+ Add an HR approver…</option>
+                  {allUsers.filter(u => !hrApprovers.some(h => h.id === u.id)).map(u => (
                     <option key={u.id} value={String(u.id)}>{u.name}{u.department ? ` · ${u.department}` : ""}</option>
                   ))}
                 </select>
@@ -1646,6 +1702,19 @@ export default function Leave() {
                                       {emp.remaining}
                                     </span>
                                     <span className="text-muted-foreground">/ {emp.allocated}</span>
+                                    {isAdmin && (
+                                      <button
+                                        type="button"
+                                        className="text-muted-foreground hover:text-primary"
+                                        title={`Adjust ${emp.name}'s ${p.leaveType} allocation`}
+                                        onClick={() => {
+                                          setAdjustTarget({ empId: emp.id, name: emp.name, leaveType: p.leaveType, typeLabel: p.leaveType.replace(/_/g, " "), allocated: emp.allocated });
+                                          setAdjustValue(String(emp.allocated));
+                                        }}
+                                      >
+                                        <Pencil className="w-3.5 h-3.5" />
+                                      </button>
+                                    )}
                                   </div>
                                 </div>
                               );
@@ -1660,6 +1729,36 @@ export default function Leave() {
               })}
             </div>
           )}
+        </div>
+      )}
+
+      {/* Adjust Allocation Modal */}
+      {adjustTarget && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-background rounded-2xl shadow-2xl w-full max-w-sm p-6 space-y-4">
+            <div className="flex items-center justify-between">
+              <h2 className="text-lg font-bold">Adjust Allocation</h2>
+              <button onClick={() => setAdjustTarget(null)}><X className="w-5 h-5" /></button>
+            </div>
+            <p className="text-sm text-muted-foreground">
+              Set <span className="font-semibold text-foreground">{adjustTarget.name}</span>'s allocated days for <span className="font-semibold text-foreground capitalize">{adjustTarget.typeLabel}</span> this leave year. This override stays even if the policy is re-saved.
+            </p>
+            <input
+              type="number"
+              min={0}
+              max={366}
+              className="w-full px-4 py-2 border rounded-xl bg-background"
+              value={adjustValue}
+              onChange={e => setAdjustValue(e.target.value)}
+              autoFocus
+            />
+            <div className="flex justify-end gap-2">
+              <Button variant="outline" onClick={() => setAdjustTarget(null)}>Cancel</Button>
+              <Button onClick={handleAdjustAllocation} disabled={adjustSaving || adjustValue === "" || Number(adjustValue) < 0}>
+                {adjustSaving ? "Saving…" : "Save"}
+              </Button>
+            </div>
+          </div>
         </div>
       )}
 
@@ -1776,17 +1875,21 @@ export default function Leave() {
                   <UserPlus className="w-4 h-4" /> Add another approver
                 </button>
                 <p className="text-xs text-muted-foreground mt-1">Leave blank to use your direct manager by default.</p>
-                {hrApprover && hrApprover.id !== user?.id && (
-                  <label className="flex items-center gap-2 text-xs text-blue-700 bg-blue-50 border border-blue-200 rounded-xl px-3 py-2 mt-2 cursor-pointer">
-                    <input
-                      type="checkbox"
-                      className="w-4 h-4 accent-primary shrink-0"
-                      checked={includeHrApprover}
-                      onChange={e => setIncludeHrApprover(e.target.checked)}
-                    />
-                    <span>Add <span className="font-semibold">{hrApprover.name}</span> (HR) as the final approver <span className="font-normal">(optional)</span></span>
-                  </label>
-                )}
+                {(() => {
+                  const assigned = hrApprovers.find(h => h.isAssigned) ?? hrApprovers[0];
+                  if (!assigned || assigned.id === user?.id) return null;
+                  return (
+                    <label className="flex items-center gap-2 text-xs text-blue-700 bg-blue-50 border border-blue-200 rounded-xl px-3 py-2 mt-2 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        className="w-4 h-4 accent-primary shrink-0"
+                        checked={includeHrApprover}
+                        onChange={e => setIncludeHrApprover(e.target.checked)}
+                      />
+                      <span>Add <span className="font-semibold">{assigned.name}</span> (HR) as the final approver <span className="font-normal">(optional)</span></span>
+                    </label>
+                  );
+                })()}
               </div>
 
               <div>

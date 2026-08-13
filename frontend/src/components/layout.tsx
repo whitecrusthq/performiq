@@ -186,7 +186,7 @@ function NavLinks({ user, onNavigate }: NavLinksProps) {
           const visibleItems = entry.items.filter(isItemVisible);
           if (visibleItems.length === 0) return null;
 
-          const isOpen = openGroups[entry.label] ?? false;
+          const isOpen = openGroups[entry.label] ?? true;
           const hasActive = visibleItems.some(
             (item) => location === item.path || location.startsWith(`${item.path}/`)
           );

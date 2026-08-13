@@ -5,7 +5,7 @@ import LeaveController from "../../controllers/LeaveController.js";
 export class GetHrApproverAction {
   static async handle(_req: AuthRequest, res: Response) {
     try {
-      res.json({ hrApprover: await LeaveController.getHrLeaveApprover() });
+      res.json({ hrApprovers: await LeaveController.listHrLeaveApprovers() });
     } catch (err) {
       console.error(err);
       res.status(500).json({ error: "Server error" });
@@ -16,14 +16,15 @@ export class GetHrApproverAction {
 export class SetHrApproverAction {
   static async handle(req: AuthRequest, res: Response) {
     try {
-      const raw = req.body?.userId;
-      const userId = raw === null || raw === "" || raw === undefined ? null : Number(raw);
-      if (userId !== null && (!Number.isInteger(userId) || userId <= 0)) {
-        res.status(400).json({ error: "Invalid userId" }); return;
+      const raw = req.body?.userIds;
+      if (!Array.isArray(raw) || raw.some((v: any) => !Number.isInteger(Number(v)) || Number(v) <= 0)) {
+        res.status(400).json({ error: "userIds must be an array of user ids" }); return;
       }
-      const result = await LeaveController.setHrLeaveApprover(userId);
+      const assignedRaw = req.body?.assignedUserId;
+      const assignedUserId = assignedRaw === null || assignedRaw === undefined || assignedRaw === "" ? null : Number(assignedRaw);
+      const result = await LeaveController.setHrLeaveApprovers(raw.map(Number), assignedUserId);
       if ("error" in result) { res.status(result.status ?? 400).json({ error: result.error }); return; }
-      res.json({ hrApprover: await LeaveController.getHrLeaveApprover() });
+      res.json({ hrApprovers: await LeaveController.listHrLeaveApprovers() });
     } catch (err) {
       console.error(err);
       res.status(500).json({ error: "Server error" });

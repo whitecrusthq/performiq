@@ -9,6 +9,7 @@ class LeaveAllocation extends Model {
   declare allocated: number;
   declare used: number;
   declare cycleYear: number;
+  declare isManual: boolean;
   declare createdAt: Date;
   declare updatedAt: Date;
 }
@@ -22,6 +23,7 @@ LeaveAllocation.init(
     allocated: { type: DataTypes.INTEGER, allowNull: false, defaultValue: 0 },
     used: { type: DataTypes.INTEGER, allowNull: false, defaultValue: 0 },
     cycleYear: { type: DataTypes.INTEGER, allowNull: false, field: "cycle_year" },
+    isManual: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: false, field: "is_manual" },
     createdAt: { type: DataTypes.DATE, allowNull: false, defaultValue: DataTypes.NOW, field: "created_at" },
     updatedAt: { type: DataTypes.DATE, allowNull: false, defaultValue: DataTypes.NOW, field: "updated_at" },
   },
