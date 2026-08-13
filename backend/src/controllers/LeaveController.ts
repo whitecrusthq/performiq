@@ -34,23 +34,36 @@ function getCycleKey(policy: { cycleStartMonth: number; cycleStartDay: number; c
  *                  only when resuming on the 1st)
  *  - monthly_incl: days ÷ 12 × months remaining including the resumption month
  */
-function prorateAllocation(policy: { daysAllocated: number; prorationMode?: string | null; cycleStartMonth: number; cycleStartDay: number; cycleEndMonth: number; cycleEndDay: number }, employeeStartDate: string | null | undefined): number {
+function prorateAllocation(policy: { daysAllocated: number; prorationMode?: string | null; cycleStartMonth: number; cycleStartDay: number; cycleEndMonth: number; cycleEndDay: number }, employeeStartDate: string | null | undefined, cycleYear?: number): number {
   const total = Number(policy.daysAllocated) || 0;
   const mode = policy.prorationMode ?? "none";
   if (mode === "none" || !employeeStartDate) return total;
   const s = new Date(`${employeeStartDate}T00:00:00Z`);
   if (isNaN(s.getTime())) return total;
-  const cycleYear = getCycleKey(policy as any);
-  const startYear = s.getUTCFullYear();
-  if (startYear < cycleYear) return total;      // resumed before this cycle
-  if (startYear > cycleYear) return 0;          // resumes after this cycle
-  const month = s.getUTCMonth() + 1;
-  const day = s.getUTCDate();
+
+  // Concrete boundaries of the target cycle (cycleYear is the year the cycle
+  // starts in). Non-calendar cycles (e.g. Jul–Jun) end in the following year.
+  const cy = cycleYear ?? getCycleKey(policy as any);
+  const cycleStart = new Date(Date.UTC(cy, policy.cycleStartMonth - 1, policy.cycleStartDay));
+  const endYear =
+    policy.cycleEndMonth < policy.cycleStartMonth ||
+    (policy.cycleEndMonth === policy.cycleStartMonth && policy.cycleEndDay < policy.cycleStartDay)
+      ? cy + 1
+      : cy;
+  const cycleEnd = new Date(Date.UTC(endYear, policy.cycleEndMonth - 1, policy.cycleEndDay, 23, 59, 59));
+
+  if (s <= cycleStart) return total;   // resumed on/before this cycle began
+  if (s > cycleEnd) return 0;          // resumes after this cycle ends
+
+  // Whole months from the resumption month through the cycle-end month.
+  const monthsSpan =
+    (cycleEnd.getUTCFullYear() * 12 + cycleEnd.getUTCMonth()) -
+    (s.getUTCFullYear() * 12 + s.getUTCMonth()) + 1;
   let months: number;
   if (mode === "monthly_incl") {
-    months = 12 - month + 1;
-  } else { // monthly
-    months = 12 - month + (day === 1 ? 1 : 0);
+    months = monthsSpan;               // resumption month always counts
+  } else {                             // monthly: counts only if resuming on the 1st
+    months = monthsSpan - (s.getUTCDate() === 1 ? 0 : 1);
   }
   months = Math.max(0, Math.min(12, months));
   return Math.round((total * months) / 12);
@@ -101,7 +114,7 @@ export default class LeaveController {
     let allocated = 0;
     if (policy) {
       const emp: any = await User.findByPk(employeeId, { attributes: ["id", "startDate"] });
-      allocated = prorateAllocation(policy, emp?.startDate ?? null);
+      allocated = prorateAllocation(policy, emp?.startDate ?? null, effectiveCycle);
     }
     const policyId = policy ? policy.id : null;
 
@@ -308,7 +321,7 @@ export default class LeaveController {
     const cycleYear = getCycleKey(policy);
     const employees = await User.findAll({ attributes: ["id", "startDate"] });
     for (const emp of employees as any[]) {
-      const allocated = prorateAllocation(policy, emp.startDate ?? null);
+      const allocated = prorateAllocation(policy, emp.startDate ?? null, cycleYear);
       const existingAlloc = await LeaveAllocation.findOne({
         where: { employeeId: emp.id, leaveType, cycleYear },
       });
