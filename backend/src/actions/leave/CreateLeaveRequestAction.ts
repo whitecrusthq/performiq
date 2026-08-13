@@ -12,12 +12,12 @@ function notify(payload: Parameters<typeof sendLeaveNotification>[0]) {
 export class CreateLeaveRequestAction {
   static async handle(req: AuthRequest, res: Response) {
     try {
-      const { leaveType, startDate, endDate, reason, approverIds, coverUserIds, includeHrApprover } = req.body;
+      const { leaveType, startDate, endDate, reason, approverIds, coverUserIds, includeHrApprover, hrApproverId } = req.body;
       if (!leaveType || !startDate || !endDate) {
         res.status(400).json({ error: "leaveType, startDate, and endDate are required" }); return;
       }
 
-      const result = await LeaveController.createLeaveRequest(req.user!.id, { leaveType, startDate, endDate, reason, approverIds, coverUserIds, includeHrApprover: includeHrApprover !== false });
+      const result = await LeaveController.createLeaveRequest(req.user!.id, { leaveType, startDate, endDate, reason, approverIds, coverUserIds, includeHrApprover: includeHrApprover !== false, hrApproverId: hrApproverId ? Number(hrApproverId) : undefined });
       if ("error" in result) { res.status(result.status).json({ error: result.error }); return; }
 
       if (result.orderedApproverIds.length > 0) {

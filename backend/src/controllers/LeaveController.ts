@@ -1,5 +1,5 @@
 import { Op } from "sequelize";
-import { LeaveType, LeaveRequest, LeaveApprover, LeavePolicy, LeaveAllocation, User, EmployeeGrade, LeaveTypeGrade, AppSettings } from "../models/index.js";
+import { LeaveType, LeaveRequest, LeaveApprover, LeavePolicy, LeaveAllocation, User, EmployeeGrade, LeaveTypeGrade, LeaveHrApprover } from "../models/index.js";
 
 // Counts working days (Mon–Fri) between two ISO dates inclusive, excluding
 // weekends. Authoritative day count so the stored value never trusts the client.
@@ -523,7 +523,7 @@ export default class LeaveController {
     return Promise.all(rows.map(r => LeaveController.enrichLeaveRequest(r, userMap)));
   }
 
-  static async createLeaveRequest(userId: number, data: { leaveType: string; startDate: string; endDate: string; reason?: string; approverIds?: number[]; coverUserIds?: number[]; includeHrApprover?: boolean }) {
+  static async createLeaveRequest(userId: number, data: { leaveType: string; startDate: string; endDate: string; reason?: string; approverIds?: number[]; coverUserIds?: number[]; includeHrApprover?: boolean; hrApproverId?: number }) {
     const { leaveType, startDate, endDate, reason, approverIds, coverUserIds } = data;
 
     // Grade restriction: employees may only request leave types mapped to
@@ -566,14 +566,21 @@ export default class LeaveController {
       if (emp?.managerId) orderedApproverIds = [emp.managerId];
     }
 
-    // The designated HR approver (configured by an admin) is suggested as the
-    // final approval step but is NOT compulsory: the applicant can opt out
-    // (includeHrApprover: false). Defaults to included when omitted. Skipped
-    // when they are the requester or already in the chain.
+    // An HR approver (chosen from the admin-configured list) is suggested as
+    // the final approval step but is NOT compulsory: the applicant can opt out
+    // (includeHrApprover: false) or pick which configured HR person handles
+    // it (hrApproverId). Defaults to the first configured HR approver.
+    // Skipped when they are the requester or already in the chain.
     if (data.includeHrApprover !== false) {
-      const hrApproverId = await LeaveController.getHrLeaveApproverId();
-      if (hrApproverId && hrApproverId !== userId && !orderedApproverIds.includes(hrApproverId)) {
-        orderedApproverIds.push(hrApproverId);
+      const hrIds = await LeaveController.getHrLeaveApproverIds();
+      let chosen: number | null = null;
+      if (data.hrApproverId && hrIds.includes(Number(data.hrApproverId))) {
+        chosen = Number(data.hrApproverId);
+      } else {
+        chosen = hrIds.find(id => id !== userId && !orderedApproverIds.includes(id)) ?? null;
+      }
+      if (chosen && chosen !== userId && !orderedApproverIds.includes(chosen)) {
+        orderedApproverIds.push(chosen);
       }
     }
 
@@ -603,31 +610,41 @@ export default class LeaveController {
     return { enriched, orderedApproverIds, userMap, row: row.toJSON() };
   }
 
-  /** The designated HR approver, if configured and still an active user. */
-  static async getHrLeaveApproverId(): Promise<number | null> {
-    const settings: any = await AppSettings.findByPk(1, { attributes: ["id", "hrLeaveApproverId"] });
-    const id = settings?.hrLeaveApproverId ?? null;
-    if (!id) return null;
-    const u: any = await User.findByPk(id, { attributes: ["id", "isActive"] });
-    if (!u || u.isActive === false) return null;
-    return u.id;
+  /** IDs of configured HR approvers that are still active users, in configured order. */
+  static async getHrLeaveApproverIds(): Promise<number[]> {
+    const rows = await LeaveHrApprover.findAll({ order: [["position", "ASC"], ["userId", "ASC"]] });
+    if (rows.length === 0) return [];
+    const users = await User.findAll({
+      where: { id: { [Op.in]: rows.map(r => r.userId) } },
+      attributes: ["id", "isActive"],
+    });
+    const active = new Set(users.filter((u: any) => u.isActive !== false).map(u => u.id));
+    return rows.map(r => r.userId).filter(id => active.has(id));
   }
 
-  static async getHrLeaveApprover() {
-    const id = await LeaveController.getHrLeaveApproverId();
-    if (!id) return null;
-    const u: any = await User.findByPk(id, { attributes: ["id", "name", "department", "jobTitle"] });
-    return u ? u.toJSON() : null;
+  static async listHrLeaveApprovers() {
+    const ids = await LeaveController.getHrLeaveApproverIds();
+    if (ids.length === 0) return [];
+    const users = await User.findAll({
+      where: { id: { [Op.in]: ids } },
+      attributes: ["id", "name", "department", "jobTitle"],
+    });
+    const byId: Record<number, any> = {};
+    users.forEach(u => { byId[u.id] = u.toJSON(); });
+    return ids.map(id => byId[id]).filter(Boolean);
   }
 
-  static async setHrLeaveApprover(userId: number | null) {
-    if (userId != null) {
-      const u = await User.findByPk(userId, { attributes: ["id"] });
-      if (!u) return { error: "User not found", status: 400 };
+  static async setHrLeaveApprovers(userIds: number[]) {
+    const unique = [...new Set(userIds.map(Number))].filter(n => Number.isInteger(n) && n > 0);
+    if (unique.length > 0) {
+      const found = await User.count({ where: { id: { [Op.in]: unique } } });
+      if (found !== unique.length) return { error: "One or more users not found", status: 400 };
     }
-    const [settings] = await AppSettings.findOrCreate({ where: { id: 1 } });
-    await AppSettings.update({ hrLeaveApproverId: userId }, { where: { id: settings.id } });
-    return { data: { hrLeaveApproverId: userId } };
+    await LeaveHrApprover.destroy({ where: {} });
+    if (unique.length > 0) {
+      await LeaveHrApprover.bulkCreate(unique.map((id, idx) => ({ userId: id, position: idx })));
+    }
+    return { data: { userIds: unique } };
   }
 
   static async getLeaveRequest(requestId: number) {

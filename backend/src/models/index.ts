@@ -53,6 +53,7 @@ import TermsAcceptance from "./TermsAcceptance.js";
 import AttendanceSetting from "./AttendanceSetting.js";
 import EmployeeGrade from "./EmployeeGrade.js";
 import LeaveTypeGrade from "./LeaveTypeGrade.js";
+import LeaveHrApprover from "./LeaveHrApprover.js";
 
 export {
   sequelize,
@@ -110,4 +111,5 @@ export {
   AttendanceSetting,
   EmployeeGrade,
   LeaveTypeGrade,
+  LeaveHrApprover,
 };
