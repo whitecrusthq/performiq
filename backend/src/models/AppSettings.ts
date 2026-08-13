@@ -12,6 +12,7 @@ class AppSettings extends Model {
   declare loginSubtext: string;
   declare loginBgFrom: string;
   declare loginBgTo: string;
+  declare hrLeaveApproverId: number | null;
   declare updatedAt: Date;
 }
 
@@ -27,6 +28,7 @@ AppSettings.init(
     loginSubtext: { type: DataTypes.TEXT, allowNull: false, defaultValue: "PerformIQ streamlines appraisals, goals, and feedback into one elegant platform.", field: "login_subtext" },
     loginBgFrom: { type: DataTypes.TEXT, allowNull: false, defaultValue: "", field: "login_bg_from" },
     loginBgTo: { type: DataTypes.TEXT, allowNull: false, defaultValue: "", field: "login_bg_to" },
+    hrLeaveApproverId: { type: DataTypes.INTEGER, allowNull: true, field: "hr_leave_approver_id" },
     updatedAt: { type: DataTypes.DATE, allowNull: false, defaultValue: DataTypes.NOW, field: "updated_at" },
   },
   { sequelize, tableName: "app_settings", timestamps: false }

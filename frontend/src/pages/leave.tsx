@@ -162,6 +162,8 @@ export default function Leave() {
   const [gradeForm, setGradeForm] = useState<{ id: number | null; name: string; description: string }>({ id: null, name: "", description: "" });
   const [isGradeDialogOpen, setIsGradeDialogOpen] = useState(false);
   const [gradeSubmitting, setGradeSubmitting] = useState(false);
+  const [hrApprover, setHrApprover] = useState<{ id: number; name: string; department?: string | null } | null>(null);
+  const [hrApproverSaving, setHrApproverSaving] = useState(false);
   const [editingLeaveType, setEditingLeaveType] = useState<LeaveTypeOption | null>(null);
   const [ltSubmitting, setLtSubmitting] = useState(false);
   const [expandedPolicyTeam, setExpandedPolicyTeam] = useState<Record<number, boolean>>({});
@@ -247,6 +249,26 @@ export default function Leave() {
     } catch {}
   };
 
+  const loadHrApprover = async () => {
+    try {
+      const r = await apiFetch("/api/leave-hr-approver");
+      const data = await r.json();
+      setHrApprover(data.hrApprover ?? null);
+    } catch {}
+  };
+
+  const handleSetHrApprover = async (userId: string) => {
+    setHrApproverSaving(true);
+    try {
+      const r = await apiFetch("/api/leave-hr-approver", {
+        method: "PUT",
+        body: JSON.stringify({ userId: userId || null }),
+      });
+      if (r.ok) { const d = await r.json(); setHrApprover(d.hrApprover ?? null); }
+    } catch {}
+    setHrApproverSaving(false);
+  };
+
   // Leave types the current user may actually request: unmapped types are open
   // to everyone; grade-mapped types only to employees with a matching grade.
   const myGradeId = (user as any)?.gradeId ?? null;
@@ -311,7 +333,7 @@ export default function Leave() {
     } catch {}
   };
 
-  useEffect(() => { load(); loadUsers(); loadBalances(); loadPolicies(); loadLeaveTypes(); loadGrades(); if (isManager) loadTeamBalances(); }, []);
+  useEffect(() => { load(); loadUsers(); loadBalances(); loadPolicies(); loadLeaveTypes(); loadGrades(); loadHrApprover(); if (isManager) loadTeamBalances(); }, []);
   useEffect(() => { load(); }, [filterDepartment, filterEmployee]);
 
   // Keep the selected leave type valid: if the current value isn't a real configured
@@ -1359,6 +1381,27 @@ export default function Leave() {
         <div className="space-y-6">
           {isAdmin && (
             <>
+              {/* HR Approver Section */}
+              <Card className="p-5 space-y-2">
+                <h3 className="text-lg font-bold text-foreground">HR Approver</h3>
+                <p className="text-sm text-muted-foreground">
+                  This person is automatically added as the final approval step on every leave request, after the employee's manager or chosen approvers.
+                </p>
+                <select
+                  className="w-full md:w-96 px-4 py-2 border rounded-xl bg-background text-sm"
+                  value={hrApprover?.id?.toString() ?? ""}
+                  disabled={hrApproverSaving}
+                  onChange={e => handleSetHrApprover(e.target.value)}
+                >
+                  <option value="">— No automatic HR approver —</option>
+                  {allUsers.map(u => (
+                    <option key={u.id} value={String(u.id)}>{u.name}{u.department ? ` · ${u.department}` : ""}</option>
+                  ))}
+                </select>
+              </Card>
+
+              <hr className="border-border" />
+
               {/* Employee Grades Section */}
               <div className="flex items-center justify-between">
                 <div>
@@ -1731,6 +1774,11 @@ export default function Leave() {
                   <UserPlus className="w-4 h-4" /> Add another approver
                 </button>
                 <p className="text-xs text-muted-foreground mt-1">Leave blank to use your direct manager by default.</p>
+                {hrApprover && hrApprover.id !== user?.id && (
+                  <p className="text-xs text-blue-700 bg-blue-50 border border-blue-200 rounded-xl px-3 py-2 mt-2">
+                    <span className="font-semibold">{hrApprover.name}</span> (HR) will be added automatically as the final approver.
+                  </p>
+                )}
               </div>
 
               <div>

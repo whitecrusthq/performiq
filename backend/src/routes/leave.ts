@@ -16,8 +16,12 @@ import { UpdateLeaveRequestAction } from "../actions/leave/UpdateLeaveRequestAct
 import { DeleteLeaveRequestAction } from "../actions/leave/DeleteLeaveRequestAction.js";
 import { RespondCoverAction } from "../actions/leave/RespondCoverAction.js";
 import { ListGradesAction, CreateGradeAction, UpdateGradeAction, DeleteGradeAction } from "../actions/leave/EmployeeGradeActions.js";
+import { GetHrApproverAction, SetHrApproverAction } from "../actions/leave/HrApproverSettingActions.js";
 
 const router = Router();
+
+router.get("/leave-hr-approver", requireAuth, GetHrApproverAction.handle);
+router.put("/leave-hr-approver", requireAuth, requireRole("admin"), SetHrApproverAction.handle);
 
 router.get("/grades", requireAuth, ListGradesAction.handle);
 router.post("/grades", requireAuth, requireRole("admin"), CreateGradeAction.handle);

@@ -1,5 +1,5 @@
 import { Op } from "sequelize";
-import { LeaveType, LeaveRequest, LeaveApprover, LeavePolicy, LeaveAllocation, User, EmployeeGrade, LeaveTypeGrade } from "../models/index.js";
+import { LeaveType, LeaveRequest, LeaveApprover, LeavePolicy, LeaveAllocation, User, EmployeeGrade, LeaveTypeGrade, AppSettings } from "../models/index.js";
 
 // Counts working days (Mon–Fri) between two ISO dates inclusive, excluding
 // weekends. Authoritative day count so the stored value never trusts the client.
@@ -566,6 +566,14 @@ export default class LeaveController {
       if (emp?.managerId) orderedApproverIds = [emp.managerId];
     }
 
+    // The designated HR approver (configured by an admin) is always appended
+    // as the final approval step — unless they are the requester or already
+    // in the chain.
+    const hrApproverId = await LeaveController.getHrLeaveApproverId();
+    if (hrApproverId && hrApproverId !== userId && !orderedApproverIds.includes(hrApproverId)) {
+      orderedApproverIds.push(hrApproverId);
+    }
+
     if (orderedApproverIds.length > 0) {
       await LeaveApprover.bulkCreate(
         orderedApproverIds.map((aid, idx) => ({
@@ -590,6 +598,33 @@ export default class LeaveController {
     const enriched = await LeaveController.enrichLeaveRequest(row, userMap);
 
     return { enriched, orderedApproverIds, userMap, row: row.toJSON() };
+  }
+
+  /** The designated HR approver, if configured and still an active user. */
+  static async getHrLeaveApproverId(): Promise<number | null> {
+    const settings: any = await AppSettings.findByPk(1, { attributes: ["id", "hrLeaveApproverId"] });
+    const id = settings?.hrLeaveApproverId ?? null;
+    if (!id) return null;
+    const u: any = await User.findByPk(id, { attributes: ["id", "isActive"] });
+    if (!u || u.isActive === false) return null;
+    return u.id;
+  }
+
+  static async getHrLeaveApprover() {
+    const id = await LeaveController.getHrLeaveApproverId();
+    if (!id) return null;
+    const u: any = await User.findByPk(id, { attributes: ["id", "name", "department", "jobTitle"] });
+    return u ? u.toJSON() : null;
+  }
+
+  static async setHrLeaveApprover(userId: number | null) {
+    if (userId != null) {
+      const u = await User.findByPk(userId, { attributes: ["id"] });
+      if (!u) return { error: "User not found", status: 400 };
+    }
+    const [settings] = await AppSettings.findOrCreate({ where: { id: 1 } });
+    await AppSettings.update({ hrLeaveApproverId: userId }, { where: { id: settings.id } });
+    return { data: { hrLeaveApproverId: userId } };
   }
 
   static async getLeaveRequest(requestId: number) {
@@ -674,8 +709,6 @@ export default class LeaveController {
     }
 
     if (status === "approved" || status === "rejected") {
-      const ROLE_LEVEL: Record<string, number> = { super_admin: 4, admin: 3, manager: 2, employee: 1 };
-      if ((ROLE_LEVEL[role] ?? 1) < 2) return { error: "Insufficient permissions", status: 403 };
       if (row.status !== "pending") return { error: "Only pending requests can be reviewed", status: 400 };
 
       const approverRows = await LeaveApprover.findAll({
@@ -684,6 +717,10 @@ export default class LeaveController {
         limit: 1,
       });
 
+      // Admins can always review; otherwise the reviewer must be the request's
+      // current (first pending) approver — regardless of their system role, so
+      // designated approvers such as the HR approver can act even when their
+      // role is "employee".
       const isAdmin = role === "admin" || role === "super_admin";
       const isCurrentApprover = approverRows.length > 0 && approverRows[0].approverId === userId;
       if (!isAdmin && !isCurrentApprover) {
