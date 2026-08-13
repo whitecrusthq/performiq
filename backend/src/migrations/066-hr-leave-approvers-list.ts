@@ -8,7 +8,8 @@ export async function up(queryInterface: QueryInterface): Promise<void> {
   await queryInterface.sequelize.query(`
     CREATE TABLE IF NOT EXISTS leave_hr_approvers (
       user_id INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
-      position INTEGER NOT NULL DEFAULT 0
+      position INTEGER NOT NULL DEFAULT 0,
+      is_default BOOLEAN NOT NULL DEFAULT FALSE
     );
     INSERT INTO leave_hr_approvers (user_id, position)
     SELECT hr_leave_approver_id, 0 FROM app_settings WHERE hr_leave_approver_id IS NOT NULL

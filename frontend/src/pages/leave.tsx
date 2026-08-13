@@ -163,9 +163,8 @@ export default function Leave() {
   const [gradeForm, setGradeForm] = useState<{ id: number | null; name: string; description: string }>({ id: null, name: "", description: "" });
   const [isGradeDialogOpen, setIsGradeDialogOpen] = useState(false);
   const [gradeSubmitting, setGradeSubmitting] = useState(false);
-  const [hrApprovers, setHrApprovers] = useState<{ id: number; name: string; department?: string | null }[]>([]);
+  const [hrApprovers, setHrApprovers] = useState<{ id: number; name: string; department?: string | null; isAssigned?: boolean }[]>([]);
   const [hrApproverSaving, setHrApproverSaving] = useState(false);
-  const [selectedHrApproverId, setSelectedHrApproverId] = useState<string>("");
   const [editingLeaveType, setEditingLeaveType] = useState<LeaveTypeOption | null>(null);
   const [ltSubmitting, setLtSubmitting] = useState(false);
   const [expandedPolicyTeam, setExpandedPolicyTeam] = useState<Record<number, boolean>>({});
@@ -259,12 +258,15 @@ export default function Leave() {
     } catch {}
   };
 
-  const saveHrApprovers = async (userIds: number[]) => {
+  const saveHrApprovers = async (userIds: number[], assignedUserId?: number | null) => {
     setHrApproverSaving(true);
     try {
       const r = await apiFetch("/api/leave-hr-approver", {
         method: "PUT",
-        body: JSON.stringify({ userIds }),
+        body: JSON.stringify({
+          userIds,
+          assignedUserId: assignedUserId ?? hrApprovers.find(h => h.isAssigned && userIds.includes(h.id))?.id ?? null,
+        }),
       });
       if (r.ok) { const d = await r.json(); if (Array.isArray(d.hrApprovers)) setHrApprovers(d.hrApprovers); }
     } catch {}
@@ -415,19 +417,13 @@ export default function Leave() {
       const coverIds = Array.from(new Set(coverUserIds.map(Number).filter(Boolean))).slice(0, 2);
       const r = await apiFetch("/api/leave-requests", {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          ...form, days, approverIds, coverUserIds: coverIds, includeHrApprover,
-          hrApproverId: includeHrApprover
-            ? Number(selectedHrApproverId) || hrApprovers.filter(h => h.id !== user?.id)[0]?.id || undefined
-            : undefined,
-        }),
+        body: JSON.stringify({ ...form, days, approverIds, coverUserIds: coverIds, includeHrApprover }),
       });
       const data = await r.json();
       if (!r.ok) { setMutationError(data.error || "Failed to submit"); setSubmitting(false); return; }
       setIsDialogOpen(false);
       setForm({ leaveType: myLeaveTypes[0]?.name ?? "", startDate: "", endDate: "", reason: "" });
       setIncludeHrApprover(true);
-      setSelectedHrApproverId("");
       setApproverSteps([""]);
       setCoverUserIds(["", ""]);
       load();
@@ -1394,13 +1390,23 @@ export default function Leave() {
               <Card className="p-5 space-y-3">
                 <h3 className="text-lg font-bold text-foreground">HR Approvers</h3>
                 <p className="text-sm text-muted-foreground">
-                  The people who can handle the final HR approval step. When applying for leave, employees pick one of these names (the first is pre-selected by default). Leave the list empty to skip the HR step entirely.
+                  Add the HR people who can handle the final approval step, then choose which one is <span className="font-semibold">assigned</span> — that person is added to every new leave request. Leave the list empty to skip the HR step entirely.
                 </p>
                 {hrApprovers.length > 0 && (
                   <div className="flex flex-wrap gap-2">
                     {hrApprovers.map(h => (
-                      <span key={h.id} className="inline-flex items-center gap-2 text-sm bg-muted rounded-full px-3 py-1">
-                        {h.name}{h.department ? ` · ${h.department}` : ""}
+                      <span key={h.id} className={`inline-flex items-center gap-2 text-sm rounded-full px-3 py-1 border ${h.isAssigned ? "bg-primary/10 border-primary text-primary font-semibold" : "bg-muted border-transparent"}`}>
+                        <label className="inline-flex items-center gap-1.5 cursor-pointer">
+                          <input
+                            type="radio"
+                            name="assignedHr"
+                            className="w-3.5 h-3.5 accent-primary"
+                            checked={!!h.isAssigned}
+                            disabled={hrApproverSaving}
+                            onChange={() => saveHrApprovers(hrApprovers.map(x => x.id), h.id)}
+                          />
+                          {h.name}{h.department ? ` · ${h.department}` : ""}{h.isAssigned ? " (assigned)" : ""}
+                        </label>
                         <button
                           type="button"
                           className="text-muted-foreground hover:text-destructive font-bold"
@@ -1804,30 +1810,21 @@ export default function Leave() {
                   <UserPlus className="w-4 h-4" /> Add another approver
                 </button>
                 <p className="text-xs text-muted-foreground mt-1">Leave blank to use your direct manager by default.</p>
-                {hrApprovers.filter(h => h.id !== user?.id).length > 0 && (
-                  <div className="text-xs text-blue-700 bg-blue-50 border border-blue-200 rounded-xl px-3 py-2 mt-2 space-y-2">
-                    <label className="flex items-center gap-2 cursor-pointer">
+                {(() => {
+                  const assigned = hrApprovers.find(h => h.isAssigned) ?? hrApprovers[0];
+                  if (!assigned || assigned.id === user?.id) return null;
+                  return (
+                    <label className="flex items-center gap-2 text-xs text-blue-700 bg-blue-50 border border-blue-200 rounded-xl px-3 py-2 mt-2 cursor-pointer">
                       <input
                         type="checkbox"
                         className="w-4 h-4 accent-primary shrink-0"
                         checked={includeHrApprover}
                         onChange={e => setIncludeHrApprover(e.target.checked)}
                       />
-                      <span className="font-semibold">Add an HR approver as the final step <span className="font-normal">(optional)</span></span>
+                      <span>Add <span className="font-semibold">{assigned.name}</span> (HR) as the final approver <span className="font-normal">(optional)</span></span>
                     </label>
-                    {includeHrApprover && (
-                      <select
-                        className="w-full px-3 py-2 border border-blue-200 rounded-lg bg-background text-foreground"
-                        value={selectedHrApproverId || String(hrApprovers.filter(h => h.id !== user?.id)[0]?.id ?? "")}
-                        onChange={e => setSelectedHrApproverId(e.target.value)}
-                      >
-                        {hrApprovers.filter(h => h.id !== user?.id).map(h => (
-                          <option key={h.id} value={String(h.id)}>{h.name}{h.department ? ` · ${h.department}` : ""}</option>
-                        ))}
-                      </select>
-                    )}
-                  </div>
-                )}
+                  );
+                })()}
               </div>
 
               <div>

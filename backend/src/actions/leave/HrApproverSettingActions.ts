@@ -20,7 +20,9 @@ export class SetHrApproverAction {
       if (!Array.isArray(raw) || raw.some((v: any) => !Number.isInteger(Number(v)) || Number(v) <= 0)) {
         res.status(400).json({ error: "userIds must be an array of user ids" }); return;
       }
-      const result = await LeaveController.setHrLeaveApprovers(raw.map(Number));
+      const assignedRaw = req.body?.assignedUserId;
+      const assignedUserId = assignedRaw === null || assignedRaw === undefined || assignedRaw === "" ? null : Number(assignedRaw);
+      const result = await LeaveController.setHrLeaveApprovers(raw.map(Number), assignedUserId);
       if ("error" in result) { res.status(result.status ?? 400).json({ error: result.error }); return; }
       res.json({ hrApprovers: await LeaveController.listHrLeaveApprovers() });
     } catch (err) {
