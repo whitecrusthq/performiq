@@ -523,7 +523,7 @@ export default class LeaveController {
     return Promise.all(rows.map(r => LeaveController.enrichLeaveRequest(r, userMap)));
   }
 
-  static async createLeaveRequest(userId: number, data: { leaveType: string; startDate: string; endDate: string; reason?: string; approverIds?: number[]; coverUserIds?: number[] }) {
+  static async createLeaveRequest(userId: number, data: { leaveType: string; startDate: string; endDate: string; reason?: string; approverIds?: number[]; coverUserIds?: number[]; includeHrApprover?: boolean }) {
     const { leaveType, startDate, endDate, reason, approverIds, coverUserIds } = data;
 
     // Grade restriction: employees may only request leave types mapped to
@@ -566,12 +566,15 @@ export default class LeaveController {
       if (emp?.managerId) orderedApproverIds = [emp.managerId];
     }
 
-    // The designated HR approver (configured by an admin) is always appended
-    // as the final approval step — unless they are the requester or already
-    // in the chain.
-    const hrApproverId = await LeaveController.getHrLeaveApproverId();
-    if (hrApproverId && hrApproverId !== userId && !orderedApproverIds.includes(hrApproverId)) {
-      orderedApproverIds.push(hrApproverId);
+    // The designated HR approver (configured by an admin) is suggested as the
+    // final approval step but is NOT compulsory: the applicant can opt out
+    // (includeHrApprover: false). Defaults to included when omitted. Skipped
+    // when they are the requester or already in the chain.
+    if (data.includeHrApprover !== false) {
+      const hrApproverId = await LeaveController.getHrLeaveApproverId();
+      if (hrApproverId && hrApproverId !== userId && !orderedApproverIds.includes(hrApproverId)) {
+        orderedApproverIds.push(hrApproverId);
+      }
     }
 
     if (orderedApproverIds.length > 0) {

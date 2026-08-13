@@ -133,6 +133,7 @@ export default function Leave() {
   const [mutationError, setMutationError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [form, setForm] = useState({ leaveType: "", startDate: "", endDate: "", reason: "" });
+  const [includeHrApprover, setIncludeHrApprover] = useState(true);
   const [approverSteps, setApproverSteps] = useState<string[]>([""]);
   const [coverUserIds, setCoverUserIds] = useState<string[]>(["", ""]);
   const [coverRespondingId, setCoverRespondingId] = useState<number | null>(null);
@@ -413,12 +414,13 @@ export default function Leave() {
       const coverIds = Array.from(new Set(coverUserIds.map(Number).filter(Boolean))).slice(0, 2);
       const r = await apiFetch("/api/leave-requests", {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ...form, days, approverIds, coverUserIds: coverIds }),
+        body: JSON.stringify({ ...form, days, approverIds, coverUserIds: coverIds, includeHrApprover }),
       });
       const data = await r.json();
       if (!r.ok) { setMutationError(data.error || "Failed to submit"); setSubmitting(false); return; }
       setIsDialogOpen(false);
       setForm({ leaveType: myLeaveTypes[0]?.name ?? "", startDate: "", endDate: "", reason: "" });
+      setIncludeHrApprover(true);
       setApproverSteps([""]);
       setCoverUserIds(["", ""]);
       load();
@@ -1775,9 +1777,15 @@ export default function Leave() {
                 </button>
                 <p className="text-xs text-muted-foreground mt-1">Leave blank to use your direct manager by default.</p>
                 {hrApprover && hrApprover.id !== user?.id && (
-                  <p className="text-xs text-blue-700 bg-blue-50 border border-blue-200 rounded-xl px-3 py-2 mt-2">
-                    <span className="font-semibold">{hrApprover.name}</span> (HR) will be added automatically as the final approver.
-                  </p>
+                  <label className="flex items-center gap-2 text-xs text-blue-700 bg-blue-50 border border-blue-200 rounded-xl px-3 py-2 mt-2 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      className="w-4 h-4 accent-primary shrink-0"
+                      checked={includeHrApprover}
+                      onChange={e => setIncludeHrApprover(e.target.checked)}
+                    />
+                    <span>Add <span className="font-semibold">{hrApprover.name}</span> (HR) as the final approver <span className="font-normal">(optional)</span></span>
+                  </label>
                 )}
               </div>
 
