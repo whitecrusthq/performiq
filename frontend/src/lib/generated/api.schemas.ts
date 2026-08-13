@@ -125,6 +125,12 @@ export interface AppraisalCycle {
   startDate: string;
   endDate: string;
   status: AppraisalCycleStatus;
+  /** How overall appraisal scores are calculated for this cycle. */
+  scoringMode?: "managers_only" | "combined" | "two_way";
+  /** Percentage weight (0-100) of the self score in combined mode. */
+  selfWeight?: number;
+  /** In two-way mode, whether upward (junior->boss) scores count in the boss's overall score. */
+  upwardIncluded?: boolean;
   createdAt: string;
 }
 
@@ -142,6 +148,9 @@ export interface CreateCycleRequest {
   startDate: string;
   endDate: string;
   status: CreateCycleRequestStatus;
+  scoringMode?: "managers_only" | "combined" | "two_way";
+  selfWeight?: number;
+  upwardIncluded?: boolean;
 }
 
 export interface Criterion {

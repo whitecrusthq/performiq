@@ -14,7 +14,14 @@ export class UpdateAppraisalAction {
       const putUserId = req.user!.id;
       const putUserRole = req.user!.role;
       if (putUserRole === "employee" && currentPlain.employeeId !== putUserId) {
-        res.status(403).json({ error: "You can only update your own appraisals" }); return;
+        // Employees may also update appraisals where they are an assigned
+        // reviewer (e.g. upward reviews in two-way cycles).
+        const isAssignedReviewer = await AppraisalReviewer.findOne({
+          where: { appraisalId, reviewerId: putUserId },
+        });
+        if (!isAssignedReviewer) {
+          res.status(403).json({ error: "You can only update your own appraisals" }); return;
+        }
       }
       if (putUserRole === "manager") {
         const isOwner = currentPlain.employeeId === putUserId;
