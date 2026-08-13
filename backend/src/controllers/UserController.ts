@@ -24,6 +24,7 @@ function formatUser(u: User, customRole?: CustomRole | null) {
     customRoleId: u.customRoleId,
     customRole: customRole ? { id: customRole.id, name: customRole.name, permissionLevel: customRole.permissionLevel } : null,
     managerId: u.managerId, siteId: u.siteId, department: u.department, jobTitle: u.jobTitle,
+    gradeId: u.gradeId ?? null,
     shiftType: u.shiftType ?? null, clockOutSlot: u.clockOutSlot ?? null,
     phone: u.phone, staffId: u.staffId, profilePhoto: u.profilePhoto, isLocked: u.isLocked, createdAt: u.createdAt,
     surname: u.surname, firstName: u.firstName, middleName: u.middleName,
@@ -87,6 +88,7 @@ export default class UserController {
       name, email, passwordHash, role: effectiveRole,
       customRoleId: customRoleId ? Number(customRoleId) : null,
       managerId, siteId: Number(siteId), department, jobTitle,
+      gradeId: data.gradeId ? Number(data.gradeId) : null,
       phone: phone || null, staffId: staffId || null,
       shiftType: st === "night" ? "night" : st === "day" ? "day" : null,
       clockOutSlot: typeof clockOutSlot === "string" && clockOutSlot.trim() ? clockOutSlot.trim() : null,
@@ -110,6 +112,7 @@ export default class UserController {
       name, email, managerId, siteId: siteId ? Number(siteId) : null,
       department, jobTitle, phone: phone || null, staffId: staffId || null,
     };
+    if (data.gradeId !== undefined) updates.gradeId = data.gradeId ? Number(data.gradeId) : null;
     updates.customRoleId = customRoleId ? Number(customRoleId) : null;
     if (typeof require2Fa === "boolean") updates.require2Fa = require2Fa;
     if (shiftType !== undefined) {
@@ -179,6 +182,7 @@ export default class UserController {
       if (data.staffId !== undefined)     updates.staffId   = data.staffId   || null;
       if (data.phone !== undefined)       updates.phone     = data.phone     || null;
       if (data.siteId !== undefined)      updates.siteId    = data.siteId ? Number(data.siteId) : null;
+      if (data.gradeId !== undefined)     updates.gradeId   = data.gradeId ? Number(data.gradeId) : null;
     }
     const [count, rows] = await User.update(updates, { where: { id: targetId }, returning: true });
     if (count === 0) return null;

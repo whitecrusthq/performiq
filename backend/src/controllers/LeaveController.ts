@@ -1,5 +1,5 @@
 import { Op } from "sequelize";
-import { LeaveType, LeaveRequest, LeaveApprover, LeavePolicy, LeaveAllocation, User } from "../models/index.js";
+import { LeaveType, LeaveRequest, LeaveApprover, LeavePolicy, LeaveAllocation, User, EmployeeGrade, LeaveTypeGrade, AppSettings } from "../models/index.js";
 
 // Counts working days (Mon–Fri) between two ISO dates inclusive, excluding
 // weekends. Authoritative day count so the stored value never trusts the client.
@@ -26,8 +26,82 @@ function getCycleKey(policy: { cycleStartMonth: number; cycleStartDay: number; c
   return year;
 }
 
+/**
+ * Prorates a policy's annual entitlement for an employee whose resumption
+ * (start) date falls inside the current cycle year.
+ *  - none:         full entitlement regardless of start date
+ *  - monthly:      days ÷ 12 × full months remaining (resumption month counts
+ *                  only when resuming on the 1st)
+ *  - monthly_incl: days ÷ 12 × months remaining including the resumption month
+ */
+function prorateAllocation(policy: { daysAllocated: number; prorationMode?: string | null; cycleStartMonth: number; cycleStartDay: number; cycleEndMonth: number; cycleEndDay: number }, employeeStartDate: string | null | undefined, cycleYear?: number): number {
+  const total = Number(policy.daysAllocated) || 0;
+  const mode = policy.prorationMode ?? "none";
+  if (mode === "none" || !employeeStartDate) return total;
+  const s = new Date(`${employeeStartDate}T00:00:00Z`);
+  if (isNaN(s.getTime())) return total;
+
+  // Concrete boundaries of the target cycle (cycleYear is the year the cycle
+  // starts in). Non-calendar cycles (e.g. Jul–Jun) end in the following year.
+  const cy = cycleYear ?? getCycleKey(policy as any);
+  const cycleStart = new Date(Date.UTC(cy, policy.cycleStartMonth - 1, policy.cycleStartDay));
+  const endYear =
+    policy.cycleEndMonth < policy.cycleStartMonth ||
+    (policy.cycleEndMonth === policy.cycleStartMonth && policy.cycleEndDay < policy.cycleStartDay)
+      ? cy + 1
+      : cy;
+  const cycleEnd = new Date(Date.UTC(endYear, policy.cycleEndMonth - 1, policy.cycleEndDay, 23, 59, 59));
+
+  if (s <= cycleStart) return total;   // resumed on/before this cycle began
+  if (s > cycleEnd) return 0;          // resumes after this cycle ends
+
+  // Whole months from the resumption month through the cycle-end month.
+  const monthsSpan =
+    (cycleEnd.getUTCFullYear() * 12 + cycleEnd.getUTCMonth()) -
+    (s.getUTCFullYear() * 12 + s.getUTCMonth()) + 1;
+  let months: number;
+  if (mode === "monthly_incl") {
+    months = monthsSpan;               // resumption month always counts
+  } else {                             // monthly: counts only if resuming on the 1st
+    months = monthsSpan - (s.getUTCDate() === 1 ? 0 : 1);
+  }
+  months = Math.max(0, Math.min(12, months));
+  return Math.round((total * months) / 12);
+}
+
 export default class LeaveController {
   static getCycleKey = getCycleKey;
+  static prorateAllocation = prorateAllocation;
+
+  /**
+   * Leave-type IDs the given employee may use. A leave type with NO grade
+   * mappings is available to everyone; a mapped type only to employees whose
+   * grade is in its mapping.
+   */
+  static async getAllowedLeaveTypeIds(employee: { gradeId?: number | null }): Promise<Set<number>> {
+    const [types, mappings] = await Promise.all([
+      LeaveType.findAll({ attributes: ["id"] }),
+      LeaveTypeGrade.findAll(),
+    ]);
+    const mappedTypeIds = new Set(mappings.map((m: any) => m.leaveTypeId));
+    const allowed = new Set<number>();
+    for (const t of types as any[]) {
+      if (!mappedTypeIds.has(t.id)) { allowed.add(t.id); continue; }
+      if (employee.gradeId && mappings.some((m: any) => m.leaveTypeId === t.id && m.gradeId === employee.gradeId)) {
+        allowed.add(t.id);
+      }
+    }
+    return allowed;
+  }
+
+  /** True when the employee may request this leave type (by slug). */
+  static async isLeaveTypeAllowedForUser(userId: number, leaveTypeSlug: string): Promise<boolean> {
+    const type: any = await LeaveType.findOne({ where: { name: leaveTypeSlug } });
+    if (!type) return true; // unknown/legacy types are not grade-restricted
+    const user: any = await User.findByPk(userId, { attributes: ["id", "gradeId"] });
+    const allowed = await LeaveController.getAllowedLeaveTypeIds({ gradeId: user?.gradeId ?? null });
+    return allowed.has(type.id);
+  }
 
   static getCurrentCycleYear() {
     return new Date().getFullYear();
@@ -37,7 +111,11 @@ export default class LeaveController {
     const policy = await LeavePolicy.findOne({ where: { leaveType } });
 
     const effectiveCycle = cycleYear ?? (policy ? getCycleKey(policy) : new Date().getFullYear());
-    const allocated = policy ? policy.daysAllocated : 0;
+    let allocated = 0;
+    if (policy) {
+      const emp: any = await User.findByPk(employeeId, { attributes: ["id", "startDate"] });
+      allocated = prorateAllocation(policy, emp?.startDate ?? null, effectiveCycle);
+    }
     const policyId = policy ? policy.id : null;
 
     const existing = await LeaveAllocation.findOne({
@@ -109,23 +187,81 @@ export default class LeaveController {
     };
   }
 
-  static async listLeaveTypes() {
-    return LeaveType.findAll({ order: [["name", "ASC"]] });
+  static async listLeaveTypes(forUserId?: number) {
+    const types = await LeaveType.findAll({ order: [["name", "ASC"]] });
+    const mappings = await LeaveTypeGrade.findAll();
+    const gradeIdsByType = new Map<number, number[]>();
+    for (const m of mappings as any[]) {
+      const list = gradeIdsByType.get(m.leaveTypeId) ?? [];
+      list.push(m.gradeId);
+      gradeIdsByType.set(m.leaveTypeId, list);
+    }
+    let allowed: Set<number> | null = null;
+    if (forUserId) {
+      const user: any = await User.findByPk(forUserId, { attributes: ["id", "gradeId"] });
+      allowed = await LeaveController.getAllowedLeaveTypeIds({ gradeId: user?.gradeId ?? null });
+    }
+    return types
+      .filter((t: any) => !allowed || allowed.has(t.id))
+      .map((t: any) => ({ ...t.toJSON(), gradeIds: gradeIdsByType.get(t.id) ?? [] }));
   }
 
-  static async createLeaveType(name: string, label: string) {
+  static async setLeaveTypeGrades(leaveTypeId: number, gradeIds: number[] | undefined) {
+    if (!Array.isArray(gradeIds)) return;
+    await LeaveTypeGrade.destroy({ where: { leaveTypeId } });
+    const unique = [...new Set(gradeIds.map(Number).filter(n => Number.isInteger(n) && n > 0))];
+    if (unique.length > 0) {
+      await LeaveTypeGrade.bulkCreate(unique.map(gradeId => ({ leaveTypeId, gradeId })));
+    }
+  }
+
+  static async createLeaveType(name: string, label: string, gradeIds?: number[]) {
     const slug = name.toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_|_$/g, "");
     if (!slug) return { error: "Invalid name", status: 400 };
     const existing = await LeaveType.findOne({ where: { name: slug } });
     if (existing) return { error: "A leave type with this name already exists", status: 400 };
     const created = await LeaveType.create({ name: slug, label });
+    await LeaveController.setLeaveTypeGrades(created.id, gradeIds);
     return { data: created };
   }
 
-  static async updateLeaveType(id: number, label: string) {
+  static async updateLeaveType(id: number, label: string, gradeIds?: number[]) {
     const [count, rows] = await LeaveType.update({ label }, { where: { id }, returning: true });
     if (count === 0) return null;
+    await LeaveController.setLeaveTypeGrades(id, gradeIds);
     return rows[0];
+  }
+
+  // ---- Employee grades (categories) ----
+  static async listGrades() {
+    return EmployeeGrade.findAll({ order: [["name", "ASC"]] });
+  }
+
+  static async createGrade(name: string, description?: string) {
+    const trimmed = (name ?? "").trim();
+    if (!trimmed) return { error: "Grade name is required", status: 400 };
+    const existing = await EmployeeGrade.findOne({ where: { name: trimmed } });
+    if (existing) return { error: "A grade with this name already exists", status: 400 };
+    const created = await EmployeeGrade.create({ name: trimmed, description: description || null });
+    return { data: created };
+  }
+
+  static async updateGrade(id: number, name: string, description?: string) {
+    const trimmed = (name ?? "").trim();
+    if (!trimmed) return { error: "Grade name is required", status: 400 };
+    const dupe = await EmployeeGrade.findOne({ where: { name: trimmed, id: { [Op.ne]: id } } });
+    if (dupe) return { error: "A grade with this name already exists", status: 400 };
+    const [count, rows] = await EmployeeGrade.update(
+      { name: trimmed, description: description || null },
+      { where: { id }, returning: true }
+    );
+    if (count === 0) return { error: "Not found", status: 404 };
+    return { data: rows[0] };
+  }
+
+  static async deleteGrade(id: number) {
+    await EmployeeGrade.destroy({ where: { id } });
+    return { success: true };
   }
 
   static async deleteLeaveType(id: number) {
@@ -151,8 +287,11 @@ export default class LeaveController {
     return policies.filter(p => applicableTypes.has(p.leaveType));
   }
 
-  static async upsertPolicy(data: { leaveType: string; daysAllocated: number; cycleStartMonth?: number; cycleStartDay?: number; cycleEndMonth?: number; cycleEndDay?: number }) {
+  static async upsertPolicy(data: { leaveType: string; daysAllocated: number; cycleStartMonth?: number; cycleStartDay?: number; cycleEndMonth?: number; cycleEndDay?: number; prorationMode?: string }) {
     const { leaveType, daysAllocated, cycleStartMonth, cycleStartDay, cycleEndMonth, cycleEndDay } = data;
+    const prorationMode = ["none", "monthly", "monthly_incl"].includes(data.prorationMode ?? "")
+      ? data.prorationMode
+      : "none";
     const existing = await LeavePolicy.findOne({ where: { leaveType } });
 
     let policy;
@@ -163,6 +302,7 @@ export default class LeaveController {
         cycleStartDay: Number(cycleStartDay) || 1,
         cycleEndMonth: Number(cycleEndMonth) || 12,
         cycleEndDay: Number(cycleEndDay) || 31,
+        prorationMode,
         updatedAt: new Date(),
       }, { where: { id: existing.id }, returning: true });
       policy = rows[0];
@@ -174,19 +314,21 @@ export default class LeaveController {
         cycleStartDay: Number(cycleStartDay) || 1,
         cycleEndMonth: Number(cycleEndMonth) || 12,
         cycleEndDay: Number(cycleEndDay) || 31,
+        prorationMode,
       });
     }
 
     const cycleYear = getCycleKey(policy);
-    const employees = await User.findAll({ attributes: ["id"] });
-    for (const emp of employees) {
+    const employees = await User.findAll({ attributes: ["id", "startDate"] });
+    for (const emp of employees as any[]) {
+      const allocated = prorateAllocation(policy, emp.startDate ?? null, cycleYear);
       const existingAlloc = await LeaveAllocation.findOne({
         where: { employeeId: emp.id, leaveType, cycleYear },
       });
 
       if (existingAlloc) {
         await LeaveAllocation.update({
-          allocated: Number(daysAllocated),
+          allocated,
           policyId: policy.id,
           updatedAt: new Date(),
         }, { where: { id: existingAlloc.id } });
@@ -195,7 +337,7 @@ export default class LeaveController {
           employeeId: emp.id,
           leaveType,
           policyId: policy.id,
-          allocated: Number(daysAllocated),
+          allocated,
           used: 0,
           cycleYear,
         });
@@ -381,8 +523,15 @@ export default class LeaveController {
     return Promise.all(rows.map(r => LeaveController.enrichLeaveRequest(r, userMap)));
   }
 
-  static async createLeaveRequest(userId: number, data: { leaveType: string; startDate: string; endDate: string; reason?: string; approverIds?: number[]; coverUserIds?: number[] }) {
+  static async createLeaveRequest(userId: number, data: { leaveType: string; startDate: string; endDate: string; reason?: string; approverIds?: number[]; coverUserIds?: number[]; includeHrApprover?: boolean }) {
     const { leaveType, startDate, endDate, reason, approverIds, coverUserIds } = data;
+
+    // Grade restriction: employees may only request leave types mapped to
+    // their grade (unmapped types are open to everyone).
+    const typeAllowed = await LeaveController.isLeaveTypeAllowedForUser(userId, leaveType);
+    if (!typeAllowed) {
+      return { error: "This leave type is not available for your employee grade.", status: 403 };
+    }
 
     // Authoritative: count working days (Mon–Fri) only, never trust the client value.
     const days = countWeekdays(startDate, endDate);
@@ -417,6 +566,17 @@ export default class LeaveController {
       if (emp?.managerId) orderedApproverIds = [emp.managerId];
     }
 
+    // The designated HR approver (configured by an admin) is suggested as the
+    // final approval step but is NOT compulsory: the applicant can opt out
+    // (includeHrApprover: false). Defaults to included when omitted. Skipped
+    // when they are the requester or already in the chain.
+    if (data.includeHrApprover !== false) {
+      const hrApproverId = await LeaveController.getHrLeaveApproverId();
+      if (hrApproverId && hrApproverId !== userId && !orderedApproverIds.includes(hrApproverId)) {
+        orderedApproverIds.push(hrApproverId);
+      }
+    }
+
     if (orderedApproverIds.length > 0) {
       await LeaveApprover.bulkCreate(
         orderedApproverIds.map((aid, idx) => ({
@@ -441,6 +601,33 @@ export default class LeaveController {
     const enriched = await LeaveController.enrichLeaveRequest(row, userMap);
 
     return { enriched, orderedApproverIds, userMap, row: row.toJSON() };
+  }
+
+  /** The designated HR approver, if configured and still an active user. */
+  static async getHrLeaveApproverId(): Promise<number | null> {
+    const settings: any = await AppSettings.findByPk(1, { attributes: ["id", "hrLeaveApproverId"] });
+    const id = settings?.hrLeaveApproverId ?? null;
+    if (!id) return null;
+    const u: any = await User.findByPk(id, { attributes: ["id", "isActive"] });
+    if (!u || u.isActive === false) return null;
+    return u.id;
+  }
+
+  static async getHrLeaveApprover() {
+    const id = await LeaveController.getHrLeaveApproverId();
+    if (!id) return null;
+    const u: any = await User.findByPk(id, { attributes: ["id", "name", "department", "jobTitle"] });
+    return u ? u.toJSON() : null;
+  }
+
+  static async setHrLeaveApprover(userId: number | null) {
+    if (userId != null) {
+      const u = await User.findByPk(userId, { attributes: ["id"] });
+      if (!u) return { error: "User not found", status: 400 };
+    }
+    const [settings] = await AppSettings.findOrCreate({ where: { id: 1 } });
+    await AppSettings.update({ hrLeaveApproverId: userId }, { where: { id: settings.id } });
+    return { data: { hrLeaveApproverId: userId } };
   }
 
   static async getLeaveRequest(requestId: number) {
@@ -525,8 +712,6 @@ export default class LeaveController {
     }
 
     if (status === "approved" || status === "rejected") {
-      const ROLE_LEVEL: Record<string, number> = { super_admin: 4, admin: 3, manager: 2, employee: 1 };
-      if ((ROLE_LEVEL[role] ?? 1) < 2) return { error: "Insufficient permissions", status: 403 };
       if (row.status !== "pending") return { error: "Only pending requests can be reviewed", status: 400 };
 
       const approverRows = await LeaveApprover.findAll({
@@ -535,6 +720,10 @@ export default class LeaveController {
         limit: 1,
       });
 
+      // Admins can always review; otherwise the reviewer must be the request's
+      // current (first pending) approver — regardless of their system role, so
+      // designated approvers such as the HR approver can act even when their
+      // role is "employee".
       const isAdmin = role === "admin" || role === "super_admin";
       const isCurrentApprover = approverRows.length > 0 && approverRows[0].approverId === userId;
       if (!isAdmin && !isCurrentApprover) {

@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { PageHeader, Card, Button, Input, Label, EmptyState } from "@/components/shared";
-import { Shield, Plus, Edit, Trash2, X, LayoutDashboard, ClipboardList, Target, RefreshCcw, ListChecks, Users, BarChart3, Building2, MapPin, CalendarDays, Clock, ClipboardCheck, UserPlus, TrendingUp, CalendarClock, UserCog, Settings, BookOpen, IdCard, Briefcase, ArrowRightLeft, MessageSquareWarning, Award, ShieldAlert, Bell, Paintbrush, Sparkles, Brain, Search } from "lucide-react";
+import { Shield, Plus, Edit, Trash2, X, LayoutDashboard, ClipboardList, Target, RefreshCcw, ListChecks, Users, BarChart3, Building2, MapPin, CalendarDays, Clock, ClipboardCheck, UserPlus, TrendingUp, CalendarClock, UserCog, Settings, BookOpen, IdCard, Briefcase, ArrowRightLeft, MessageSquareWarning, Award, ShieldAlert, Bell, Paintbrush, Sparkles, Brain, Search, ScrollText, HardDrive, Scale } from "lucide-react";
 import { BulkActionBar } from "@/components/bulk-action-bar";
 import { useAuth } from "@/hooks/use-auth";
 import { apiFetch } from "@/lib/utils";
@@ -36,6 +36,8 @@ const MENU_STRUCTURE: MenuEntry[] = [
     { key: "onboarding",    label: "Onboarding",     icon: UserPlus },
     { key: "transfers",     label: "Staff Transfer", icon: ArrowRightLeft },
     { key: "hr-queries",    label: "HR Support",     icon: MessageSquareWarning },
+    { key: "hr-support-dashboard", label: "HR Support Dashboard", icon: BarChart3 },
+    { key: "hr-knowledge-base",    label: "HR Knowledge Base",    icon: BookOpen },
     { key: "anniversaries", label: "Anniversaries",  icon: Award },
   ]},
   { key: "reports", label: "Reports", icon: BarChart3 },
@@ -48,6 +50,9 @@ const MENU_STRUCTURE: MenuEntry[] = [
     { key: "notifications", label: "Notifications", icon: Bell },
     { key: "appearance",    label: "Appearance",    icon: Paintbrush },
     { key: "ai-settings",   label: "AI Assistant",  icon: Sparkles },
+    { key: "audit-log",     label: "Login Activity", icon: ScrollText },
+    { key: "storage-providers", label: "Storage Providers", icon: HardDrive },
+    { key: "legal",         label: "Legal & Compliance", icon: Scale },
   ]},
   { label: "Knowledge", icon: BookOpen, items: [
     { key: "handbook",     label: "Handbook",     icon: BookOpen },

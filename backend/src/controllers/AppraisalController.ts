@@ -28,6 +28,158 @@ function nextAppraisalStatus(current: string, workflowType: string, allReviewers
 }
 
 export default class AppraisalController {
+  /**
+   * Computes the overall score for an appraisal based on the cycle's scoring mode.
+   * - managers_only (default): average of all reviewers' scores.
+   * - combined: weighted blend of the self-score average and the reviewers' average
+   *   (weight comes from cycle.selfWeight, a 0-100 percentage for the self portion).
+   * - two_way: like managers_only, but upward reviewers (juniors appraising their boss)
+   *   are included or excluded from the total based on cycle.upwardIncluded.
+   * Reviewer averages prefer per-reviewer score rows (so every manager's scores count);
+   * falls back to the shared managerScore column for legacy appraisals without them.
+   */
+  static async computeOverallScore(appraisalId: number, cycle: any | null): Promise<string | null> {
+    const scoringMode = cycle?.scoringMode ?? "managers_only";
+    const selfWeight = Math.min(100, Math.max(0, Number(cycle?.selfWeight ?? 30)));
+    const upwardIncluded = cycle?.upwardIncluded ?? true;
+
+    const allScores = await AppraisalScore.findAll({ where: { appraisalId } });
+    const reviewerRows = await AppraisalReviewer.findAll({ where: { appraisalId } });
+    const upwardReviewerIds = new Set(reviewerRows.filter((r: any) => r.isUpward).map((r: any) => r.reviewerId));
+    const reviewerScoreRows = await AppraisalReviewerScore.findAll({ where: { appraisalId } });
+
+    const countedReviewerScores = reviewerScoreRows.filter((r: any) => {
+      if (r.score == null) return false;
+      if (scoringMode === "two_way" && !upwardIncluded && upwardReviewerIds.has(r.reviewerId)) return false;
+      return true;
+    });
+
+    let managerAvg: number | null = null;
+    if (countedReviewerScores.length > 0) {
+      const vals = countedReviewerScores.map((r: any) => Number(r.score));
+      managerAvg = vals.reduce((a, b) => a + b, 0) / vals.length;
+    } else if (reviewerScoreRows.length === 0) {
+      // Legacy fallback only: the shared managerScore column can contain scores
+      // written by upward reviewers, so never fall back to it when per-reviewer
+      // rows exist but were all excluded (e.g. upward-separate mode).
+      const mgScores = allScores.filter((s: any) => s.managerScore != null).map((s: any) => Number(s.managerScore));
+      if (mgScores.length > 0) managerAvg = mgScores.reduce((a, b) => a + b, 0) / mgScores.length;
+    }
+
+    if (scoringMode === "combined") {
+      const selfScores = allScores.filter((s: any) => s.selfScore != null).map((s: any) => Number(s.selfScore));
+      const selfAvg = selfScores.length > 0 ? selfScores.reduce((a, b) => a + b, 0) / selfScores.length : null;
+      if (selfAvg != null && managerAvg != null) {
+        const w = selfWeight / 100;
+        return String(selfAvg * w + managerAvg * (1 - w));
+      }
+      if (selfAvg != null && managerAvg == null) return String(selfAvg);
+    }
+
+    return managerAvg != null ? String(managerAvg) : null;
+  }
+
+  /** Average of the upward (junior -> boss) reviewers' scores, or null when none exist. */
+  static async computeUpwardScore(appraisalId: number): Promise<number | null> {
+    const upwardRows = await AppraisalReviewer.findAll({ where: { appraisalId, isUpward: true } });
+    if (upwardRows.length === 0) return null;
+    const upwardIds = upwardRows.map((r: any) => r.reviewerId);
+    const scoreRows = await AppraisalReviewerScore.findAll({ where: { appraisalId, reviewerId: { [Op.in]: upwardIds } } });
+    const vals = scoreRows.filter((r: any) => r.score != null).map((r: any) => Number(r.score));
+    if (vals.length === 0) return null;
+    return vals.reduce((a, b) => a + b, 0) / vals.length;
+  }
+
+  /**
+   * In a two_way cycle, every reviewer (boss) also gets appraised by the employee.
+   * Finds or creates the reviewer's own appraisal in the same cycle and adds the
+   * employee as an upward reviewer on it.
+   */
+  static async ensureUpwardAppraisals(params: {
+    cycleId: number; employeeId: number; reviewerIds: number[];
+    workflowType: string; criteriaGroupId?: number | null;
+  }) {
+    const { cycleId, employeeId, workflowType, criteriaGroupId } = params;
+    for (const reviewerId of params.reviewerIds) {
+      if (!reviewerId || reviewerId === employeeId) continue;
+
+      // Each reciprocal creation runs in its own transaction guarded by an
+      // advisory lock on (cycleId, reviewerId) so concurrent creates cannot
+      // produce duplicate boss appraisals or reviewer rows.
+      await sequelize.transaction(async (t) => {
+        await sequelize.query("SELECT pg_advisory_xact_lock(:k1, :k2)", {
+          replacements: { k1: cycleId, k2: reviewerId },
+          transaction: t,
+        });
+
+        let bossAppraisal: any = await Appraisal.findOne({ where: { cycleId, employeeId: reviewerId }, transaction: t });
+        if (!bossAppraisal) {
+          bossAppraisal = await Appraisal.create({
+            cycleId,
+            employeeId: reviewerId,
+            reviewerId: employeeId,
+            workflowType: workflowType ?? "admin_approval",
+            status: "self_review",
+            criteriaGroupId: criteriaGroupId ? Number(criteriaGroupId) : null,
+          }, { transaction: t });
+
+          let criteriaToScore = await Criterion.findAll({ transaction: t });
+          if (criteriaGroupId) {
+            const groupItems = await CriteriaGroupItem.findAll({ where: { groupId: Number(criteriaGroupId) }, transaction: t });
+            const groupCriterionIds = new Set(groupItems.map((i: any) => i.criterionId));
+            criteriaToScore = criteriaToScore.filter((c: any) => groupCriterionIds.has(c.id));
+          }
+          if (criteriaToScore.length > 0) {
+            await AppraisalScore.bulkCreate(
+              criteriaToScore.map((c: any) => ({ appraisalId: (bossAppraisal as any).id, criterionId: c.id })),
+              { transaction: t }
+            );
+          }
+        }
+
+        const bossPlain = bossAppraisal.get ? bossAppraisal.get({ plain: true }) : bossAppraisal;
+        // Don't append upward reviewers to appraisals that already moved past
+        // manager review — the feedback could never be submitted.
+        if (["completed", "pending_approval"].includes(bossPlain.status)) return;
+
+        const bossAppraisalId = (bossAppraisal as any).id;
+        const existingRow = await AppraisalReviewer.findOne({
+          where: { appraisalId: bossAppraisalId, reviewerId: employeeId },
+          transaction: t,
+        });
+        if (!existingRow) {
+          const maxOrderRow: any = await AppraisalReviewer.findOne({
+            where: { appraisalId: bossAppraisalId },
+            order: [["orderIndex", "DESC"]],
+            transaction: t,
+          });
+          const nextOrder = maxOrderRow ? Number(maxOrderRow.orderIndex) + 1 : 0;
+          await AppraisalReviewer.create({
+            appraisalId: bossAppraisalId,
+            reviewerId: employeeId,
+            orderIndex: nextOrder,
+            status: "pending",
+            isUpward: true,
+          }, { transaction: t });
+          // If the boss's appraisal is already in manager review with no active
+          // reviewer, activate the newly added upward reviewer.
+          if (bossPlain.status === "manager_review") {
+            const active = await AppraisalReviewer.findOne({
+              where: { appraisalId: bossAppraisalId, status: "in_progress" },
+              transaction: t,
+            });
+            if (!active) {
+              await AppraisalReviewer.update(
+                { status: "in_progress" },
+                { where: { appraisalId: bossAppraisalId, reviewerId: employeeId }, transaction: t }
+              );
+            }
+          }
+        }
+      });
+    }
+  }
+
   static async getReviewersForAppraisal(appraisalId: number) {
     const rows = await AppraisalReviewer.findAll({
       where: { appraisalId },
@@ -41,6 +193,7 @@ export default class AppraisalController {
       ...(formatUser(userMap[row.reviewerId]) ?? { id: row.reviewerId, name: 'Unknown', email: '', role: 'employee', managerId: null, department: null, jobTitle: null, createdAt: null }),
       stepStatus: row.status,
       orderIndex: row.orderIndex,
+      isUpward: !!row.isUpward,
       managerComment: row.managerComment,
       reviewedAt: row.reviewedAt,
     }));
@@ -85,11 +238,15 @@ export default class AppraisalController {
     const currentReviewer = reviewers.find((r: any) => r.stepStatus === 'in_progress') ?? reviewers.find((r: any) => r.stepStatus === 'pending') ?? null;
     const reviewer = currentReviewer ?? (reviewers.length > 0 ? reviewers[0] : null);
 
+    const hasUpward = reviewers.some((r: any) => r.isUpward);
+    const upwardScore = hasUpward ? await AppraisalController.computeUpwardScore(plain.id) : null;
+
     return {
       ...plain,
       employee: formatUser(employee),
       reviewer,
       reviewers,
+      upwardScore,
       cycle: cycle ? cycle.get({ plain: true }) : null,
     };
   }
@@ -110,7 +267,21 @@ export default class AppraisalController {
     if (filters.employeeId) where.employeeId = filters.employeeId;
 
     if (filters.userRole === "employee") {
-      where.employeeId = filters.userId;
+      // Employees see their own appraisals plus any appraisal they are assigned
+      // to review (e.g. upward reviews of their manager in two-way cycles).
+      const reviewerRows = await AppraisalReviewer.findAll({
+        where: { reviewerId: filters.userId },
+        attributes: ["appraisalId"],
+      });
+      const reviewerAppraisalIds = reviewerRows.map((r: any) => r.appraisalId);
+      if (reviewerAppraisalIds.length > 0) {
+        where[Op.or as any] = [
+          { employeeId: filters.userId },
+          { id: { [Op.in]: reviewerAppraisalIds } },
+        ];
+      } else {
+        where.employeeId = filters.userId;
+      }
     } else if (filters.userRole === "manager") {
       const teamMembers = await User.findAll({ where: { managerId: filters.userId }, attributes: ["id"] });
       const memberIds = teamMembers.map((m: any) => m.id);
@@ -184,6 +355,17 @@ export default class AppraisalController {
           budgetValue: budgetMap[c.id] != null ? String(budgetMap[c.id]) : null,
         }))
       );
+    }
+
+    const cycleRow: any = await Cycle.findByPk(Number(data.cycleId));
+    if (cycleRow && cycleRow.scoringMode === "two_way") {
+      await AppraisalController.ensureUpwardAppraisals({
+        cycleId: Number(data.cycleId),
+        employeeId: data.employeeId,
+        reviewerIds: orderedIds,
+        workflowType: data.workflowType ?? "admin_approval",
+        criteriaGroupId: data.criteriaGroupId,
+      });
     }
 
     return AppraisalController.enrichAppraisal(appraisal);
@@ -271,6 +453,20 @@ export default class AppraisalController {
       return created;
     });
 
+    const cycleRow: any = await Cycle.findByPk(Number(data.cycleId));
+    if (cycleRow && cycleRow.scoringMode === "two_way") {
+      for (const empId of uniqueEmpIds) {
+        if (!empMap[empId]) continue;
+        await AppraisalController.ensureUpwardAppraisals({
+          cycleId: Number(data.cycleId),
+          employeeId: empId,
+          reviewerIds: orderedReviewerIds,
+          workflowType: data.workflowType ?? "admin_approval",
+          criteriaGroupId: data.criteriaGroupId,
+        });
+      }
+    }
+
     return { created: results.length, appraisalIds: results.map((a: any) => a.id) };
   }
 
@@ -334,6 +530,25 @@ export default class AppraisalController {
       ? await AppraisalReviewer.findOne({ where: { appraisalId, status: 'in_progress' } })
       : null;
     const submittingReviewerId = (preSubmitReviewerRow as any)?.reviewerId ?? currentUser.id;
+
+    // During manager review, a caller who is an assigned reviewer may only
+    // write review data / submit when it is their turn (their row is the
+    // in-progress one). Admins are exempt; the appraisal subject and team
+    // managers without a reviewer row keep their existing access.
+    if (currentPlain.status === "manager_review" && !["admin", "super_admin"].includes(currentUser.role)) {
+      const { action: bodyAction, scores: bodyScores, managerComment: bodyManagerComment } = body ?? {};
+      const touchesReview = bodyAction === "submit"
+        || bodyManagerComment !== undefined
+        || (Array.isArray(bodyScores) && bodyScores.some((s: any) => s?.managerScore != null));
+      if (touchesReview && currentPlain.employeeId !== currentUser.id) {
+        const callerReviewerRow = await AppraisalReviewer.findOne({
+          where: { appraisalId, reviewerId: currentUser.id },
+        });
+        if (callerReviewerRow && (preSubmitReviewerRow as any)?.reviewerId !== currentUser.id) {
+          return { error: "It's not your turn to review this appraisal yet", status: 403 };
+        }
+      }
+    }
 
     if (action === "resend_review") {
       const isEmployee = currentUser.id === currentPlain.employeeId;
@@ -506,19 +721,21 @@ export default class AppraisalController {
       }
       const targetStatus = updates.status ?? currentPlain.status;
       if (targetStatus === "pending_approval" || targetStatus === "completed") {
-        const allScores = await AppraisalScore.findAll({ where: { appraisalId } });
-        const mgScores = allScores.filter((s: any) => s.managerScore != null).map((s: any) => Number(s.managerScore));
-        if (mgScores.length > 0) {
-          updates.overallScore = String(mgScores.reduce((a: number, b: number) => a + b, 0) / mgScores.length);
-        }
+        const cycleForScore = await Cycle.findByPk(currentPlain.cycleId);
+        const overall = await AppraisalController.computeOverallScore(
+          appraisalId, cycleForScore ? cycleForScore.get({ plain: true }) : null
+        );
+        if (overall != null) updates.overallScore = overall;
       }
     }
 
     if (action === "submit" && currentPlain.status === "pending_approval" && !scores) {
-      const allScores = await AppraisalScore.findAll({ where: { appraisalId } });
-      const mgScores = allScores.filter((s: any) => s.managerScore != null).map((s: any) => Number(s.managerScore));
-      if (mgScores.length > 0 && !currentPlain.overallScore) {
-        updates.overallScore = String(mgScores.reduce((a: number, b: number) => a + b, 0) / mgScores.length);
+      if (!currentPlain.overallScore) {
+        const cycleForScore = await Cycle.findByPk(currentPlain.cycleId);
+        const overall = await AppraisalController.computeOverallScore(
+          appraisalId, cycleForScore ? cycleForScore.get({ plain: true }) : null
+        );
+        if (overall != null) updates.overallScore = overall;
       }
     }
 

@@ -13,7 +13,14 @@ export class GetAppraisalAction {
       const userId = req.user!.id;
       const userRole = req.user!.role;
       if (userRole === "employee" && plain.employeeId !== userId) {
-        res.status(403).json({ error: "You can only view your own appraisals" }); return;
+        // Employees may also view appraisals where they are an assigned
+        // reviewer (e.g. upward reviews in two-way cycles).
+        const isAssignedReviewer = await AppraisalReviewer.findOne({
+          where: { appraisalId: plain.id, reviewerId: userId },
+        });
+        if (!isAssignedReviewer) {
+          res.status(403).json({ error: "You can only view your own appraisals" }); return;
+        }
       }
       if (userRole === "manager") {
         const isOwner = plain.employeeId === userId;

@@ -270,6 +270,16 @@ export default function AppraisalDetail() {
                 <span className="text-sm font-semibold text-muted-foreground">({(Number(appraisal.overallScore) / 5 * 100).toFixed(0)}%)</span>
               </div>
             )}
+            {(appraisal as any).upwardScore != null && (
+              <div className="flex items-center gap-2 mt-1">
+                <span className="text-sm font-medium text-muted-foreground">Upward Feedback Score:</span>
+                <span className="text-lg font-bold text-foreground">{Number((appraisal as any).upwardScore).toFixed(1)}</span>
+                <span className="text-sm font-semibold text-muted-foreground">({(Number((appraisal as any).upwardScore) / 5 * 100).toFixed(0)}%)</span>
+                {(appraisal as any).cycle?.upwardIncluded === false && (
+                  <span className="text-xs text-muted-foreground">(shown separately — not counted in the final score)</span>
+                )}
+              </div>
+            )}
           </div>
         </div>
       </Card>
