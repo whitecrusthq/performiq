@@ -38,7 +38,8 @@ export default function Users() {
   const [sites, setSites] = useState<Site[]>([]);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
-  const [formData, setFormData] = useState({ name: "", email: "", password: "", role: "employee" as any, customRoleId: "", siteId: "", department: "", jobTitle: "", phone: "", staffId: "", require2Fa: false, shiftType: "", clockOutSlot: "" });
+  const [formData, setFormData] = useState({ name: "", email: "", password: "", role: "employee" as any, customRoleId: "", siteId: "", department: "", jobTitle: "", phone: "", staffId: "", require2Fa: false, shiftType: "", clockOutSlot: "", gradeId: "" });
+  const [grades, setGrades] = useState<{ id: number; name: string }[]>([]);
   const [daySlots, setDaySlots] = useState<string[]>([]);
   const [nightSlots, setNightSlots] = useState<string[]>([]);
   const [isNewDept, setIsNewDept] = useState(false);
@@ -76,6 +77,10 @@ export default function Users() {
       .then(r => r.json())
       .then(data => Array.isArray(data) && setSites(data))
       .catch(() => {});
+    apiFetch("/api/grades")
+      .then(r => r.json())
+      .then(data => Array.isArray(data) && setGrades(data))
+      .catch(() => {});
   }, []);
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -94,6 +99,7 @@ export default function Users() {
       require2Fa: !!formData.require2Fa,
       shiftType: formData.shiftType || null,
       clockOutSlot: formData.shiftType ? (formData.clockOutSlot || null) : null,
+      gradeId: formData.gradeId ? parseInt(formData.gradeId) : null,
     };
     if (editingId) {
       const updateData = formData.password.trim() !== "" ? { ...base, password: formData.password } : base;
@@ -231,7 +237,7 @@ export default function Users() {
   return (
     <div>
       <PageHeader title="User Management" description="Manage platform access and organizational structure.">
-        <Button onClick={() => { setMutationError(null); setFormData({ name: "", email: "", password: "", role: "employee", customRoleId: "", siteId: "", department: "", jobTitle: "", phone: "", staffId: "", require2Fa: false, shiftType: "", clockOutSlot: "" }); setEditingId(null); setIsNewDept(false); setIsDialogOpen(true); }}>
+        <Button onClick={() => { setMutationError(null); setFormData({ name: "", email: "", password: "", role: "employee", customRoleId: "", siteId: "", department: "", jobTitle: "", phone: "", staffId: "", require2Fa: false, shiftType: "", clockOutSlot: "", gradeId: "" }); setEditingId(null); setIsNewDept(false); setIsDialogOpen(true); }}>
           <Plus className="w-4 h-4 mr-2" /> Add User
         </Button>
       </PageHeader>
@@ -381,7 +387,7 @@ export default function Users() {
                         variant="outline"
                         size="sm"
                         className="gap-1.5"
-                        onClick={() => { setMutationError(null); setFormData({ name: u.name, email: u.email, password: "", role: u.role, customRoleId: u.customRole?.id?.toString() || "", siteId: (u as any).siteId?.toString() || "", department: u.department||"", jobTitle: u.jobTitle||"", phone: u.phone||"", staffId: u.staffId||"", require2Fa: !!(u as any).require2Fa, shiftType: (u as any).shiftType||"", clockOutSlot: (u as any).clockOutSlot||"" }); setEditingId(u.id); setIsNewDept(false); setIsDialogOpen(true); }}
+                        onClick={() => { setMutationError(null); setFormData({ name: u.name, email: u.email, password: "", role: u.role, customRoleId: u.customRole?.id?.toString() || "", siteId: (u as any).siteId?.toString() || "", department: u.department||"", jobTitle: u.jobTitle||"", phone: u.phone||"", staffId: u.staffId||"", require2Fa: !!(u as any).require2Fa, shiftType: (u as any).shiftType||"", clockOutSlot: (u as any).clockOutSlot||"", gradeId: (u as any).gradeId?.toString() || "" }); setEditingId(u.id); setIsNewDept(false); setIsDialogOpen(true); }}
                       >
                         <Edit className="w-3.5 h-3.5" /> Edit
                       </Button>
@@ -545,6 +551,21 @@ export default function Users() {
                   {user?.role === "super_admin" && <option value="super_admin">Super Admin</option>}
                 </select>
               </div>
+              {grades.length > 0 && (
+                <div>
+                  <Label>Grade <span className="text-muted-foreground font-normal text-xs">(controls which leave types this person sees)</span></Label>
+                  <select
+                    className="w-full px-4 py-2 border rounded-xl bg-background text-sm"
+                    value={formData.gradeId}
+                    onChange={e => setFormData({ ...formData, gradeId: e.target.value })}
+                  >
+                    <option value="">— No grade —</option>
+                    {grades.map(g => (
+                      <option key={g.id} value={g.id}>{g.name}</option>
+                    ))}
+                  </select>
+                </div>
+              )}
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <Label>Department</Label>

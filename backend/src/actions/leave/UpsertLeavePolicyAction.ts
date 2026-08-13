@@ -5,11 +5,11 @@ import LeaveController from "../../controllers/LeaveController.js";
 export class UpsertLeavePolicyAction {
   static async handle(req: AuthRequest, res: Response) {
     try {
-      const { leaveType, daysAllocated, cycleStartMonth, cycleStartDay, cycleEndMonth, cycleEndDay } = req.body;
+      const { leaveType, daysAllocated, cycleStartMonth, cycleStartDay, cycleEndMonth, cycleEndDay, prorationMode } = req.body;
       if (!leaveType || daysAllocated === undefined) {
         res.status(400).json({ error: "leaveType and daysAllocated are required" }); return;
       }
-      const policy = await LeaveController.upsertPolicy({ leaveType, daysAllocated, cycleStartMonth, cycleStartDay, cycleEndMonth, cycleEndDay });
+      const policy = await LeaveController.upsertPolicy({ leaveType, daysAllocated, cycleStartMonth, cycleStartDay, cycleEndMonth, cycleEndDay, prorationMode });
       res.json(policy);
     } catch (err) {
       console.error(err);

@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { useLocation } from "wouter";
+import { defaultLandingPath } from "@/lib/menu-permissions";
 import { useAuth } from "@/hooks/use-auth";
 import { Button, Input, Label } from "@/components/shared";
 import { AlertCircle, ShieldCheck, Smartphone, KeyRound, Copy, Check, Download, ScrollText, ExternalLink } from "lucide-react";
@@ -130,7 +131,7 @@ export default function SetupTwoFactor() {
         return;
       }
       login(data.token, data.user);
-      setLocation("/dashboard");
+      setLocation(defaultLandingPath(data.user));
     } catch {
       setError("Network error. Please try again.");
     } finally {
@@ -280,9 +281,9 @@ export default function SetupTwoFactor() {
                 className="w-full"
                 size="lg"
                 disabled={!acknowledgedBackup}
-                onClick={() => (needsTerms ? setStage("terms") : setLocation("/dashboard"))}
+                onClick={() => (needsTerms ? setStage("terms") : setLocation("/"))}
               >
-                {needsTerms ? "Continue" : "Continue to dashboard"}
+                {needsTerms ? "Continue" : "Continue to app"}
               </Button>
             </div>
           )}

@@ -1,5 +1,6 @@
 import { ReactNode, useState, useEffect } from "react";
-import { Link, useLocation } from "wouter";
+import { Link, useLocation, Redirect } from "wouter";
+import { hasMenuAccess, menuKeyForPath, defaultLandingPath } from "@/lib/menu-permissions";
 import { useAuth } from "@/hooks/use-auth";
 import { 
   LayoutDashboard, 
@@ -278,8 +279,17 @@ export function AppLayout({ children }: { children: ReactNode }) {
   const { user, logout } = useAuth();
   const { settings } = useAppSettings();
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [location] = useLocation();
 
   if (!user) return <>{children}</>;
+
+  // Enforce custom-role menu permissions on direct navigation too:
+  // if the current page's menu section is excluded from the user's
+  // custom-role allow-list, send them to their landing page instead.
+  const menuKey = menuKeyForPath(location);
+  if (menuKey && !hasMenuAccess(user, menuKey)) {
+    return <Redirect to={defaultLandingPath(user)} />;
+  }
 
   return (
     <div className="min-h-screen bg-background flex">

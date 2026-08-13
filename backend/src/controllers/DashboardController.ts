@@ -1,36 +1,18 @@
 import { Op } from "sequelize";
 import { User, Cycle, Appraisal, Goal, LeavePolicy, LeaveAllocation, LeaveRequest, LeaveType } from "../models/index.js";
+import LeaveController from "./LeaveController.js";
 
-function getCycleKey(policy: any) {
-  const today = new Date();
-  const year = today.getFullYear();
-  const cycleStart = new Date(year, policy.cycleStartMonth - 1, policy.cycleStartDay);
-  if (today < cycleStart) {
-    return year - 1;
-  }
-  return year;
-}
+const getCycleKey = (policy: any) => LeaveController.getCycleKey(policy);
 
 async function getLeaveBalance(userId: number) {
   const policies = await LeavePolicy.findAll();
   const cycleKeys = [...new Set(policies.map((p: any) => getCycleKey(p)))];
   if (cycleKeys.length === 0) cycleKeys.push(new Date().getFullYear());
 
+  // Single shared allocator: applies the policy's proration rules so a new
+  // starter who opens the dashboard first doesn't get a full-year allocation.
   for (const p of policies) {
-    const ck = getCycleKey(p);
-    const existing = await LeaveAllocation.findOne({
-      where: { employeeId: userId, leaveType: (p as any).leaveType, cycleYear: ck },
-    });
-    if (!existing) {
-      await LeaveAllocation.create({
-        employeeId: userId,
-        leaveType: (p as any).leaveType,
-        policyId: (p as any).id,
-        allocated: (p as any).daysAllocated,
-        used: 0,
-        cycleYear: ck,
-      });
-    }
+    await LeaveController.ensureAllocation(userId, (p as any).leaveType, getCycleKey(p));
   }
 
   const allAllocations: any[] = [];

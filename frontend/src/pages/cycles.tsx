@@ -24,11 +24,14 @@ export default function Cycles() {
     name: "",
     startDate: "",
     endDate: "",
-    status: "draft" as "draft" | "active" | "closed"
+    status: "draft" as "draft" | "active" | "closed",
+    scoringMode: "managers_only" as "managers_only" | "combined" | "two_way",
+    selfWeight: 30,
+    upwardIncluded: true,
   });
 
   const openCreate = () => {
-    setFormData({ name: "", startDate: "", endDate: "", status: "draft" });
+    setFormData({ name: "", startDate: "", endDate: "", status: "draft", scoringMode: "managers_only", selfWeight: 30, upwardIncluded: true });
     setEditingId(null);
     setIsDialogOpen(true);
   };
@@ -38,7 +41,10 @@ export default function Cycles() {
       name: cycle.name,
       startDate: format(new Date(cycle.startDate), 'yyyy-MM-dd'),
       endDate: format(new Date(cycle.endDate), 'yyyy-MM-dd'),
-      status: cycle.status
+      status: cycle.status,
+      scoringMode: cycle.scoringMode ?? "managers_only",
+      selfWeight: cycle.selfWeight ?? 30,
+      upwardIncluded: cycle.upwardIncluded ?? true,
     });
     setEditingId(cycle.id);
     setIsDialogOpen(true);
@@ -48,6 +54,7 @@ export default function Cycles() {
     e.preventDefault();
     const payload = {
       ...formData,
+      selfWeight: Math.max(0, Math.min(100, Number(formData.selfWeight) || 0)),
       startDate: new Date(formData.startDate).toISOString(),
       endDate: new Date(formData.endDate).toISOString()
     };
@@ -186,6 +193,14 @@ export default function Cycles() {
                     <span className="w-16">Ends:</span>
                     <span className="font-medium text-foreground">{format(new Date(cycle.endDate), 'MMM d, yyyy')}</span>
                   </div>
+                  <div className="text-xs text-muted-foreground pt-1">
+                    Scoring:{" "}
+                    <span className="font-medium text-foreground">
+                      {cycle.scoringMode === "combined" && `Combined (self ${cycle.selfWeight ?? 30}%)`}
+                      {cycle.scoringMode === "two_way" && `Two-way (${cycle.upwardIncluded !== false ? "upward included" : "upward separate"})`}
+                      {(!cycle.scoringMode || cycle.scoringMode === "managers_only") && "Managers only"}
+                    </span>
+                  </div>
                 </div>
               </div>
             </Card>
@@ -230,6 +245,49 @@ export default function Cycles() {
                   <option value="closed">Closed</option>
                 </select>
               </div>
+              <div>
+                <Label>Scoring Mode</Label>
+                <select
+                  className="w-full px-4 py-2.5 rounded-xl bg-background border border-border focus:border-primary focus:ring-4 focus:ring-primary/20 outline-none transition-all"
+                  value={formData.scoringMode}
+                  onChange={e => setFormData({...formData, scoringMode: e.target.value as any})}
+                >
+                  <option value="managers_only">Managers only — total is the average of all managers' scores</option>
+                  <option value="combined">Combined — self score + managers' scores count in the total</option>
+                  <option value="two_way">Two-way (360) — staff also appraise their managers</option>
+                </select>
+                <p className="text-xs text-muted-foreground mt-1.5">
+                  {formData.scoringMode === "managers_only" && "The final score averages every assigned reviewer's scores. Self-assessment is recorded but not counted."}
+                  {formData.scoringMode === "combined" && "The final score blends the employee's self-assessment with the managers' average using the weight below."}
+                  {formData.scoringMode === "two_way" && "Each employee's managers are appraised back by that employee. Managers' totals can include or exclude this upward feedback."}
+                </p>
+              </div>
+              {formData.scoringMode === "combined" && (
+                <div>
+                  <Label>Self-Assessment Weight (%)</Label>
+                  <Input
+                    type="number" min={0} max={100}
+                    value={formData.selfWeight}
+                    onChange={e => setFormData({...formData, selfWeight: Number(e.target.value)})}
+                  />
+                  <p className="text-xs text-muted-foreground mt-1.5">
+                    Self counts for {Math.max(0, Math.min(100, Number(formData.selfWeight) || 0))}%, managers for {100 - Math.max(0, Math.min(100, Number(formData.selfWeight) || 0))}% of the total.
+                  </p>
+                </div>
+              )}
+              {formData.scoringMode === "two_way" && (
+                <div>
+                  <Label>Upward Feedback</Label>
+                  <select
+                    className="w-full px-4 py-2.5 rounded-xl bg-background border border-border focus:border-primary focus:ring-4 focus:ring-primary/20 outline-none transition-all"
+                    value={formData.upwardIncluded ? "included" : "separate"}
+                    onChange={e => setFormData({...formData, upwardIncluded: e.target.value === "included"})}
+                  >
+                    <option value="included">Included — staff feedback counts in the manager's overall score</option>
+                    <option value="separate">Separate — staff feedback is shown as its own score</option>
+                  </select>
+                </div>
+              )}
               <div className="pt-4 flex justify-end gap-3">
                 <Button type="button" variant="ghost" onClick={() => setIsDialogOpen(false)}>Cancel</Button>
                 <Button type="submit" isLoading={createMutation.isPending || updateMutation.isPending}>Save Cycle</Button>

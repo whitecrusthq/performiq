@@ -7,6 +7,7 @@ class AppraisalReviewer extends Model {
   declare reviewerId: number;
   declare orderIndex: number;
   declare status: string;
+  declare isUpward: boolean;
   declare managerComment: string | null;
   declare reviewedAt: Date | null;
   declare createdAt: Date;
@@ -19,6 +20,7 @@ AppraisalReviewer.init(
     reviewerId: { type: DataTypes.INTEGER, allowNull: false, field: "reviewer_id" },
     orderIndex: { type: DataTypes.INTEGER, allowNull: false, defaultValue: 0, field: "order_index" },
     status: { type: DataTypes.TEXT, allowNull: false, defaultValue: "pending" },
+    isUpward: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: false, field: "is_upward" },
     managerComment: { type: DataTypes.TEXT, field: "manager_comment" },
     reviewedAt: { type: DataTypes.DATE, field: "reviewed_at" },
     createdAt: { type: DataTypes.DATE, allowNull: false, defaultValue: DataTypes.NOW, field: "created_at" },
