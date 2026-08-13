@@ -165,6 +165,9 @@ export default function Leave() {
   const [gradeSubmitting, setGradeSubmitting] = useState(false);
   const [hrApprovers, setHrApprovers] = useState<{ id: number; name: string; department?: string | null; isAssigned?: boolean }[]>([]);
   const [hrApproverSaving, setHrApproverSaving] = useState(false);
+  const [adjustTarget, setAdjustTarget] = useState<{ empId: number; name: string; leaveType: string; typeLabel: string; allocated: number } | null>(null);
+  const [adjustValue, setAdjustValue] = useState("");
+  const [adjustSaving, setAdjustSaving] = useState(false);
   const [editingLeaveType, setEditingLeaveType] = useState<LeaveTypeOption | null>(null);
   const [ltSubmitting, setLtSubmitting] = useState(false);
   const [expandedPolicyTeam, setExpandedPolicyTeam] = useState<Record<number, boolean>>({});
@@ -256,6 +259,25 @@ export default function Leave() {
       const data = await r.json();
       if (Array.isArray(data.hrApprovers)) setHrApprovers(data.hrApprovers);
     } catch {}
+  };
+
+  const handleAdjustAllocation = async () => {
+    if (!adjustTarget) return;
+    const allocated = Number(adjustValue);
+    if (!Number.isFinite(allocated) || allocated < 0) return;
+    setAdjustSaving(true);
+    try {
+      const r = await apiFetch("/api/leave-allocations", {
+        method: "PUT",
+        body: JSON.stringify({ employeeId: adjustTarget.empId, leaveType: adjustTarget.leaveType, allocated }),
+      });
+      if (r.ok) {
+        setAdjustTarget(null);
+        loadBalances();
+        if (isManager) loadTeamBalances();
+      }
+    } catch {}
+    setAdjustSaving(false);
   };
 
   const saveHrApprovers = async (userIds: number[], assignedUserId?: number | null) => {
@@ -1680,6 +1702,19 @@ export default function Leave() {
                                       {emp.remaining}
                                     </span>
                                     <span className="text-muted-foreground">/ {emp.allocated}</span>
+                                    {isAdmin && (
+                                      <button
+                                        type="button"
+                                        className="text-muted-foreground hover:text-primary"
+                                        title={`Adjust ${emp.name}'s ${p.leaveType} allocation`}
+                                        onClick={() => {
+                                          setAdjustTarget({ empId: emp.id, name: emp.name, leaveType: p.leaveType, typeLabel: p.leaveType.replace(/_/g, " "), allocated: emp.allocated });
+                                          setAdjustValue(String(emp.allocated));
+                                        }}
+                                      >
+                                        <Pencil className="w-3.5 h-3.5" />
+                                      </button>
+                                    )}
                                   </div>
                                 </div>
                               );
@@ -1694,6 +1729,36 @@ export default function Leave() {
               })}
             </div>
           )}
+        </div>
+      )}
+
+      {/* Adjust Allocation Modal */}
+      {adjustTarget && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-background rounded-2xl shadow-2xl w-full max-w-sm p-6 space-y-4">
+            <div className="flex items-center justify-between">
+              <h2 className="text-lg font-bold">Adjust Allocation</h2>
+              <button onClick={() => setAdjustTarget(null)}><X className="w-5 h-5" /></button>
+            </div>
+            <p className="text-sm text-muted-foreground">
+              Set <span className="font-semibold text-foreground">{adjustTarget.name}</span>'s allocated days for <span className="font-semibold text-foreground capitalize">{adjustTarget.typeLabel}</span> this leave year. This override stays even if the policy is re-saved.
+            </p>
+            <input
+              type="number"
+              min={0}
+              max={366}
+              className="w-full px-4 py-2 border rounded-xl bg-background"
+              value={adjustValue}
+              onChange={e => setAdjustValue(e.target.value)}
+              autoFocus
+            />
+            <div className="flex justify-end gap-2">
+              <Button variant="outline" onClick={() => setAdjustTarget(null)}>Cancel</Button>
+              <Button onClick={handleAdjustAllocation} disabled={adjustSaving || adjustValue === "" || Number(adjustValue) < 0}>
+                {adjustSaving ? "Saving…" : "Save"}
+              </Button>
+            </div>
+          </div>
         </div>
       )}
 

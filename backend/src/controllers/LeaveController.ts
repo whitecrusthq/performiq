@@ -327,11 +327,14 @@ export default class LeaveController {
       });
 
       if (existingAlloc) {
-        await LeaveAllocation.update({
-          allocated,
-          policyId: policy.id,
-          updatedAt: new Date(),
-        }, { where: { id: existingAlloc.id } });
+        // Never overwrite an admin's manual adjustment when re-prorating.
+        if (!existingAlloc.isManual) {
+          await LeaveAllocation.update({
+            allocated,
+            policyId: policy.id,
+            updatedAt: new Date(),
+          }, { where: { id: existingAlloc.id } });
+        }
       } else {
         await LeaveAllocation.create({
           employeeId: emp.id,
@@ -602,6 +605,22 @@ export default class LeaveController {
     const enriched = await LeaveController.enrichLeaveRequest(row, userMap);
 
     return { enriched, orderedApproverIds, userMap, row: row.toJSON() };
+  }
+
+  /** Admin override of an employee's allocated days for a leave type (survives policy re-saves). */
+  static async adjustAllocation(employeeId: number, leaveType: string, allocated: number) {
+    const emp = await User.findByPk(employeeId, { attributes: ["id"] });
+    if (!emp) return { error: "Employee not found", status: 404 };
+    const type = await LeaveType.findOne({ where: { name: leaveType } });
+    const policy = await LeavePolicy.findOne({ where: { leaveType } });
+    if (!type && !policy) return { error: "Unknown leave type", status: 400 };
+    const alloc = await LeaveController.ensureAllocation(employeeId, leaveType);
+    await LeaveAllocation.update(
+      { allocated, isManual: true, updatedAt: new Date() },
+      { where: { id: alloc.id } }
+    );
+    const updated = await LeaveAllocation.findByPk(alloc.id);
+    return { data: updated!.toJSON() };
   }
 
   /** Configured HR approver rows whose users are still active, in configured order. */
