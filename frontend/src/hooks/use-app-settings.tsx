@@ -44,6 +44,11 @@ function applyTheme(hsl: string) {
   document.documentElement.style.setProperty("--ring", hsl);
 }
 
+// Keep the browser tab title in sync with the configured company name.
+function applyTitle(companyName: string) {
+  if (companyName && document.title !== companyName) document.title = companyName;
+}
+
 const DEFAULT_FAVICON = "/favicon.svg";
 
 // Point the browser-tab / URL favicon at the configured brand logo so it matches
@@ -87,6 +92,7 @@ export function AppSettingsProvider({ children }: { children: ReactNode }) {
           setSettings(s);
           applyTheme(s.primaryHsl);
           applyFavicon(s.logoUrl);
+          applyTitle(s.companyName);
           try { localStorage.setItem(CACHE_KEY, JSON.stringify(s)); } catch { /* ignore quota */ }
         }
       })
@@ -98,6 +104,7 @@ export function AppSettingsProvider({ children }: { children: ReactNode }) {
     // didn't run (e.g. localStorage was cleared between then and React mount).
     applyTheme(settings.primaryHsl);
     applyFavicon(settings.logoUrl);
+    applyTitle(settings.companyName);
     load();
   }, []);
 

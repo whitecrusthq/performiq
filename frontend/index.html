@@ -20,6 +20,9 @@
             document.documentElement.style.setProperty("--primary", s.primaryHsl);
             document.documentElement.style.setProperty("--ring", s.primaryHsl);
           }
+          if (s && typeof s.companyName === "string" && s.companyName) {
+            document.title = s.companyName;
+          }
         } catch (e) { /* ignore */ }
       })();
     </script>
