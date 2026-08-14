@@ -290,14 +290,13 @@ export default class AppraisalController {
         attributes: ["appraisalId"],
       });
       const reviewerAppraisalIds = reviewerRows.map((r: any) => r.appraisalId);
-      const orConditions: any[] = [];
+      const orConditions: any[] = [
+        // Managers always see their own appraisals (e.g. when another manager reviews them)
+        { employeeId: filters.userId },
+      ];
       if (memberIds.length > 0) orConditions.push({ employeeId: { [Op.in]: memberIds } });
       if (reviewerAppraisalIds.length > 0) orConditions.push({ id: { [Op.in]: reviewerAppraisalIds } });
-      if (orConditions.length > 0) {
-        where[Op.or as any] = orConditions;
-      } else {
-        where.employeeId = -1;
-      }
+      where[Op.or as any] = orConditions;
     }
 
     const appraisals = await Appraisal.findAll({ where, order: [["createdAt", "ASC"]] });
