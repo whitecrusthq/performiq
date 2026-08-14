@@ -8,7 +8,10 @@ import { verifyToken as verifyTotpToken, consumeBackupCode } from "../lib/totp.j
 import SecurityController from "./SecurityController.js";
 import LegalController from "./LegalController.js";
 
-const OTP_ENABLED = !!(process.env.MAILGUN_API_KEY && process.env.MAILGUN_DOMAIN);
+// Email login codes require BOTH working Mailgun credentials AND explicit opt-in,
+// so that merely configuring email notifications never locks users out of login.
+const OTP_ENABLED = process.env.LOGIN_OTP_ENABLED === "true"
+  && !!(process.env.MAILGUN_API_KEY && process.env.MAILGUN_DOMAIN);
 
 function formatAuthUser(user: User, customRole?: CustomRole | null) {
   return {
