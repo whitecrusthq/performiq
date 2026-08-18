@@ -49,6 +49,7 @@ export default function Users() {
   const [search, setSearch] = useState("");
   const [filterRole, setFilterRole] = useState("");
   const [filterDept, setFilterDept] = useState("");
+  const [filterSite, setFilterSite] = useState("");
 
   const filteredUsers = useMemo(() => {
     if (!users) return [];
@@ -56,9 +57,10 @@ export default function Users() {
       const matchSearch = matchesPerson(search, u, [u.staffId, u.jobTitle, u.department]);
       const matchRole = !filterRole || u.role === filterRole;
       const matchDept = !filterDept || (u.department ?? "") === filterDept;
-      return matchSearch && matchRole && matchDept;
+      const matchSite = !filterSite || String((u as any).siteId ?? "") === filterSite;
+      return matchSearch && matchRole && matchDept && matchSite;
     });
-  }, [users, search, filterRole, filterDept]);
+  }, [users, search, filterRole, filterDept, filterSite]);
 
   useEffect(() => {
     apiFetch("/api/custom-roles")
@@ -278,10 +280,21 @@ export default function Users() {
           </select>
           <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground pointer-events-none" />
         </div>
-        {(search || filterRole || filterDept) && (
+        <div className="relative">
+          <select
+            className="pl-3 pr-8 py-2 rounded-xl border border-border bg-card text-sm appearance-none cursor-pointer focus:outline-none focus:ring-2 focus:ring-primary/20"
+            value={filterSite}
+            onChange={e => setFilterSite(e.target.value)}
+          >
+            <option value="">All Sites</option>
+            {sites.map(s => <option key={s.id} value={String(s.id)}>{s.name}</option>)}
+          </select>
+          <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground pointer-events-none" />
+        </div>
+        {(search || filterRole || filterDept || filterSite) && (
           <button
             className="px-3 py-2 text-xs text-muted-foreground underline hover:text-foreground"
-            onClick={() => { setSearch(""); setFilterRole(""); setFilterDept(""); }}
+            onClick={() => { setSearch(""); setFilterRole(""); setFilterDept(""); setFilterSite(""); }}
           >
             Clear filters
           </button>

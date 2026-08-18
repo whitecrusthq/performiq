@@ -2095,6 +2095,7 @@ export default function Staff() {
   const [search, setSearch] = useState("");
   const [filterDept, setFilterDept] = useState("");
   const [filterRole, setFilterRole] = useState("");
+  const [filterSite, setFilterSite] = useState("");
   const effectiveLevel = (user as any)?.customRole?.permissionLevel ?? user?.role;
   const isAdmin = effectiveLevel === "admin" || effectiveLevel === "super_admin";
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
@@ -2126,9 +2127,10 @@ export default function Staff() {
       const matchQ = matchesPerson(search, u, [u.jobTitle, u.department]);
       const matchDept = !filterDept || u.department === filterDept;
       const matchRole = !filterRole || u.role === filterRole;
-      return matchQ && matchDept && matchRole;
+      const matchSite = !filterSite || String(u.siteId ?? "") === filterSite;
+      return matchQ && matchDept && matchRole && matchSite;
     });
-  }, [users, search, filterDept, filterRole]);
+  }, [users, search, filterDept, filterRole, filterSite]);
 
   const handleUpdated = useCallback((updated: any) => {
     qc.setQueryData(["staff-list"], (old: any[]) =>
@@ -2237,8 +2239,15 @@ export default function Staff() {
           <option value="admin">Admin</option>
           <option value="super_admin">Super Admin</option>
         </select>
-        {(search || filterDept || filterRole) && (
-          <button onClick={() => { setSearch(""); setFilterDept(""); setFilterRole(""); }}
+        {(sites as any[]).length > 0 && (
+          <select value={filterSite} onChange={e => setFilterSite(e.target.value)}
+            className="px-3 py-2 rounded-xl border border-border bg-background text-sm outline-none">
+            <option value="">All Sites</option>
+            {(sites as any[]).map((s: any) => <option key={s.id} value={String(s.id)}>{s.name}</option>)}
+          </select>
+        )}
+        {(search || filterDept || filterRole || filterSite) && (
+          <button onClick={() => { setSearch(""); setFilterDept(""); setFilterRole(""); setFilterSite(""); }}
             className="px-3 py-2 text-xs text-muted-foreground hover:text-foreground underline">
             Clear
           </button>

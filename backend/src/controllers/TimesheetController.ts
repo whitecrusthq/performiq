@@ -77,7 +77,7 @@ export default class TimesheetController {
     const users = userIds.length > 0
       ? await User.findAll({
           where: { id: { [Op.in]: userIds } },
-          attributes: ["id", "name", "email", "department"],
+          attributes: ["id", "name", "email", "department", "siteId"],
         })
       : [];
     const userMap = Object.fromEntries(users.map(u => [u.id, u.toJSON()]));

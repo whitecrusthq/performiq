@@ -3,7 +3,7 @@ import { Goal, User } from "../models/index.js";
 
 const formatUser = (u: any) => u ? ({
   id: u.id, name: u.name, email: u.email, role: u.role,
-  managerId: u.managerId, department: u.department, jobTitle: u.jobTitle, createdAt: u.createdAt,
+  managerId: u.managerId, department: u.department, jobTitle: u.jobTitle, siteId: u.siteId, createdAt: u.createdAt,
 }) : null;
 
 export default class GoalController {

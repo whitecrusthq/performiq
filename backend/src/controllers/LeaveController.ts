@@ -507,7 +507,7 @@ export default class LeaveController {
     const users = allUserIds.length > 0
       ? await User.findAll({
           where: { id: { [Op.in]: allUserIds } },
-          attributes: ["id", "name", "email", "department", "jobTitle"],
+          attributes: ["id", "name", "email", "department", "jobTitle", "siteId"],
         })
       : [];
     const userMap = Object.fromEntries(users.map(u => [u.id, u.toJSON()]));
