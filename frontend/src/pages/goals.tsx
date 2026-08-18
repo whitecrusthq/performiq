@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { apiFetch } from "@/lib/utils";
 import { useListGoals, useCreateGoal, useUpdateGoal, useDeleteGoal, useListUsers } from "../lib";
 import { useQueryClient } from "@tanstack/react-query";
 import { PageHeader, Card, StatusBadge, Button, Input, Label, EmptyState } from "@/components/shared";
@@ -76,7 +77,13 @@ export default function Goals() {
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
   const [bulkDeleting, setBulkDeleting] = useState(false);
 
-  const visibleGoals = goals ?? [];
+  const [filterSite, setFilterSite] = useState("");
+  const [sites, setSites] = useState<any[]>([]);
+  useEffect(() => {
+    apiFetch("/api/sites").then(r => r.json()).then(d => setSites(Array.isArray(d) ? d : [])).catch(() => {});
+  }, []);
+
+  const visibleGoals = (goals ?? []).filter((g: any) => !filterSite || String(g.user?.siteId ?? "") === filterSite);
 
   const toggleSelect = (id: number) => setSelectedIds(prev => {
     const next = new Set(prev);
@@ -108,16 +115,29 @@ export default function Goals() {
         <Button onClick={openCreate}><Plus className="w-4 h-4 mr-2"/> New Goal</Button>
       </PageHeader>
 
+      {sites.length > 0 && (
+        <div className="mb-4">
+          <select
+            className="px-3 py-2 rounded-xl border border-border bg-card text-sm cursor-pointer focus:outline-none focus:ring-2 focus:ring-primary/20"
+            value={filterSite}
+            onChange={e => setFilterSite(e.target.value)}
+          >
+            <option value="">All Sites</option>
+            {sites.map((s: any) => <option key={s.id} value={String(s.id)}>{s.name}</option>)}
+          </select>
+        </div>
+      )}
+
       {isAdmin && <BulkActionBar count={selectedIds.size} onDelete={handleBulkDelete} onClear={() => setSelectedIds(new Set())} deleting={bulkDeleting} />}
 
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
-        {goals?.length === 0 && (
+        {visibleGoals.length === 0 && (
           <div className="col-span-full">
             <EmptyState title="No goals set" description="Create a goal to start tracking progress." icon={Target} />
           </div>
         )}
         
-        {goals?.map(goal => (
+        {visibleGoals.map(goal => (
           <Card key={goal.id} className={`p-6 flex flex-col relative group ${selectedIds.has(goal.id) ? "ring-2 ring-primary/30" : ""}`}>
             <div className="flex justify-between items-start mb-3">
               <div className="flex items-center gap-2">

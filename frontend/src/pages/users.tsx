@@ -3,7 +3,7 @@ import { useLocation } from "wouter";
 import { useListUsers, useCreateUser, useUpdateUser, useDeleteUser } from "../lib";
 import { useQueryClient } from "@tanstack/react-query";
 import { PageHeader, Card, Button, Input, PasswordInput, Label } from "@/components/shared";
-import { Users as UsersIcon, Plus, Edit, Trash2, X, Search, ChevronDown, AlertCircle, Camera, UserCircle2, ExternalLink, ShieldCheck, ShieldOff, Power, PowerOff } from "lucide-react";
+import { Users as UsersIcon, Plus, Edit, Trash2, X, Search, ChevronDown, AlertCircle, Camera, UserCircle2, ExternalLink, ShieldCheck, ShieldOff, Power, PowerOff, Lock, Unlock } from "lucide-react";
 import { BulkActionBar } from "@/components/bulk-action-bar";
 import { useAuth } from "@/hooks/use-auth";
 import { apiFetch } from "@/lib/utils";
@@ -49,6 +49,7 @@ export default function Users() {
   const [search, setSearch] = useState("");
   const [filterRole, setFilterRole] = useState("");
   const [filterDept, setFilterDept] = useState("");
+  const [filterSite, setFilterSite] = useState("");
 
   const filteredUsers = useMemo(() => {
     if (!users) return [];
@@ -56,9 +57,10 @@ export default function Users() {
       const matchSearch = matchesPerson(search, u, [u.staffId, u.jobTitle, u.department]);
       const matchRole = !filterRole || u.role === filterRole;
       const matchDept = !filterDept || (u.department ?? "") === filterDept;
-      return matchSearch && matchRole && matchDept;
+      const matchSite = !filterSite || String((u as any).siteId ?? "") === filterSite;
+      return matchSearch && matchRole && matchDept && matchSite;
     });
-  }, [users, search, filterRole, filterDept]);
+  }, [users, search, filterRole, filterDept, filterSite]);
 
   useEffect(() => {
     apiFetch("/api/custom-roles")
@@ -188,6 +190,28 @@ export default function Users() {
     }
   };
 
+  const handleToggleProtected = async (u: any) => {
+    const willProtect = !u.isProtected;
+    const msg = willProtect
+      ? `Protect ${u.name}? This account will disappear from the user list for everyone except Super Admins, and only a Super Admin will be able to edit, disable, or delete it.`
+      : `Remove protection from ${u.name}? The account will appear in the user list again and regular admins will be able to manage it.`;
+    if (!confirm(msg)) return;
+    try {
+      const r = await apiFetch(`/api/users/${u.id}/protected`, {
+        method: "PATCH",
+        body: JSON.stringify({ isProtected: willProtect }),
+      });
+      if (!r.ok) {
+        const data = await r.json().catch(() => ({}));
+        throw new Error(data?.error || "Failed to update protection");
+      }
+      toast({ title: willProtect ? "Account protected" : "Protection removed", description: u.name });
+      queryClient.invalidateQueries({ queryKey: ["/api/users"] });
+    } catch (err: any) {
+      toast({ title: "Error", description: err?.message ?? "Failed to update protection.", variant: "destructive" });
+    }
+  };
+
   const handleDelete = (id: number) => {
     if (confirm("Delete user?")) {
       deleteMutation.mutate({ id }, {
@@ -278,10 +302,21 @@ export default function Users() {
           </select>
           <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground pointer-events-none" />
         </div>
-        {(search || filterRole || filterDept) && (
+        <div className="relative">
+          <select
+            className="pl-3 pr-8 py-2 rounded-xl border border-border bg-card text-sm appearance-none cursor-pointer focus:outline-none focus:ring-2 focus:ring-primary/20"
+            value={filterSite}
+            onChange={e => setFilterSite(e.target.value)}
+          >
+            <option value="">All Sites</option>
+            {sites.map(s => <option key={s.id} value={String(s.id)}>{s.name}</option>)}
+          </select>
+          <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground pointer-events-none" />
+        </div>
+        {(search || filterRole || filterDept || filterSite) && (
           <button
             className="px-3 py-2 text-xs text-muted-foreground underline hover:text-foreground"
-            onClick={() => { setSearch(""); setFilterRole(""); setFilterDept(""); }}
+            onClick={() => { setSearch(""); setFilterRole(""); setFilterDept(""); setFilterSite(""); }}
           >
             Clear filters
           </button>
@@ -342,6 +377,14 @@ export default function Users() {
                         title={(u as any).twoFactorEnabled ? "Two-factor authentication is set up" : "Two-factor authentication is required but not yet set up"}
                       >
                         <ShieldCheck className="w-3 h-3" /> {(u as any).twoFactorEnabled ? '2FA on' : '2FA required'}
+                      </span>
+                    )}
+                    {(u as any).isProtected && (
+                      <span
+                        className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium w-fit bg-slate-800 text-white"
+                        title="Protected account — hidden from regular admins; only a Super Admin can manage it"
+                      >
+                        <Lock className="w-3 h-3" /> Protected
                       </span>
                     )}
                     {(u as any).isActive === false && (
@@ -425,6 +468,29 @@ export default function Users() {
                       >
                         <ShieldOff className="w-3.5 h-3.5" /> Reset 2FA
                       </Button>
+                    )}
+                    {user?.role === "super_admin" && u.id !== user?.id && (
+                      (u as any).isProtected ? (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="gap-1.5 text-slate-700 hover:bg-slate-100 border-slate-300"
+                          title="Remove protection (visible and manageable by regular admins again)"
+                          onClick={() => handleToggleProtected(u)}
+                        >
+                          <Unlock className="w-3.5 h-3.5" /> Unprotect
+                        </Button>
+                      ) : (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="gap-1.5 text-slate-700 hover:bg-slate-100 border-slate-300"
+                          title="Protect this account (hidden from regular admins; only Super Admins can manage it)"
+                          onClick={() => handleToggleProtected(u)}
+                        >
+                          <Lock className="w-3.5 h-3.5" /> Protect
+                        </Button>
+                      )
                     )}
                     {canActOnRow(u.role) && (
                       <Button

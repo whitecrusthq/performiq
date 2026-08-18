@@ -1,5 +1,6 @@
-import { Router } from "express";
-import { requireAuth, requireRole } from "../middlewares/auth.js";
+import { Router, Response, NextFunction } from "express";
+import { requireAuth, requireRole, AuthRequest } from "../middlewares/auth.js";
+import User from "../models/User.js";
 import { ListUsersAction } from "../actions/users/ListUsersAction.js";
 import { ListCoworkersAction } from "../actions/users/ListCoworkersAction.js";
 import { CreateUserAction } from "../actions/users/CreateUserAction.js";
@@ -28,8 +29,30 @@ import { DeleteEducationAction } from "../actions/users/DeleteEducationAction.js
 import { GetReferencesAction } from "../actions/users/GetReferencesAction.js";
 import { UpdateReferencesAction } from "../actions/users/UpdateReferencesAction.js";
 import { BulkImportAction } from "../actions/users/BulkImportAction.js";
+import { SetUserProtectedAction } from "../actions/users/SetUserProtectedAction.js";
 
 const router = Router();
+
+/**
+ * Protected accounts: for anyone below super_admin (and who isn't the account
+ * owner), any /users/:id... route targeting a protected user behaves as if the
+ * user does not exist. This covers profile reads, HR profile, photos,
+ * documents, beneficiaries, work experience, education, and references.
+ */
+async function blockProtectedTarget(req: AuthRequest, res: Response, next: NextFunction) {
+  try {
+    const id = Number(req.params.id);
+    if (!Number.isFinite(id) || !req.user) { next(); return; }
+    if (req.user.role === "super_admin" || Number(req.user.id) === id) { next(); return; }
+    const target = await User.findByPk(id, { attributes: ["id", "isProtected"] });
+    if (target && target.isProtected) { res.status(404).json({ error: "User not found" }); return; }
+    next();
+  } catch {
+    res.status(500).json({ error: "Server error" });
+  }
+}
+
+router.use("/users/:id", requireAuth, blockProtectedTarget);
 
 router.get("/users", requireAuth, requireRole("admin", "manager"), ListUsersAction.handle);
 router.get("/users/coworkers", requireAuth, ListCoworkersAction.handle);
@@ -41,6 +64,7 @@ router.put("/users/:id/hr-profile", requireAuth, UpdateHrProfileAction.handle);
 router.delete("/users/:id", requireAuth, requireRole("admin"), DeleteUserAction.handle);
 router.patch("/users/:id/active", requireAuth, requireRole("admin"), SetUserActiveAction.handle);
 router.post("/users/:id/reset-2fa", requireAuth, requireRole("admin"), Reset2FAAction.handle);
+router.patch("/users/:id/protected", requireAuth, requireRole("super_admin"), SetUserProtectedAction.handle);
 
 router.get("/users/:id/documents", requireAuth, GetDocumentsAction.handle);
 router.post("/users/:id/documents", requireAuth, CreateDocumentAction.handle);

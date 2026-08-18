@@ -342,8 +342,17 @@ export default function Timesheets() {
   }, 0);
 
   // Pending for manager: submitted timesheets where I am the current approver
+  const [filterSite, setFilterSite] = useState("");
+  const { data: sites = [] } = useQuery({
+    queryKey: ["sites-list"],
+    queryFn: () => apiFetch("/api/sites"),
+    enabled: isManager,
+  });
+  const bySite = (t: any) => !filterSite || String(t.user?.siteId ?? "") === filterSite;
+  const allFiltered = (all as any[]).filter(bySite);
+
   const pendingTeam = isManager
-    ? (all as any[]).filter((t: any) => {
+    ? (all as any[]).filter(bySite).filter((t: any) => {
         if (t.status !== "submitted" || t.userId === user?.id) return false;
         // Show if I'm the next pending approver, or admin/super_admin
         if (user?.role === "admin" || user?.role === "super_admin") return true;
@@ -550,7 +559,19 @@ export default function Timesheets() {
 
       {/* History */}
       <div className="space-y-3">
-        <h2 className="text-base font-semibold">{isManager ? "All Timesheets" : "History"}</h2>
+        <div className="flex items-center justify-between gap-3 flex-wrap">
+          <h2 className="text-base font-semibold">{isManager ? "All Timesheets" : "History"}</h2>
+          {isManager && (sites as any[]).length > 0 && (
+            <select
+              className="px-3 py-1.5 rounded-lg border border-border bg-card text-sm cursor-pointer focus:outline-none focus:ring-2 focus:ring-primary/20"
+              value={filterSite}
+              onChange={e => setFilterSite(e.target.value)}
+            >
+              <option value="">All Sites</option>
+              {(sites as any[]).map((s: any) => <option key={s.id} value={String(s.id)}>{s.name}</option>)}
+            </select>
+          )}
+        </div>
         <div className="rounded-xl border border-border overflow-x-auto">
           <table className="w-full text-sm min-w-[640px]">
             <thead className="bg-muted/50">
@@ -565,9 +586,9 @@ export default function Timesheets() {
             <tbody className="divide-y divide-border">
               {allLoading ? (
                 <tr><td colSpan={isManager ? 5 : 4} className="text-center py-8 text-muted-foreground">Loading…</td></tr>
-              ) : (all as any[]).length === 0 ? (
+              ) : allFiltered.length === 0 ? (
                 <tr><td colSpan={isManager ? 5 : 4} className="text-center py-8 text-muted-foreground">No timesheets yet</td></tr>
-              ) : (all as any[]).map((t: any) => (
+              ) : allFiltered.map((t: any) => (
                 <tr key={t.id} className="hover:bg-muted/30 transition-colors">
                   {isManager && <td className="px-4 py-3">{t.user?.name ?? t.user?.email ?? "—"}</td>}
                   <td className="px-4 py-3 text-muted-foreground">{fmtDate(t.weekStart)} – {fmtDate(t.weekEnd)}</td>

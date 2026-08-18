@@ -130,6 +130,8 @@ export default function Leave() {
   const [filterStatus, setFilterStatus] = useState<string>("all");
   const [filterDepartment, setFilterDepartment] = useState<string>("all");
   const [filterEmployee, setFilterEmployee] = useState<string>("all");
+  const [filterSite, setFilterSite] = useState<string>("all");
+  const [sites, setSites] = useState<{ id: number; name: string }[]>([]);
   const [mutationError, setMutationError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [form, setForm] = useState({ leaveType: "", startDate: "", endDate: "", reason: "" });
@@ -210,6 +212,11 @@ export default function Leave() {
       const r = await apiFetch("/api/users/coworkers");
       const data = await r.json();
       if (Array.isArray(data)) setAllUsers(data);
+    } catch {}
+    try {
+      const r = await apiFetch("/api/sites");
+      const data = await r.json();
+      if (Array.isArray(data)) setSites(data);
     } catch {}
   };
 
@@ -499,7 +506,9 @@ export default function Leave() {
     loadPolicies();
   };
 
-  const filtered = filterStatus === "all" ? requests : requests.filter(r => r.status === filterStatus);
+  const filtered = requests
+    .filter(r => filterStatus === "all" || r.status === filterStatus)
+    .filter(r => filterSite === "all" || String((r.employee as any)?.siteId ?? "") === filterSite);
 
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
   const [bulkDeleting, setBulkDeleting] = useState(false);
@@ -643,6 +652,16 @@ export default function Leave() {
                     .filter(u => isAdmin || u.department === myDepartment || u.id === user?.id)
                     .filter(u => filterDepartment === "all" || u.department === filterDepartment)
                     .map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
+                </select>
+              </div>
+              <div className="flex items-center gap-2">
+                <select
+                  className="px-3 py-1.5 rounded-lg border bg-background text-sm"
+                  value={filterSite}
+                  onChange={e => setFilterSite(e.target.value)}
+                >
+                  <option value="all">All Sites</option>
+                  {sites.map(s => <option key={s.id} value={String(s.id)}>{s.name}</option>)}
                 </select>
               </div>
             </div>
