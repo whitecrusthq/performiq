@@ -19,6 +19,7 @@ class User extends Model {
   declare staffId: string | null;
   declare profilePhoto: string | null;
   declare isLocked: boolean;
+  declare isProtected: boolean;
   declare failedLoginAttempts: number;
   declare lockedAt: Date | null;
   declare createdAt: Date;
@@ -100,6 +101,7 @@ User.init(
     staffId: { type: DataTypes.TEXT, field: "staff_id" },
     profilePhoto: { type: DataTypes.TEXT, field: "profile_photo" },
     isLocked: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: false, field: "is_locked" },
+    isProtected: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: false, field: "is_protected" },
     failedLoginAttempts: { type: DataTypes.INTEGER, allowNull: false, defaultValue: 0, field: "failed_login_attempts" },
     lockedAt: { type: DataTypes.DATE, field: "locked_at" },
     createdAt: { type: DataTypes.DATE, allowNull: false, defaultValue: DataTypes.NOW, field: "created_at" },

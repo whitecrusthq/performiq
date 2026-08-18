@@ -26,7 +26,7 @@ function formatUser(u: User, customRole?: CustomRole | null) {
     managerId: u.managerId, siteId: u.siteId, department: u.department, jobTitle: u.jobTitle,
     gradeId: u.gradeId ?? null,
     shiftType: u.shiftType ?? null, clockOutSlot: u.clockOutSlot ?? null,
-    phone: u.phone, staffId: u.staffId, profilePhoto: u.profilePhoto, isLocked: u.isLocked, createdAt: u.createdAt,
+    phone: u.phone, staffId: u.staffId, profilePhoto: u.profilePhoto, isLocked: u.isLocked, isProtected: u.isProtected, createdAt: u.createdAt,
     surname: u.surname, firstName: u.firstName, middleName: u.middleName,
     address: u.address,
     permanentAddress: u.permanentAddress, permanentCity: u.permanentCity, permanentState: u.permanentState,
@@ -64,8 +64,10 @@ async function getUserWithRole(userId: number) {
 export default class UserController {
   static ELEVATED_ROLES = ELEVATED_ROLES;
 
-  static async getAll(_actorRole: string) {
-    const allUsers = await User.findAll({ order: [["name", "ASC"]] });
+  static async getAll(actorRole: string) {
+    // Protected accounts are invisible to everyone except super admins.
+    const where = actorRole === "super_admin" ? {} : { isProtected: false };
+    const allUsers = await User.findAll({ where, order: [["name", "ASC"]] });
     const customRoles = await CustomRole.findAll();
     const roleMap = new Map<number, CustomRole>(customRoles.map((r: CustomRole) => [r.id, r]));
     return allUsers.map((u: User) => formatUser(u, u.customRoleId ? roleMap.get(u.customRoleId) ?? null : null));
@@ -105,6 +107,9 @@ export default class UserController {
     const targetUser = await User.findByPk(id);
     if (targetUser && targetUser.role === "super_admin" && actorRole !== "super_admin") {
       return { error: "Only a Super Admin can edit Super Admin accounts", status: 403 };
+    }
+    if (targetUser && targetUser.isProtected && actorRole !== "super_admin") {
+      return { error: "This account is protected. Only a Super Admin can edit it.", status: 403 };
     }
 
     const { name, email, password, role, customRoleId, managerId, siteId, department, jobTitle, phone, staffId, require2Fa, shiftType, clockOutSlot } = data;
@@ -203,6 +208,9 @@ export default class UserController {
     if (target.role === "super_admin" && actorRole !== "super_admin") {
       return { error: "Only a Super Admin can change the status of Super Admin accounts.", status: 403 };
     }
+    if (target.isProtected && actorRole !== "super_admin") {
+      return { error: "This account is protected. Only a Super Admin can change its status.", status: 403 };
+    }
     const updates: any = { isActive };
     if (!isActive) {
       updates.deactivatedAt = new Date();
@@ -223,6 +231,9 @@ export default class UserController {
     // another super_admin's 2FA.
     if (target.role === "super_admin" && actorRole !== "super_admin" && id !== actorId) {
       return { error: "Only a Super Admin can reset 2FA for Super Admin accounts.", status: 403 };
+    }
+    if (target.isProtected && actorRole !== "super_admin" && id !== actorId) {
+      return { error: "This account is protected. Only a Super Admin can reset its 2FA.", status: 403 };
     }
     if (!target.twoFactorEnabled && !target.twoFactorSecret && !target.twoFactorPendingSecret) {
       return { error: "This user does not have two-factor authentication set up.", status: 400 };
@@ -248,8 +259,24 @@ export default class UserController {
     if (targetUser && targetUser.role === "super_admin" && actorRole !== "super_admin") {
       return { error: "Only a Super Admin can delete Super Admin accounts", status: 403 };
     }
+    if (targetUser && targetUser.isProtected && actorRole !== "super_admin") {
+      return { error: "This account is protected. Only a Super Admin can delete it.", status: 403 };
+    }
     await User.destroy({ where: { id } });
     return { message: "User deleted" };
+  }
+
+  /**
+   * Protect/unprotect an account. Route is restricted to super_admin.
+   * A protected account is hidden from user lists for non-super-admins and
+   * cannot be edited, disabled, deleted, or have 2FA reset by anyone below
+   * super admin.
+   */
+  static async setProtected(id: number, isProtected: boolean) {
+    const target = await User.findByPk(id);
+    if (!target) return { error: "User not found", status: 404 };
+    await User.update({ isProtected }, { where: { id } });
+    return { data: await getUserWithRole(id) };
   }
 
   static async getDocuments(targetId: number) {

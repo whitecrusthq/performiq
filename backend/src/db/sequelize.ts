@@ -71,6 +71,13 @@ export async function connectDatabase(): Promise<void> {
   } catch (err) {
     logger.warn({ err }, "storage_providers schema ensure failed (non-fatal)");
   }
+  try {
+    await sequelize.query(
+      `ALTER TABLE users ADD COLUMN IF NOT EXISTS is_protected BOOLEAN NOT NULL DEFAULT FALSE;`
+    );
+  } catch (err) {
+    logger.warn({ err }, "protected accounts schema ensure failed (non-fatal)");
+  }
 }
 
 export default sequelize;
