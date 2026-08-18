@@ -95,18 +95,21 @@ export default class DashboardController {
     } else if (role === "manager") {
       const team = await User.findAll({ where: { managerId: userId }, attributes: ["id"] });
       const teamIds = team.map((m: any) => m.id);
-      const pendingCount = teamIds.length > 0
-        ? await Appraisal.count({ where: { employeeId: { [Op.in]: teamIds }, status: "pending" } })
-        : 0;
-      const completedCount = teamIds.length > 0
-        ? await Appraisal.count({ where: { employeeId: { [Op.in]: teamIds }, status: "completed" } })
-        : 0;
+      // Managers see their own appraisals on the dashboard too (e.g. when
+      // another manager reviews them), not just their team's.
+      const visibleIds = [userId, ...teamIds];
+      const pendingCount = await Appraisal.count({
+        where: { employeeId: { [Op.in]: visibleIds }, status: { [Op.in]: ["pending", "self_review"] } },
+      });
+      const completedCount = await Appraisal.count({
+        where: { employeeId: { [Op.in]: visibleIds }, status: "completed" },
+      });
       const myGoals = await Goal.count({ where: { userId } });
       const activeGoals = await Goal.count({ where: { userId, status: "in_progress" } });
 
-      const recentAppraisals = teamIds.length > 0
-        ? await Appraisal.findAll({ where: { employeeId: { [Op.in]: teamIds } }, order: [["createdAt", "ASC"]], limit: 5 })
-        : [];
+      const recentAppraisals = await Appraisal.findAll({
+        where: { employeeId: { [Op.in]: visibleIds } }, order: [["createdAt", "ASC"]], limit: 5,
+      });
       const enrichedAppraisals = await Promise.all(recentAppraisals.map(async (a: any) => {
         const emp = await User.findByPk(a.employeeId);
         const cyc = await Cycle.findByPk(a.cycleId);
