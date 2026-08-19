@@ -61,6 +61,11 @@ export default function Appraisals() {
   const [search, setSearch] = useState("");
   const [filterStatus, setFilterStatus] = useState("");
   const [filterCycle, setFilterCycle] = useState("");
+  const [filterSite, setFilterSite] = useState("");
+  const [sites, setSites] = useState<any[]>([]);
+  useEffect(() => {
+    apiFetch("/api/sites").then(r => r.json()).then(d => setSites(Array.isArray(d) ? d : [])).catch(() => {});
+  }, []);
 
   const filteredAppraisals = useMemo(() => {
     if (!appraisals) return [];
@@ -68,11 +73,12 @@ export default function Appraisals() {
       const matchSearch = matchesPerson(search, a.employee, [a.employee?.department, a.employee?.jobTitle]);
       const matchStatus = !filterStatus || a.status === filterStatus;
       const matchCycle = !filterCycle || String(a.cycleId) === filterCycle;
-      return matchSearch && matchStatus && matchCycle;
+      const matchSite = !filterSite || String((a.employee as any)?.siteId ?? "") === filterSite;
+      return matchSearch && matchStatus && matchCycle && matchSite;
     });
-  }, [appraisals, search, filterStatus, filterCycle]);
+  }, [appraisals, search, filterStatus, filterCycle, filterSite]);
 
-  const activeFilters = search || filterStatus || filterCycle;
+  const activeFilters = search || filterStatus || filterCycle || filterSite;
   const isAdmin = user?.role === 'admin' || user?.role === 'super_admin';
 
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
@@ -275,10 +281,21 @@ export default function Appraisals() {
           </select>
           <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground pointer-events-none" />
         </div>
+        <div className="relative">
+          <select
+            className="pl-3 pr-8 py-2 rounded-xl border border-border bg-card text-sm appearance-none cursor-pointer focus:outline-none focus:ring-2 focus:ring-primary/20"
+            value={filterSite}
+            onChange={e => setFilterSite(e.target.value)}
+          >
+            <option value="">All Sites</option>
+            {sites.map((s: any) => <option key={s.id} value={String(s.id)}>{s.name}</option>)}
+          </select>
+          <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground pointer-events-none" />
+        </div>
         {activeFilters && (
           <button
             className="px-3 py-2 text-xs text-muted-foreground underline hover:text-foreground"
-            onClick={() => { setSearch(""); setFilterStatus(""); setFilterCycle(""); }}
+            onClick={() => { setSearch(""); setFilterStatus(""); setFilterCycle(""); setFilterSite(""); }}
           >
             Clear filters
           </button>
