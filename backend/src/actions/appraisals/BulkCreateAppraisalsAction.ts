@@ -13,13 +13,20 @@ export class BulkCreateAppraisalsAction {
         res.status(400).json({ error: "employeeIds must be a non-empty array" }); return;
       }
 
-      const orderedReviewerIds: number[] = Array.isArray(reviewerIds) && reviewerIds.length > 0
-        ? reviewerIds.map(Number)
-        : (req.user!.role !== "employee" ? [req.user!.id] : []);
+      const validWorkflows = ["self_only", "manager_review", "admin_approval"];
+      if (workflowType != null && !validWorkflows.includes(workflowType)) {
+        res.status(400).json({ error: "Invalid appraisal workflow type" }); return;
+      }
+      const effectiveWorkflow = workflowType ?? "admin_approval";
+      const orderedReviewerIds: number[] = effectiveWorkflow === "self_only"
+        ? []
+        : Array.isArray(reviewerIds) && reviewerIds.length > 0
+          ? reviewerIds.map(Number)
+          : (req.user!.role !== "employee" ? [req.user!.id] : []);
 
       const result = await AppraisalController.bulkCreate({
         cycleId, employeeIds, reviewerIds: orderedReviewerIds,
-        workflowType: workflowType ?? "admin_approval",
+        workflowType: effectiveWorkflow,
         criteriaGroupId: criteriaGroupId ? Number(criteriaGroupId) : null,
         budgetsByCategory,
         currentUser: req.user!,
