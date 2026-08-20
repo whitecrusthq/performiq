@@ -9,9 +9,16 @@ export class CreateAppraisalAction {
         res.status(403).json({ error: "Forbidden" }); return;
       }
       const { cycleId, employeeId, reviewerIds, workflowType, criteriaGroupId, budgetValues, scheduledStartAt } = req.body;
-      const orderedIds: number[] = Array.isArray(reviewerIds) && reviewerIds.length > 0
-        ? reviewerIds.map(Number)
-        : (req.user!.role !== "employee" ? [req.user!.id] : []);
+      const validWorkflows = ["self_only", "manager_review", "admin_approval"];
+      if (workflowType != null && !validWorkflows.includes(workflowType)) {
+        res.status(400).json({ error: "Invalid appraisal workflow type" }); return;
+      }
+      const effectiveWorkflow = workflowType ?? "admin_approval";
+      const orderedIds: number[] = effectiveWorkflow === "self_only"
+        ? []
+        : Array.isArray(reviewerIds) && reviewerIds.length > 0
+          ? reviewerIds.map(Number)
+          : (req.user!.role !== "employee" ? [req.user!.id] : []);
 
       const budgetMap: Record<number, number> = {};
       if (budgetValues && typeof budgetValues === 'object') {
@@ -22,7 +29,7 @@ export class CreateAppraisalAction {
 
       const enriched = await AppraisalController.create({
         cycleId, employeeId, reviewerIds: orderedIds,
-        workflowType: workflowType ?? "admin_approval",
+        workflowType: effectiveWorkflow,
         criteriaGroupId: criteriaGroupId ? Number(criteriaGroupId) : null,
         budgetValues: budgetMap,
         scheduledStartAt: scheduledStartAt ?? null,

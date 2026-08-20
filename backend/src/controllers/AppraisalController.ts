@@ -530,22 +530,30 @@ export default class AppraisalController {
       : null;
     const submittingReviewerId = (preSubmitReviewerRow as any)?.reviewerId ?? currentUser.id;
 
-    // During manager review, a caller who is an assigned reviewer may only
-    // write review data / submit when it is their turn (their row is the
-    // in-progress one). Admins are exempt; the appraisal subject and team
-    // managers without a reviewer row keep their existing access.
-    if (currentPlain.status === "manager_review" && !["admin", "super_admin"].includes(currentUser.role)) {
+    // The employee owns the self-review content. Admin access to the record is
+    // for administration, not impersonating the employee's submission.
+    if (currentPlain.status === "self_review") {
+      const { action: bodyAction, scores: bodyScores, selfComment: bodySelfComment } = body ?? {};
+      const touchesSelfReview = bodyAction === "submit"
+        || bodySelfComment !== undefined
+        || (Array.isArray(bodyScores) && bodyScores.length > 0);
+      if (touchesSelfReview && currentPlain.employeeId !== currentUser.id) {
+        return { error: "Only the employee can update their self-review", status: 403 };
+      }
+    }
+
+    // During manager review, only the reviewer whose row is currently active
+    // may write review data or submit. Being the appraisal subject, the
+    // employee's line manager, or an admin does not replace reviewer
+    // assignment: admins who need to review must also be selected as a
+    // reviewer. Administrative budget/actual actions are handled separately.
+    if (currentPlain.status === "manager_review") {
       const { action: bodyAction, scores: bodyScores, managerComment: bodyManagerComment } = body ?? {};
       const touchesReview = bodyAction === "submit"
         || bodyManagerComment !== undefined
-        || (Array.isArray(bodyScores) && bodyScores.some((s: any) => s?.managerScore != null));
-      if (touchesReview && currentPlain.employeeId !== currentUser.id) {
-        const callerReviewerRow = await AppraisalReviewer.findOne({
-          where: { appraisalId, reviewerId: currentUser.id },
-        });
-        if (callerReviewerRow && (preSubmitReviewerRow as any)?.reviewerId !== currentUser.id) {
-          return { error: "It's not your turn to review this appraisal yet", status: 403 };
-        }
+        || (Array.isArray(bodyScores) && bodyScores.length > 0);
+      if (touchesReview && (preSubmitReviewerRow as any)?.reviewerId !== currentUser.id) {
+        return { error: "It's not your turn to review this appraisal", status: 403 };
       }
     }
 
@@ -649,18 +657,24 @@ export default class AppraisalController {
 
     if (action === "submit") {
       if (currentPlain.status === "self_review") {
-        updates.status = "manager_review";
+        if (currentPlain.employeeId !== currentUser.id) {
+          return { error: "Only the employee can submit their self-review", status: 403 };
+        }
+        updates.status = currentPlain.workflowType === "self_only"
+          ? "completed"
+          : "manager_review";
       } else if (currentPlain.status === "manager_review") {
         const inProgressRow = await AppraisalReviewer.findOne({
           where: { appraisalId, status: 'in_progress' },
         });
 
-        if (inProgressRow) {
-          await AppraisalReviewer.update(
-            { status: 'completed', managerComment: managerComment || null, reviewedAt: new Date() },
-            { where: { id: (inProgressRow as any).id } }
-          );
+        if (!inProgressRow || (inProgressRow as any).reviewerId !== currentUser.id) {
+          return { error: "It's not your turn to review this appraisal", status: 403 };
         }
+        await AppraisalReviewer.update(
+          { status: 'completed', managerComment: managerComment || null, reviewedAt: new Date() },
+          { where: { id: (inProgressRow as any).id } }
+        );
 
         const hasNext = await AppraisalController.activateNextReviewer(appraisalId);
         if (!hasNext) {
@@ -668,11 +682,18 @@ export default class AppraisalController {
           if (next) updates.status = next;
         }
       } else if (currentPlain.status === "pending_approval") {
+        if (!["admin", "super_admin"].includes(currentUser.role)) {
+          return { error: "Only an admin can approve and complete this appraisal", status: 403 };
+        }
         updates.status = "completed";
+      } else {
+        return { error: `This appraisal cannot be submitted while it is ${currentPlain.status}`, status: 400 };
       }
     }
 
-    if (selfComment !== undefined) updates.selfComment = selfComment;
+    if (selfComment !== undefined && currentPlain.status === "self_review") {
+      updates.selfComment = selfComment;
+    }
     if (managerComment !== undefined && currentPlain.status === "manager_review") {
       updates.managerComment = managerComment;
     }
@@ -685,16 +706,37 @@ export default class AppraisalController {
           where: { appraisalId, criterionId: score.criterionId },
         });
         if (existing) {
-          await AppraisalScore.update(
-            {
-              selfScore: score.selfScore,
-              managerScore: score.managerScore,
-              selfNote: score.selfNote,
-              managerNote: score.managerNote,
-              actualValue: score.actualValue ?? (existing as any).actualValue,
-            },
-            { where: { id: (existing as any).id } }
-          );
+          // Score-field ownership follows the active stage. Never persist the
+          // other party's fields merely because they were included in the
+          // request payload.
+          const scoreUpdates: Record<string, any> = {};
+          if (currentPlain.status === "self_review") {
+            if (Object.prototype.hasOwnProperty.call(score, "selfScore")) {
+              scoreUpdates.selfScore = score.selfScore;
+            }
+            if (Object.prototype.hasOwnProperty.call(score, "selfNote")) {
+              scoreUpdates.selfNote = score.selfNote;
+            }
+          } else if (currentPlain.status === "manager_review") {
+            if (Object.prototype.hasOwnProperty.call(score, "managerScore")) {
+              scoreUpdates.managerScore = score.managerScore;
+            }
+            if (Object.prototype.hasOwnProperty.call(score, "managerNote")) {
+              scoreUpdates.managerNote = score.managerNote;
+            }
+          }
+          if (
+            ["self_review", "manager_review"].includes(currentPlain.status)
+            && Object.prototype.hasOwnProperty.call(score, "actualValue")
+          ) {
+            scoreUpdates.actualValue = score.actualValue;
+          }
+          if (Object.keys(scoreUpdates).length > 0) {
+            await AppraisalScore.update(
+              scoreUpdates,
+              { where: { id: (existing as any).id } }
+            );
+          }
         }
 
         if (currentPlain.status === "manager_review" && score.managerScore != null) {
@@ -742,8 +784,22 @@ export default class AppraisalController {
       await AppraisalController.activateNextReviewer(appraisalId);
     }
 
-    const [updateCount, updatedRows] = await Appraisal.update(updates, { where: { id: appraisalId }, returning: true });
-    if (!updatedRows[0]) return { error: "Not found", status: 404 };
+    // A reviewer handing off to the next reviewer may only update the reviewer
+    // rows; the parent appraisal remains in manager_review and `updates` is
+    // legitimately empty. Sequelize does not return rows for an empty update,
+    // so reload the appraisal instead of treating that successful handoff as a
+    // missing record.
+    let updatedAppraisal: any;
+    if (Object.keys(updates).length > 0) {
+      const [, updatedRows] = await Appraisal.update(
+        updates,
+        { where: { id: appraisalId }, returning: true }
+      );
+      updatedAppraisal = updatedRows?.[0] ?? await Appraisal.findByPk(appraisalId);
+    } else {
+      updatedAppraisal = await Appraisal.findByPk(appraisalId);
+    }
+    if (!updatedAppraisal) return { error: "Not found", status: 404 };
 
     const allScores = await AppraisalScore.findAll({ where: { appraisalId } });
     const enrichedScores = await Promise.all(allScores.map(async (s: any) => {
@@ -752,7 +808,7 @@ export default class AppraisalController {
     }));
 
     const [enriched, reviewerScores] = await Promise.all([
-      AppraisalController.enrichAppraisal(updatedRows[0]),
+      AppraisalController.enrichAppraisal(updatedAppraisal),
       AppraisalController.getReviewerScoresForAppraisal(appraisalId),
     ]);
     return { data: { ...enriched, scores: enrichedScores, reviewerScores } };
@@ -761,6 +817,12 @@ export default class AppraisalController {
   static async addReviewer(appraisalId: number, reviewerId: number) {
     const appraisal = await Appraisal.findByPk(appraisalId);
     if (!appraisal) return { error: "Not found", status: 404 };
+    if ((appraisal as any).workflowType === "self_only") {
+      return { error: "Self-only appraisals cannot have reviewers", status: 400 };
+    }
+    if (["pending_approval", "completed"].includes((appraisal as any).status)) {
+      return { error: "Reviewers cannot be added after manager review is complete", status: 400 };
+    }
 
     const existing = await AppraisalController.getReviewersForAppraisal(appraisalId);
     const nextOrder = existing.length;
