@@ -78,6 +78,53 @@ export async function connectDatabase(): Promise<void> {
   } catch (err) {
     logger.warn({ err }, "protected accounts schema ensure failed (non-fatal)");
   }
+  try {
+    // Repair legacy and partially edited appraisals that have a scalar
+    // reviewer_id but no ordered reviewer row, or a manager-review queue with
+    // no active reviewer. This is idempotent and also protects deployments
+    // where migrations are not invoked by the start command.
+    await sequelize.query(`
+      INSERT INTO appraisal_reviewers
+        (appraisal_id, reviewer_id, order_index, status, created_at)
+      SELECT
+        a.id,
+        a.reviewer_id,
+        0,
+        CASE
+          WHEN a.status::text = 'manager_review' THEN 'in_progress'
+          WHEN a.status::text IN ('pending_approval', 'completed') THEN 'completed'
+          ELSE 'pending'
+        END,
+        NOW()
+      FROM appraisals a
+      WHERE a.reviewer_id IS NOT NULL
+        AND COALESCE(a.workflow_type, 'admin_approval') <> 'self_only'
+        AND NOT EXISTS (
+          SELECT 1 FROM appraisal_reviewers ar WHERE ar.appraisal_id = a.id
+        );
+
+      WITH next_rows AS (
+        SELECT DISTINCT ON (ar.appraisal_id) ar.id
+        FROM appraisal_reviewers ar
+        JOIN appraisals a ON a.id = ar.appraisal_id
+        WHERE a.status::text = 'manager_review'
+          AND ar.status = 'pending'
+          AND NOT EXISTS (
+            SELECT 1
+            FROM appraisal_reviewers active
+            WHERE active.appraisal_id = ar.appraisal_id
+              AND active.status = 'in_progress'
+          )
+        ORDER BY ar.appraisal_id, ar.order_index, ar.id
+      )
+      UPDATE appraisal_reviewers ar
+      SET status = 'in_progress'
+      FROM next_rows n
+      WHERE ar.id = n.id;
+    `);
+  } catch (err) {
+    logger.warn({ err }, "appraisal reviewer backfill failed (non-fatal)");
+  }
 }
 
 export default sequelize;

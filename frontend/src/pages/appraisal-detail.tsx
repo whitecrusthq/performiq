@@ -82,7 +82,9 @@ export default function AppraisalDetail() {
   const activeReviewer = reviewers.find((r: any) => r.stepStatus === 'in_progress') ?? null;
   const isCurrentInProgressReviewer = activeReviewer?.id === user?.id;
   const isSelfReviewActive = appraisal.status === 'self_review' && user?.id === appraisal.employeeId;
-  const isManagerReviewActive = appraisal.status === 'manager_review' && (isCurrentInProgressReviewer || user?.role === 'admin' || user?.role === 'super_admin');
+  // Manager-stage submission belongs to the active assigned reviewer only.
+  // Admins can submit here too, but only when they are that assigned reviewer.
+  const isManagerReviewActive = appraisal.status === 'manager_review' && isCurrentInProgressReviewer;
   const isPendingAdminApproval = appraisal.status === 'pending_approval' && (user?.role === 'admin' || user?.role === 'super_admin');
   const canEdit = isSelfReviewActive || isManagerReviewActive;
 
@@ -163,13 +165,17 @@ export default function AppraisalDetail() {
     if (appraisal.status === 'manager_review') {
       if (isManagerReviewActive)
         return { color: 'blue', text: `Your turn — review ${appraisal.employee?.name ?? 'the employee'}'s self-evaluation and fill in your manager scores below.` };
+      if (!activeReviewer)
+        return { color: 'amber', text: 'No active reviewer is assigned. Ask an admin to add or repair the reviewer assignment.' };
       const activeName = activeReviewer?.name ?? 'the reviewer';
       const completedCount = reviewers.filter((r: any) => r.stepStatus === 'completed').length;
       const stepInfo = reviewers.length > 1 ? ` (step ${completedCount + 1} of ${reviewers.length})` : '';
       return { color: 'blue', text: `Waiting for ${activeName}${stepInfo} to complete their review.` };
     }
     if (appraisal.status === 'pending_approval')
-      return { color: 'purple', text: 'Waiting for admin approval. Review the scores below and click Approve & Complete.' };
+      return isPendingAdminApproval
+        ? { color: 'purple', text: 'Your turn — review the scores below and click Approve & Complete.' }
+        : { color: 'purple', text: 'Waiting for an admin to review and approve this appraisal.' };
     if (appraisal.status === 'completed')
       return { color: 'green', text: 'This appraisal has been completed.' };
     return null;
