@@ -252,10 +252,32 @@ export default class AppraisalController {
   }
 
   static async activateNextReviewer(appraisalId: number): Promise<boolean> {
-    const row = await AppraisalReviewer.findOne({
+    let row = await AppraisalReviewer.findOne({
       where: { appraisalId, status: 'pending' },
       order: [["orderIndex", "ASC"]],
     });
+    // Legacy appraisals may only have appraisals.reviewer_id. Materialize that
+    // assignment into the ordered queue so the reviewer can actually submit.
+    if (!row) {
+      const appraisal: any = await Appraisal.findByPk(appraisalId);
+      const reviewerCount = await AppraisalReviewer.count({ where: { appraisalId } });
+      if (
+        appraisal?.reviewerId
+        && appraisal.workflowType !== "self_only"
+        && reviewerCount === 0
+      ) {
+        await AppraisalReviewer.create({
+          appraisalId,
+          reviewerId: Number(appraisal.reviewerId),
+          orderIndex: 0,
+          status: "pending",
+        });
+        row = await AppraisalReviewer.findOne({
+          where: { appraisalId, status: "pending" },
+          order: [["orderIndex", "ASC"]],
+        });
+      }
+    }
     if (!row) return false;
     await AppraisalReviewer.update({ status: 'in_progress' }, { where: { id: (row as any).id } });
     return true;
@@ -835,6 +857,12 @@ export default class AppraisalController {
     if (!(appraisal as any).reviewerId) {
       await Appraisal.update({ reviewerId: Number(reviewerId) }, { where: { id: appraisalId } });
     }
+    if ((appraisal as any).status === "manager_review") {
+      const active = await AppraisalReviewer.findOne({
+        where: { appraisalId, status: "in_progress" },
+      });
+      if (!active) await AppraisalController.activateNextReviewer(appraisalId);
+    }
 
     const reviewers = await AppraisalController.getReviewersForAppraisal(appraisalId);
     return { data: { reviewers } };
@@ -861,6 +889,28 @@ export default class AppraisalController {
   }
 
   static async removeReviewer(appraisalId: number, reviewerId: number) {
+    const appraisal: any = await Appraisal.findByPk(appraisalId);
+    if (!appraisal) return { error: "Not found", status: 404 };
+    const target: any = await AppraisalReviewer.findOne({
+      where: { appraisalId, reviewerId },
+    });
+    if (!target) return { error: "Reviewer not found", status: 404 };
+    if (appraisal.status === "manager_review" && target.status === "in_progress") {
+      const replacement = await AppraisalReviewer.findOne({
+        where: {
+          appraisalId,
+          id: { [Op.ne]: target.id },
+          status: "pending",
+        },
+      });
+      if (!replacement) {
+        return {
+          error: "Add a replacement reviewer before removing the active reviewer",
+          status: 400,
+        };
+      }
+    }
+
     await AppraisalReviewer.destroy({
       where: { appraisalId, reviewerId },
     });
@@ -875,6 +925,12 @@ export default class AppraisalController {
       { reviewerId: remaining.length > 0 ? remaining[0].id : null },
       { where: { id: appraisalId } }
     );
-    return await AppraisalController.getReviewersForAppraisal(appraisalId);
+    if (appraisal.status === "manager_review") {
+      const active = await AppraisalReviewer.findOne({
+        where: { appraisalId, status: "in_progress" },
+      });
+      if (!active) await AppraisalController.activateNextReviewer(appraisalId);
+    }
+    return { data: await AppraisalController.getReviewersForAppraisal(appraisalId) };
   }
 }
