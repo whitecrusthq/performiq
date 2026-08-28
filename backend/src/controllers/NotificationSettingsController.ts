@@ -1,4 +1,5 @@
 import { NotificationSettings } from "../models/index.js";
+import { buildSmtpTransport } from "../lib/email.js";
 
 const PLATFORMS = [
   { key: "mailgun", label: "Mailgun", fields: ["apiKey", "domain", "fromEmail"] },
@@ -82,7 +83,20 @@ export default class NotificationSettingsController {
       }
       case "smtp": {
         if (!config.host || !config.port) return { error: "Host and Port are required", status: 400 };
-        return { data: { success: true, message: "SMTP configuration looks valid. A test email would be sent to verify." } };
+        try {
+          const transporter = buildSmtpTransport({
+            kind: "smtp",
+            host: config.host,
+            port: Number(config.port),
+            username: config.username || undefined,
+            password: config.password || undefined,
+            encryption: (config.encryption || "").toLowerCase() || undefined,
+          });
+          await transporter.verify();
+          return { data: { success: true, message: "SMTP connection verified successfully. Notification emails will be sent through this server." } };
+        } catch (err: any) {
+          return { error: `SMTP connection failed: ${err?.message || err}`, status: 400 };
+        }
       }
       case "twilio":
       case "whatsapp": {

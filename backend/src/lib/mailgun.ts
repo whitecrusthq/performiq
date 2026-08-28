@@ -1,15 +1,8 @@
-import Mailgun from "mailgun.js";
-import FormData from "form-data";
-
-function getClient() {
-  const key = process.env.MAILGUN_API_KEY;
-  const domain = process.env.MAILGUN_DOMAIN;
-  if (!key || !domain) {
-    throw new Error("Mailgun is not configured. Set MAILGUN_API_KEY and MAILGUN_DOMAIN.");
-  }
-  const mailgun = new Mailgun(FormData);
-  return { mg: mailgun.client({ username: "api", key }), domain };
-}
+// Notification email templates. Despite the filename (kept for import
+// stability), all sending is provider-agnostic and routed through
+// lib/email.ts, which picks the admin-configured provider (SMTP or Mailgun)
+// or falls back to Mailgun env vars.
+import { sendEmail } from "./email.js";
 
 async function getPasswordResetClient() {
   // Password recovery honors an enabled database Mailgun integration first,
@@ -49,16 +42,6 @@ const LEAVE_LABEL: Record<string, string> = {
 };
 
 export async function sendLeaveNotification(payload: LeaveNotifyPayload): Promise<void> {
-  let { mg, domain } = (() => {
-    try { return getClient(); }
-    catch { return { mg: null, domain: "" }; }
-  })();
-  if (!mg) {
-    console.log("[leave notify] Mailgun not configured, skipping email:", payload.event, "→", payload.to);
-    return;
-  }
-
-  const from = process.env.MAILGUN_FROM ?? `noreply@${domain}`;
   const leaveLabel = LEAVE_LABEL[payload.leaveType] ?? payload.leaveType;
   const dateRange = `${payload.startDate} – ${payload.endDate} (${payload.days} day${payload.days !== 1 ? "s" : ""})`;
 
@@ -93,13 +76,12 @@ export async function sendLeaveNotification(payload: LeaveNotifyPayload): Promis
     </div>
   `;
 
-  await mg.messages.create(domain, {
-    from,
-    to: [payload.to],
+  await sendEmail({
+    to: payload.to,
     subject: subjects[payload.event],
     html,
     text: `${subjects[payload.event]}\n\nLeave Type: ${leaveLabel}\nDates: ${dateRange}${payload.reviewerNote ? `\nNote: ${payload.reviewerNote}` : ""}`,
-  });
+  }, `leave notify:${payload.event}`);
 }
 
 export type RecruitmentNotifyEvent =
@@ -128,17 +110,6 @@ const STAGE_LABEL: Record<string, string> = {
 };
 
 export async function sendRecruitmentNotification(payload: RecruitmentNotifyPayload): Promise<void> {
-  let { mg, domain } = (() => {
-    try { return getClient(); }
-    catch { return { mg: null, domain: "" }; }
-  })();
-  if (!mg) {
-    console.log("[recruitment notify] Mailgun not configured, skipping email:", payload.event, "→", payload.to);
-    return;
-  }
-
-  const from = process.env.MAILGUN_FROM ?? `noreply@${domain}`;
-
   const subjects: Record<RecruitmentNotifyEvent, string> = {
     new_candidate:   `New Candidate for ${payload.jobTitle} — ${payload.candidateName}`,
     stage_change:    `Candidate Update: ${payload.candidateName} — ${STAGE_LABEL[payload.stage || ""] || payload.stage}`,
@@ -199,13 +170,12 @@ export async function sendRecruitmentNotification(payload: RecruitmentNotifyPayl
   if (payload.stage) textParts.push(`Stage: ${STAGE_LABEL[payload.stage] || payload.stage}`);
   if (payload.startDate) textParts.push(`Start Date: ${payload.startDate}`);
 
-  await mg.messages.create(domain, {
-    from,
-    to: [payload.to],
+  await sendEmail({
+    to: payload.to,
     subject,
     html,
     text: textParts.join("\n"),
-  });
+  }, `recruitment notify:${payload.event}`);
 }
 
 export type CandidateNotifyEvent =
@@ -230,16 +200,6 @@ export interface CandidateNotifyPayload {
 }
 
 export async function sendCandidateNotification(payload: CandidateNotifyPayload): Promise<void> {
-  let { mg, domain } = (() => {
-    try { return getClient(); }
-    catch { return { mg: null, domain: "" }; }
-  })();
-  if (!mg) {
-    console.log("[candidate notify] Mailgun not configured, skipping email:", payload.event, "→", payload.to);
-    return;
-  }
-
-  const from = process.env.MAILGUN_FROM ?? `noreply@${domain}`;
   const company = payload.companyName || "the company";
 
   const subjects: Record<CandidateNotifyEvent, string> = {
@@ -286,22 +246,17 @@ export async function sendCandidateNotification(payload: CandidateNotifyPayload)
     </div>
   `;
 
-  await mg.messages.create(domain, {
-    from,
-    to: [payload.to],
+  await sendEmail({
+    to: payload.to,
     subject: subjects[payload.event],
     html,
     text: `${subjects[payload.event]}\n\n${intros[payload.event].replace(/<[^>]*>/g, "")}\n\n${closings[payload.event]}`,
-  });
+  }, `candidate notify:${payload.event}`);
 }
 
 export async function sendOtpEmail(to: string, otp: string, name: string): Promise<void> {
-  const { mg, domain } = getClient();
-  const from = process.env.MAILGUN_FROM ?? `noreply@${domain}`;
-
-  await mg.messages.create(domain, {
-    from,
-    to: [to],
+  const sent = await sendEmail({
+    to,
     subject: "Your PerformIQ Login Code",
     html: `
       <div style="font-family:sans-serif;max-width:480px;margin:0 auto;padding:24px">
@@ -314,7 +269,11 @@ export async function sendOtpEmail(to: string, otp: string, name: string): Promi
       </div>
     `,
     text: `Your PerformIQ login code is: ${otp}\n\nIt expires in 10 minutes.\n\nIf you didn't request this, ignore this email.`,
-  });
+  }, "otp email");
+  if (!sent) {
+    // Login OTPs must not fail silently — the caller surfaces this error.
+    throw new Error("No email provider is configured. Configure Mailgun or SMTP in Notification Settings.");
+  }
 }
 
 export async function sendPasswordResetCodeEmail(to: string, code: string, name: string): Promise<void> {
