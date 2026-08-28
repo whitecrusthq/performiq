@@ -105,21 +105,15 @@ export async function requireAuditLogAccess(req: AuthRequest, res: Response, nex
   res.status(403).json({ error: "Forbidden" });
 }
 
-/** Reloads the user and custom role on every request so revoked permissions
- * take effect immediately rather than relying on JWT role claims. */
+/** Reloads the user on every request so current database role changes take
+ * effect immediately rather than relying on stale JWT role claims. */
 export async function requireAccountRecoveryAccess(req: AuthRequest, res: Response, next: NextFunction) {
   if (!req.user) { res.status(403).json({ error: "Forbidden" }); return; }
   try {
-    const { User, CustomRole } = await import("../models/index.js");
-    const u: any = await User.findByPk(req.user.id, { attributes: ["id", "role", "customRoleId", "isActive"] });
+    const { User } = await import("../models/index.js");
+    const u: any = await User.findByPk(req.user.id, { attributes: ["id", "role", "isActive"] });
     if (!u || u.isActive === false) { res.status(403).json({ error: "Forbidden" }); return; }
     if (u.role === "admin" || u.role === "super_admin") { next(); return; }
-    if (u.customRoleId) {
-      const cr: any = await CustomRole.findByPk(u.customRoleId, { attributes: ["menuPermissions"] });
-      let permissions: unknown = [];
-      try { permissions = JSON.parse(cr?.menuPermissions ?? "[]"); } catch {}
-      if (Array.isArray(permissions) && permissions.includes("account-recovery")) { next(); return; }
-    }
   } catch {}
   res.status(403).json({ error: "Forbidden" });
 }

@@ -51,8 +51,7 @@ export function getCustomMenuPerms(user: any): string[] {
 /** Whether the user may access the given menu key. */
 export function hasMenuAccess(user: any, menuKey: string): boolean {
   if (menuKey === "account-recovery") {
-    if (user?.role === "admin" || user?.role === "super_admin") return true;
-    return getCustomMenuPerms(user).includes(menuKey);
+    return user?.role === "admin" || user?.role === "super_admin";
   }
   const perms = getCustomMenuPerms(user);
   if (perms.length === 0) return true; // inherit defaults — base-role rules apply
