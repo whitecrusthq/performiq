@@ -6,7 +6,7 @@ export class GetAttendanceSummaryAction {
   static async handle(req: AuthRequest, res: Response) {
     try {
       const { from, to, userId, siteId, department } = req.query as Record<string, string | undefined>;
-      const data = await ReportController.getAttendanceSummary({ from, to, userId, siteId, department });
+      const data = await ReportController.getAttendanceSummary({ from, to, userId, siteId, department }, req.user?.role);
       res.json(data);
     } catch (err) {
       console.error("GET /reports/attendance-summary error:", err);

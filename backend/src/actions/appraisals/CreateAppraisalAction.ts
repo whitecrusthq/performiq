@@ -33,7 +33,8 @@ export class CreateAppraisalAction {
         criteriaGroupId: criteriaGroupId ? Number(criteriaGroupId) : null,
         budgetValues: budgetMap,
         scheduledStartAt: scheduledStartAt ?? null,
-      });
+      }, { id: req.user!.id, role: req.user!.role });
+      if (!enriched) { res.status(404).json({ error: "User not found" }); return; }
       res.status(201).json(enriched);
     } catch (err) {
       console.error(err);

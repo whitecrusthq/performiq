@@ -1,5 +1,6 @@
 import { User, Appraisal, Cycle, Criterion, AppraisalScore, AttendanceLog, Timesheet, Site, LeaveRequest, LeaveType } from "../models/index.js";
 import { Op } from "sequelize";
+import { protectedWhere } from "../utils/protectedUsers.js";
 
 const RATING_BANDS = [
   { label: "Outstanding (≥4.5)", min: 4.5, max: 99 },
@@ -17,11 +18,11 @@ type AppraisalFilters = {
 };
 
 export default class ReportController {
-  static async getReports(filters: AppraisalFilters = {}) {
+  static async getReports(filters: AppraisalFilters = {}, viewerRole?: string) {
     const { department: deptFilter, siteId, from, to } = filters;
     const siteIdNum = siteId ? Number(siteId) : null;
 
-    const allUsers = await User.findAll();
+    const allUsers = await User.findAll({ where: protectedWhere(viewerRole) });
     const allUsersPlain = allUsers.map((u: any) => u.get({ plain: true }));
     const departments = Array.from(
       new Set(allUsersPlain.map((u: any) => u.department || "Unassigned"))
@@ -68,7 +69,11 @@ export default class ReportController {
     const allAppraisalsRaw = await Appraisal.findAll({
       attributes: ["id", "status", "cycleId", "employeeId", "overallScore"],
     });
-    const allAppraisals = allAppraisalsRaw.map((a: any) => a.get({ plain: true }));
+    const visibleUserIds = new Set(allUsersPlain.map((u: any) => u.id));
+    const allAppraisals = allAppraisalsRaw
+      .map((a: any) => a.get({ plain: true }))
+      // Appraisals of users excluded above (protected accounts) stay hidden too.
+      .filter((a: any) => visibleUserIds.has(a.employeeId));
 
     let appraisals = allAppraisals;
     if (hasUserFilter) appraisals = appraisals.filter((a: any) => userIds.has(a.employeeId));
@@ -176,14 +181,17 @@ export default class ReportController {
     };
   }
 
-  static async getAttendanceSummary(filters: { from?: string; to?: string; userId?: string; siteId?: string; department?: string }) {
-    const allUsers = await User.findAll({ attributes: ["id", "name", "email", "department", "siteId"] });
+  static async getAttendanceSummary(filters: { from?: string; to?: string; userId?: string; siteId?: string; department?: string }, viewerRole?: string) {
+    const allUsers = await User.findAll({ where: protectedWhere(viewerRole), attributes: ["id", "name", "email", "department", "siteId"] });
     const userMap = new Map<number, any>(allUsers.map((u: any) => [u.id, u.get({ plain: true })]));
     const allSites = await Site.findAll({ attributes: ["id", "name"] });
     const siteMap = new Map<number, string>(allSites.map((s: any) => [s.id, s.get({ plain: true }).name]));
 
     let logs = await AttendanceLog.findAll();
-    let logsPlain = logs.map((l: any) => l.get({ plain: true }));
+    let logsPlain = logs
+      .map((l: any) => l.get({ plain: true }))
+      // Logs of users excluded above (protected accounts) stay hidden too.
+      .filter((l: any) => userMap.has(l.userId));
     if (filters.from) logsPlain = logsPlain.filter((l: any) => l.date >= filters.from!);
     if (filters.to) logsPlain = logsPlain.filter((l: any) => l.date <= filters.to!);
     if (filters.userId) logsPlain = logsPlain.filter((l: any) => l.userId === Number(filters.userId));
@@ -238,14 +246,17 @@ export default class ReportController {
     };
   }
 
-  static async getTimesheetsSummary(filters: { from?: string; to?: string; status?: string; userId?: string; siteId?: string; department?: string }) {
-    const allUsers = await User.findAll({ attributes: ["id", "name", "email", "department", "siteId"] });
+  static async getTimesheetsSummary(filters: { from?: string; to?: string; status?: string; userId?: string; siteId?: string; department?: string }, viewerRole?: string) {
+    const allUsers = await User.findAll({ where: protectedWhere(viewerRole), attributes: ["id", "name", "email", "department", "siteId"] });
     const userMap = new Map<number, any>(allUsers.map((u: any) => [u.id, u.get({ plain: true })]));
     const allSites = await Site.findAll({ attributes: ["id", "name"] });
     const siteMap = new Map<number, string>(allSites.map((s: any) => [s.id, s.get({ plain: true }).name]));
 
     let sheets = await Timesheet.findAll();
-    let sheetsPlain = sheets.map((s: any) => s.get({ plain: true }));
+    let sheetsPlain = sheets
+      .map((s: any) => s.get({ plain: true }))
+      // Timesheets of users excluded above (protected accounts) stay hidden too.
+      .filter((s: any) => userMap.has(s.userId));
     if (filters.from) sheetsPlain = sheetsPlain.filter((s: any) => s.weekStart >= filters.from!);
     if (filters.to) sheetsPlain = sheetsPlain.filter((s: any) => s.weekStart <= filters.to!);
     if (filters.status) sheetsPlain = sheetsPlain.filter((s: any) => s.status === filters.status);
@@ -296,8 +307,8 @@ export default class ReportController {
     };
   }
 
-  static async getLeaveSummary(filters: { from?: string; to?: string; status?: string; userId?: string; siteId?: string; department?: string; leaveType?: string }) {
-    const allUsers = await User.findAll({ attributes: ["id", "name", "email", "department", "siteId"] });
+  static async getLeaveSummary(filters: { from?: string; to?: string; status?: string; userId?: string; siteId?: string; department?: string; leaveType?: string }, viewerRole?: string) {
+    const allUsers = await User.findAll({ where: protectedWhere(viewerRole), attributes: ["id", "name", "email", "department", "siteId"] });
     const userMap = new Map<number, any>(allUsers.map((u: any) => [u.id, u.get({ plain: true })]));
     const allSites = await Site.findAll({ attributes: ["id", "name"] });
     const siteMap = new Map<number, string>(allSites.map((s: any) => [s.id, s.get({ plain: true }).name]));
@@ -306,7 +317,10 @@ export default class ReportController {
     const leaveTypeLabel = new Map<string, string>(leaveTypes.map((t: any) => [t.name, t.label]));
 
     const requestsRaw = await LeaveRequest.findAll();
-    let reqs = requestsRaw.map((r: any) => r.get({ plain: true }));
+    let reqs = requestsRaw
+      .map((r: any) => r.get({ plain: true }))
+      // Requests of users excluded above (protected accounts) stay hidden too.
+      .filter((r: any) => userMap.has(r.employeeId));
 
     // Date-range overlap filter (request overlaps [from, to])
     if (filters.from) reqs = reqs.filter((r: any) => r.endDate >= filters.from!);

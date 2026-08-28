@@ -10,7 +10,8 @@ export class RespondCoverAction {
         Number(req.params.id),
         req.user!.id,
         decision,
-        note
+        note,
+        req.user!.role
       );
       if ("error" in result && !("data" in result)) {
         res.status(result.status).json({ error: result.error });

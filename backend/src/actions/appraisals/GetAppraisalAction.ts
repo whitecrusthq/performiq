@@ -34,7 +34,7 @@ export class GetAppraisalAction {
         }
       }
 
-      const result = await AppraisalController.getById(Number(req.params.id));
+      const result = await AppraisalController.getById(Number(req.params.id), { id: req.user!.id, role: req.user!.role });
       if (!result) { res.status(404).json({ error: "Not found" }); return; }
       res.json(result);
     } catch (err) {

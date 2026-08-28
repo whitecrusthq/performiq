@@ -1,5 +1,6 @@
 import { Op } from "sequelize";
 import { User, Site, StaffReminder } from "../models/index.js";
+import { protectedWhere, getProtectedUserIds } from "../utils/protectedUsers.js";
 
 export default class AnniversaryController {
   static computeDateInfo(dateStr: string) {
@@ -26,9 +27,9 @@ export default class AnniversaryController {
     };
   }
 
-  static async listAnniversaries() {
+  static async listAnniversaries(viewerRole?: string) {
     const users = await User.findAll({
-      where: { startDate: { [Op.ne]: null } },
+      where: { startDate: { [Op.ne]: null }, ...protectedWhere(viewerRole) },
       attributes: ["id", "name", "department", "jobTitle", "startDate", "profilePhoto", "siteId"],
     });
 
@@ -54,9 +55,9 @@ export default class AnniversaryController {
     });
   }
 
-  static async listBirthdays() {
+  static async listBirthdays(viewerRole?: string) {
     const users = await User.findAll({
-      where: { dateOfBirth: { [Op.ne]: null } },
+      where: { dateOfBirth: { [Op.ne]: null }, ...protectedWhere(viewerRole) },
       attributes: ["id", "name", "department", "jobTitle", "dateOfBirth", "profilePhoto", "siteId"],
     });
 
@@ -83,9 +84,9 @@ export default class AnniversaryController {
     });
   }
 
-  static async listWeddings() {
+  static async listWeddings(viewerRole?: string) {
     const users = await User.findAll({
-      where: { weddingDate: { [Op.ne]: null } },
+      where: { weddingDate: { [Op.ne]: null }, ...protectedWhere(viewerRole) },
       attributes: ["id", "name", "department", "jobTitle", "weddingDate", "spouseName", "profilePhoto", "siteId"],
     });
 
@@ -112,8 +113,14 @@ export default class AnniversaryController {
     });
   }
 
-  static async listReminders() {
-    const reminders = await StaffReminder.findAll();
+  static async listReminders(viewerRole?: string) {
+    let reminders = await StaffReminder.findAll();
+
+    // Reminders linked to protected accounts are hidden below super admin.
+    if (viewerRole !== "super_admin") {
+      const protectedIds = await getProtectedUserIds();
+      reminders = reminders.filter(r => !r.userId || !protectedIds.has(r.userId));
+    }
 
     const userIds = [...new Set(reminders.filter(r => r.userId).map(r => r.userId!))];
     let userMap: Record<number, { name: string; department: string | null; jobTitle: string | null; profilePhoto: string | null }> = {};
