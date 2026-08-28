@@ -17,6 +17,9 @@ export class ForcedSetup2FAAction {
 
       const user = await User.findByPk(payload.id);
       if (!user) { res.status(404).json({ error: "User not found" }); return; }
+      if (user.tokenVersion !== payload.tokenVersion) {
+        res.status(401).json({ error: "Setup session expired. Please sign in again." }); return;
+      }
 
       const { base32, otpauthUrl } = generateSecret(user.email);
       await User.update({ twoFactorPendingSecret: base32 }, { where: { id: user.id } });

@@ -12,7 +12,7 @@ export class LoginAction {
         return;
       }
       const normalizedEmail = String(email).toLowerCase().trim();
-      const result = await AuthController.login(email, password);
+      const result = await AuthController.login(email, password, req);
       if ("error" in result) {
         if (result.status && result.status >= 400 && result.status < 500) {
           recordAuthEvent(req, {
@@ -26,6 +26,10 @@ export class LoginAction {
       }
       if ("otpRequired" in result) {
         res.json({ status: "otp_required", message: "A verification code has been sent to your email." });
+        return;
+      }
+      if ("recoveryPending" in result) {
+        res.json({ recoveryPending: true, pendingToken: result.pendingToken, expiresAt: result.expiresAt });
         return;
       }
       if ("requires2FA" in result) {

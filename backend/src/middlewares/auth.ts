@@ -226,7 +226,7 @@ export function generateToken(user: { id: number; role: string; email: string; c
   return jwt.sign({ ...rest, v: tokenVersion }, JWT_SECRET, { expiresIn: "7d" });
 }
 
-export function generate2FAPendingToken(payload: { id: number; email: string; purpose: "2fa-verify" | "2fa-setup" }) {
+export function generate2FAPendingToken(payload: { id: number; email: string; purpose: "2fa-verify" | "2fa-setup"; tokenVersion: number }) {
   return jwt.sign(payload, JWT_SECRET, { expiresIn: "10m" });
 }
 
@@ -247,27 +247,43 @@ export function verifyTemporaryPasswordPendingToken(token: string): { id: number
   } catch { return null; }
 }
 
-export function verify2FAPendingToken(token: string): { id: number; email: string; purpose: "2fa-verify" | "2fa-setup" } | null {
+export function verify2FAPendingToken(token: string): { id: number; email: string; purpose: "2fa-verify" | "2fa-setup"; tokenVersion: number } | null {
   try {
     const payload = jwt.verify(token, JWT_SECRET) as any;
     if (payload?.purpose !== "2fa-verify" && payload?.purpose !== "2fa-setup") return null;
-    if (typeof payload.id !== "number" || typeof payload.email !== "string") return null;
+    if (typeof payload.id !== "number" || typeof payload.email !== "string" || typeof payload.tokenVersion !== "number") return null;
     return payload;
   } catch {
     return null;
   }
 }
 
-export function generateTermsPendingToken(payload: { id: number; email: string; version: number }) {
+export function generateTermsPendingToken(payload: { id: number; email: string; version: number; tokenVersion: number }) {
   return jwt.sign({ ...payload, purpose: "terms-accept" }, JWT_SECRET, { expiresIn: "10m" });
 }
 
-export function verifyTermsPendingToken(token: string): { id: number; email: string; version: number; purpose: "terms-accept" } | null {
+export function generateRecoveryPendingToken(payload: { id: number; requestId: number; tokenVersion: number }) {
+  return jwt.sign({ ...payload, purpose: "recovery-pending" }, JWT_SECRET, { expiresIn: "15m" });
+}
+
+export function verifyRecoveryPendingToken(token: string): { id: number; requestId: number; tokenVersion: number } | null {
+  try {
+    const payload = jwt.verify(token, JWT_SECRET) as any;
+    if (payload?.purpose !== "recovery-pending"
+      || typeof payload.id !== "number"
+      || typeof payload.requestId !== "number"
+      || typeof payload.tokenVersion !== "number") return null;
+    return payload;
+  } catch { return null; }
+}
+
+export function verifyTermsPendingToken(token: string): { id: number; email: string; version: number; tokenVersion: number; purpose: "terms-accept" } | null {
   try {
     const payload = jwt.verify(token, JWT_SECRET) as any;
     if (payload?.purpose !== "terms-accept") return null;
     if (typeof payload.id !== "number" || typeof payload.email !== "string") return null;
     if (typeof payload.version !== "number") return null;
+    if (typeof payload.tokenVersion !== "number") return null;
     return payload;
   } catch {
     return null;

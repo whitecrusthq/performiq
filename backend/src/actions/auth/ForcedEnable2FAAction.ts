@@ -26,6 +26,10 @@ export class ForcedEnable2FAAction {
         res.status(403).json({ error: "This account has been deactivated. Please contact your administrator." });
         return;
       }
+      if (user.tokenVersion !== payload.tokenVersion) {
+        res.status(401).json({ error: "Setup session expired. Please sign in again." });
+        return;
+      }
       if (!user.twoFactorPendingSecret) {
         res.status(400).json({ error: "No setup in progress. Please scan the QR code first." });
         return;
@@ -49,7 +53,12 @@ export class ForcedEnable2FAAction {
       // Run the shared login finalizer so the Terms & Conditions gate is enforced
       // here too — never mint a session directly and bypass it. Backup codes are
       // returned regardless (they were just generated and can't be re-shown).
-      const result = await AuthController.finalize(reloaded!);
+      const result = await AuthController.finalize(reloaded!, req);
+
+      if ("error" in result) {
+        res.status(result.status!).json({ error: result.error });
+        return;
+      }
 
       if ("requiresTermsAcceptance" in result) {
         res.json({
@@ -58,6 +67,10 @@ export class ForcedEnable2FAAction {
           pendingToken: result.pendingToken,
           termsVersion: result.termsVersion,
         });
+        return;
+      }
+      if ("recoveryPending" in result) {
+        res.json({ backupCodes, recoveryPending: true, pendingToken: result.pendingToken, expiresAt: result.expiresAt });
         return;
       }
 

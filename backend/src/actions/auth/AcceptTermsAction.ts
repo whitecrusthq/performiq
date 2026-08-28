@@ -17,7 +17,7 @@ export class AcceptTermsAction {
         return;
       }
       const ip = (req.ip ?? null) as string | null;
-      const result = await AuthController.acceptTerms(payload.id, payload.version, ip);
+      const result = await AuthController.acceptTerms(payload.id, payload.version, ip, req, payload.tokenVersion);
       if ("error" in result) {
         if (result.status && result.status >= 400 && result.status < 500) {
           recordAuthEvent(req, {
@@ -34,6 +34,10 @@ export class AcceptTermsAction {
       // surface it rather than silently looping.
       if ("requiresTermsAcceptance" in result) {
         res.json({ requiresTermsAcceptance: true, pendingToken: result.pendingToken, termsVersion: result.termsVersion });
+        return;
+      }
+      if ("recoveryPending" in result) {
+        res.json({ recoveryPending: true, pendingToken: result.pendingToken, expiresAt: result.expiresAt });
         return;
       }
       recordAuthEvent(req, {

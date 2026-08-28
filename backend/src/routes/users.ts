@@ -37,6 +37,9 @@ const router = Router();
 router.get("/account-recovery/users", requireAuth, requireAccountRecoveryAccess, AccountRecoveryAction.list);
 router.post("/account-recovery/users/:id/password", requireAuth, requireAccountRecoveryAccess, AccountRecoveryAction.password);
 router.post("/account-recovery/users/:id/reset-2fa", requireAuth, requireAccountRecoveryAccess, AccountRecoveryAction.reset2FA);
+router.get("/account-recovery/requests", requireAuth, requireAccountRecoveryAccess, AccountRecoveryAction.requests);
+router.post("/account-recovery/requests/:id/approve", requireAuth, requireAccountRecoveryAccess, AccountRecoveryAction.approve);
+router.post("/account-recovery/requests/:id/reject", requireAuth, requireAccountRecoveryAccess, AccountRecoveryAction.reject);
 
 /**
  * Protected accounts: for anyone below super_admin (and who isn't the account
