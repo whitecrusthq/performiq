@@ -69,10 +69,21 @@ export async function resolveEmailProvider(): Promise<EmailProvider | null> {
   const mgRow = rows.find(r => r.platform === "mailgun");
   if (mgRow) {
     const c = (mgRow.config ?? {}) as Record<string, string>;
-    if (c.apiKey && c.domain) {
+    if (c.authMode === "smtp" && c.username && c.password) {
+      return {
+        kind: "smtp",
+        host: c.host || "smtp.mailgun.org",
+        port: Number(c.port || 587),
+        username: c.username,
+        password: c.password,
+        fromEmail: c.fromEmail || undefined,
+        encryption: (c.encryption || "tls").toLowerCase(),
+      };
+    }
+    if (c.authMode !== "smtp" && c.apiKey && c.domain) {
       return { kind: "mailgun", apiKey: c.apiKey, domain: c.domain, fromEmail: c.fromEmail || undefined };
     }
-    console.log("[email] Mailgun platform enabled but apiKey/domain missing; ignoring.");
+    console.log("[email] Mailgun platform enabled but the selected credentials are incomplete; ignoring.");
   }
 
   // Env fallback (original behavior)
