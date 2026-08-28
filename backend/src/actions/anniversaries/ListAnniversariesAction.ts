@@ -5,7 +5,7 @@ import AnniversaryController from "../../controllers/AnniversaryController.js";
 export class ListAnniversariesAction {
   static async handle(req: AuthRequest, res: Response) {
     try {
-      const result = await AnniversaryController.listAnniversaries();
+      const result = await AnniversaryController.listAnniversaries(req.user?.role);
       res.json(result);
     } catch (err) {
       console.error(err);

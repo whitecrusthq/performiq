@@ -17,7 +17,7 @@ export class CreateLeaveRequestAction {
         res.status(400).json({ error: "leaveType, startDate, and endDate are required" }); return;
       }
 
-      const result = await LeaveController.createLeaveRequest(req.user!.id, { leaveType, startDate, endDate, reason, approverIds, coverUserIds, includeHrApprover: includeHrApprover !== false });
+      const result = await LeaveController.createLeaveRequest(req.user!.id, { leaveType, startDate, endDate, reason, approverIds, coverUserIds, includeHrApprover: includeHrApprover !== false }, req.user!.role);
       if ("error" in result) { res.status(result.status).json({ error: result.error }); return; }
 
       if (result.orderedApproverIds.length > 0) {

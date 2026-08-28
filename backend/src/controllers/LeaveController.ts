@@ -1,5 +1,6 @@
 import { Op } from "sequelize";
 import { LeaveType, LeaveRequest, LeaveApprover, LeavePolicy, LeaveAllocation, User, EmployeeGrade, LeaveTypeGrade, LeaveHrApprover } from "../models/index.js";
+import { getProtectedUserIds } from "../utils/protectedUsers.js";
 
 // Counts working days (Mon–Fri) between two ISO dates inclusive, excluding
 // weekends. Authoritative day count so the stored value never trusts the client.
@@ -157,11 +158,13 @@ export default class LeaveController {
     }));
   }
 
-  static async enrichLeaveRequest(r: any, userMap: Record<number, any>) {
-    const approvers = await LeaveController.getApproversForRequest(r.id);
+  static async enrichLeaveRequest(r: any, userMap: Record<number, any>, hiddenIds?: Set<number>) {
+    let approvers = await LeaveController.getApproversForRequest(r.id);
+    // Protected participants stay hidden below super admin.
+    if (hiddenIds && hiddenIds.size > 0) approvers = approvers.filter(a => !hiddenIds.has(a.id));
     const currentApprover = approvers.find(a => a.status === "pending") ?? null;
     const coverers: any[] = [];
-    if (r.coverUserId1) {
+    if (r.coverUserId1 && !(hiddenIds && hiddenIds.has(r.coverUserId1))) {
       coverers.push({
         ...(userMap[r.coverUserId1] ?? { id: r.coverUserId1, name: `User #${r.coverUserId1}` }),
         status: r.coverUser1Status ?? "pending",
@@ -169,7 +172,7 @@ export default class LeaveController {
         note: r.coverUser1Note ?? null,
       });
     }
-    if (r.coverUserId2) {
+    if (r.coverUserId2 && !(hiddenIds && hiddenIds.has(r.coverUserId2))) {
       coverers.push({
         ...(userMap[r.coverUserId2] ?? { id: r.coverUserId2, name: `User #${r.coverUserId2}` }),
         status: r.coverUser2Status ?? "pending",
@@ -180,7 +183,7 @@ export default class LeaveController {
     return {
       ...r.toJSON ? r.toJSON() : r,
       employee: userMap[r.employeeId] ?? null,
-      reviewer: r.reviewerId ? (userMap[r.reviewerId] ?? null) : null,
+      reviewer: r.reviewerId && !(hiddenIds && hiddenIds.has(r.reviewerId)) ? (userMap[r.reviewerId] ?? null) : null,
       approvers,
       currentApproverId: currentApprover?.id ?? null,
       coverers,
@@ -428,6 +431,12 @@ export default class LeaveController {
     } else {
       employeeIds = visibleIds;
     }
+    if (role !== "super_admin") {
+      // Balances of protected accounts stay hidden below super admin
+      // (a protected viewer still sees their own balance).
+      const protectedIds = await getProtectedUserIds(userId);
+      employeeIds = employeeIds.filter(id => !protectedIds.has(id));
+    }
 
     if (employeeIds.length === 0) {
       return { cycleYear, employees: [] };
@@ -498,6 +507,24 @@ export default class LeaveController {
       );
     }
 
+    // Requests from protected accounts stay hidden below super admin, except
+    // for the protected user themself or someone personally involved as an
+    // approver or cover officer (they need the request to act on it).
+    const hiddenIds = role === "super_admin" ? new Set<number>() : await getProtectedUserIds(userId);
+    if (hiddenIds.size > 0) {
+      const myApproverRows = await LeaveApprover.findAll({
+        where: { approverId: userId },
+        attributes: ["leaveRequestId"],
+      });
+      const myApprovals = new Set(myApproverRows.map(a => a.leaveRequestId));
+      rows = rows.filter(r =>
+        !hiddenIds.has(r.employeeId) ||
+        myApprovals.has(r.id) ||
+        r.coverUserId1 === userId ||
+        r.coverUserId2 === userId
+      );
+    }
+
     const allUserIds = [...new Set([
       ...rows.map(r => r.employeeId),
       ...rows.map(r => r.reviewerId).filter(Boolean) as number[],
@@ -523,10 +550,16 @@ export default class LeaveController {
       rows = rows.filter(r => r.employeeId === employeeId);
     }
 
-    return Promise.all(rows.map(r => LeaveController.enrichLeaveRequest(r, userMap)));
+    return Promise.all(rows.map(r => LeaveController.enrichLeaveRequest(r, userMap, hiddenIds)));
   }
 
-  static async createLeaveRequest(userId: number, data: { leaveType: string; startDate: string; endDate: string; reason?: string; approverIds?: number[]; coverUserIds?: number[]; includeHrApprover?: boolean }) {
+  /** Protected user ids the viewer must never see; empty for super admins. */
+  static async hiddenIdsForViewer(viewerId: number, viewerRole?: string): Promise<Set<number>> {
+    if (viewerRole === "super_admin") return new Set();
+    return getProtectedUserIds(viewerId);
+  }
+
+  static async createLeaveRequest(userId: number, data: { leaveType: string; startDate: string; endDate: string; reason?: string; approverIds?: number[]; coverUserIds?: number[]; includeHrApprover?: boolean }, viewerRole?: string) {
     const { leaveType, startDate, endDate, reason, approverIds, coverUserIds } = data;
 
     // Grade restriction: employees may only request leave types mapped to
@@ -602,7 +635,7 @@ export default class LeaveController {
     const userMap: Record<number, any> = {};
     users.forEach(u => { userMap[u.id] = u.toJSON(); });
 
-    const enriched = await LeaveController.enrichLeaveRequest(row, userMap);
+    const enriched = await LeaveController.enrichLeaveRequest(row, userMap, await LeaveController.hiddenIdsForViewer(userId, viewerRole));
 
     return { enriched, orderedApproverIds, userMap, row: row.toJSON() };
   }
@@ -642,12 +675,14 @@ export default class LeaveController {
     return (rows.find(r => r.isDefault) ?? rows[0]).userId;
   }
 
-  static async listHrLeaveApprovers() {
+  static async listHrLeaveApprovers(viewer?: { id: number; role: string }) {
     const rows = await LeaveController.getActiveHrApproverRows();
     if (rows.length === 0) return [];
     const assignedId = (rows.find(r => r.isDefault) ?? rows[0]).userId;
+    // Protected configured approvers stay hidden below super admin (except self).
+    const hiddenIds = viewer ? await LeaveController.hiddenIdsForViewer(viewer.id, viewer.role) : new Set<number>();
     const users = await User.findAll({
-      where: { id: { [Op.in]: rows.map(r => r.userId) } },
+      where: { id: { [Op.in]: rows.map(r => r.userId).filter(id => !hiddenIds.has(id)) } },
       attributes: ["id", "name", "department", "jobTitle"],
     });
     const byId: Record<number, any> = {};
@@ -673,7 +708,7 @@ export default class LeaveController {
     return LeaveRequest.findByPk(requestId);
   }
 
-  static async respondToCover(requestId: number, userId: number, decision: "agreed" | "declined", note?: string) {
+  static async respondToCover(requestId: number, userId: number, decision: "agreed" | "declined", note?: string, viewerRole?: string) {
     const row = await LeaveRequest.findByPk(requestId);
     if (!row) return { error: "Not found", status: 404 };
     if (row.status !== "pending") return { error: "Only pending requests can receive cover responses", status: 400 };
@@ -718,7 +753,7 @@ export default class LeaveController {
     users.forEach(u => { userMap[u.id] = u.toJSON(); });
 
     return {
-      data: await LeaveController.enrichLeaveRequest(updated, userMap),
+      data: await LeaveController.enrichLeaveRequest(updated, userMap, await LeaveController.hiddenIdsForViewer(userId, viewerRole)),
       employee: userMap[updated.employeeId] ?? null,
       slot,
     };
@@ -747,7 +782,7 @@ export default class LeaveController {
         { where: { id: row.id }, returning: true }
       );
       const userMap: Record<number, any> = {};
-      return { data: await LeaveController.enrichLeaveRequest(updatedRows[0], userMap) };
+      return { data: await LeaveController.enrichLeaveRequest(updatedRows[0], userMap, await LeaveController.hiddenIdsForViewer(userId, role)) };
     }
 
     if (status === "approved" || status === "rejected") {
@@ -788,7 +823,7 @@ export default class LeaveController {
 
         const userMap: Record<number, any> = {};
         return {
-          data: await LeaveController.enrichLeaveRequest(updatedRows[0], userMap),
+          data: await LeaveController.enrichLeaveRequest(updatedRows[0], userMap, await LeaveController.hiddenIdsForViewer(userId, role)),
           notifyEvent: "rejected" as const,
           empUser: empUser?.toJSON(),
           row: row.toJSON(),
@@ -862,7 +897,7 @@ export default class LeaveController {
 
       const userMap: Record<number, any> = {};
       return {
-        data: await LeaveController.enrichLeaveRequest(updatedRows[0], userMap),
+        data: await LeaveController.enrichLeaveRequest(updatedRows[0], userMap, await LeaveController.hiddenIdsForViewer(userId, role)),
         notifyEvent: finalStatus === "approved" ? "approved" as const : "awaiting_next" as const,
         empUser: empUser?.toJSON(),
         row: row.toJSON(),

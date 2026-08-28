@@ -13,7 +13,7 @@ export class GetLeaveSummaryAction {
         siteId: req.query.siteId as string | undefined,
         department: req.query.department as string | undefined,
         leaveType: req.query.leaveType as string | undefined,
-      });
+      }, req.user?.role);
       res.json(data);
     } catch (err) {
       console.error("GET /reports/leave-summary error:", err);

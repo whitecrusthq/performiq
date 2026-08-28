@@ -13,12 +13,20 @@ import { Regenerate2FABackupCodesAction } from "../actions/auth/Regenerate2FABac
 import { ForcedSetup2FAAction } from "../actions/auth/ForcedSetup2FAAction.js";
 import { ForcedEnable2FAAction } from "../actions/auth/ForcedEnable2FAAction.js";
 import { AcceptTermsAction } from "../actions/auth/AcceptTermsAction.js";
+import { TemporaryPasswordChangeAction } from "../actions/auth/TemporaryPasswordChangeAction.js";
+import { PasswordResetAction } from "../actions/auth/PasswordResetAction.js";
+import { RecoveryPendingAction } from "../actions/auth/RecoveryPendingAction.js";
 
 const router = Router();
 
 router.post("/auth/login", LoginAction.handle);
 router.post("/auth/verify-otp", VerifyOtpAction.handle);
 router.post("/auth/terms/accept", AcceptTermsAction.handle);
+router.post("/auth/temporary-password/change", TemporaryPasswordChangeAction.handle);
+router.post("/auth/password-reset/request", PasswordResetAction.request);
+router.post("/auth/password-reset/complete", PasswordResetAction.complete);
+router.get("/auth/recovery-status", RecoveryPendingAction.status);
+router.post("/auth/recovery-report", RecoveryPendingAction.report);
 router.post("/auth/logout", LogoutAction.handle);
 router.post("/auth/change-password", requireAuth, ChangePasswordAction.handle);
 router.get("/auth/me", requireAuth, GetMeAction.handle);

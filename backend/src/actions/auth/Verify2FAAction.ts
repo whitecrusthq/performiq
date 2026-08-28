@@ -16,7 +16,7 @@ export class Verify2FAAction {
         res.status(401).json({ error: "Verification session expired. Please sign in again." });
         return;
       }
-      const result = await AuthController.verify2FA(payload.id, String(code));
+      const result = await AuthController.verify2FA(payload.id, String(code), req, payload.tokenVersion);
       if ("error" in result) {
         if (result.status && result.status >= 400 && result.status < 500) {
           recordAuthEvent(req, {
@@ -31,6 +31,10 @@ export class Verify2FAAction {
       }
       if ("requiresTermsAcceptance" in result) {
         res.json({ requiresTermsAcceptance: true, pendingToken: result.pendingToken, termsVersion: result.termsVersion });
+        return;
+      }
+      if ("recoveryPending" in result) {
+        res.json({ recoveryPending: true, pendingToken: result.pendingToken, expiresAt: result.expiresAt });
         return;
       }
       recordAuthEvent(req, {

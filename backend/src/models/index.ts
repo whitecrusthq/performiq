@@ -54,6 +54,8 @@ import AttendanceSetting from "./AttendanceSetting.js";
 import EmployeeGrade from "./EmployeeGrade.js";
 import LeaveTypeGrade from "./LeaveTypeGrade.js";
 import LeaveHrApprover from "./LeaveHrApprover.js";
+import RecoveryRequest from "./RecoveryRequest.js";
+import RecoveryAuditLog from "./RecoveryAuditLog.js";
 
 export {
   sequelize,
@@ -112,4 +114,6 @@ export {
   EmployeeGrade,
   LeaveTypeGrade,
   LeaveHrApprover,
+  RecoveryRequest,
+  RecoveryAuditLog,
 };
