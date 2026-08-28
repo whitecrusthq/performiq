@@ -24,7 +24,7 @@ function authHeader() {
 }
 
 const PLATFORM_META: Record<string, { icon: any; color: string; description: string; category: string }> = {
-  mailgun: { icon: Mail, color: "#F06B59", description: "Transactional email delivery via Mailgun API", category: "Email" },
+  mailgun: { icon: Mail, color: "#F06B59", description: "Transactional email through Mailgun API or SMTP", category: "Email" },
   smtp: { icon: Mail, color: "#3B82F6", description: "Send emails through any SMTP server", category: "Email" },
   twilio: { icon: Phone, color: "#F22F46", description: "Send SMS notifications via Twilio", category: "SMS" },
   slack: { icon: MessageSquare, color: "#4A154B", description: "Post notifications to Slack channels", category: "Chat" },
@@ -36,8 +36,8 @@ const PLATFORM_META: Record<string, { icon: any; color: string; description: str
 };
 
 const FIELD_LABELS: Record<string, string> = {
-  apiKey: "API Key", domain: "Domain", fromEmail: "From Email",
-  host: "SMTP Host", port: "Port", username: "Username", password: "Password", encryption: "Encryption",
+  authMode: "Authentication Method", apiKey: "API Key", domain: "Domain", fromEmail: "From Email",
+  host: "SMTP Host", port: "Port", username: "SMTP Username", password: "SMTP Password", encryption: "Encryption",
   accountSid: "Account SID", authToken: "Auth Token", fromNumber: "From Number",
   webhookUrl: "Webhook URL", channel: "Channel", botToken: "Bot Token",
   chatId: "Chat ID", serviceAccountJson: "Service Account JSON", projectId: "Project ID",
@@ -254,8 +254,31 @@ export default function NotificationSettings() {
               </div>
 
               {editPlatformDef?.fields.map(field => {
+                if (editPlatform === "mailgun") {
+                  const authMode = formValues.authMode || "api";
+                  if (authMode === "api" && ["username", "password", "host", "port", "encryption"].includes(field)) return null;
+                  if (authMode === "smtp" && field === "apiKey") return null;
+                }
                 const isSensitive = SENSITIVE_FIELDS.includes(field);
                 const isLargeField = field === "serviceAccountJson" || field === "headers";
+
+                if (field === "authMode") {
+                  return (
+                    <div key={field} className="space-y-1.5">
+                      <Label className="text-sm">{FIELD_LABELS[field]}</Label>
+                      <Select
+                        value={formValues[field] || "api"}
+                        onValueChange={val => setFormValues(prev => ({ ...prev, [field]: val }))}
+                      >
+                        <SelectTrigger><SelectValue /></SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="api">Private API Key</SelectItem>
+                          <SelectItem value="smtp">SMTP Username & Password</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  );
+                }
 
                 if (field === "encryption") {
                   return (

@@ -10,10 +10,13 @@ import SecurityController from "./SecurityController.js";
 import LegalController from "./LegalController.js";
 import { auditRecovery, expirePending, recoveryContext } from "../lib/account-recovery.js";
 
-// Email login codes require BOTH working Mailgun credentials AND explicit opt-in,
+// Email login codes require configured Mailgun API or SMTP credentials and explicit opt-in,
 // so that merely configuring email notifications never locks users out of login.
 const OTP_ENABLED = process.env.LOGIN_OTP_ENABLED === "true"
-  && !!(process.env.MAILGUN_API_KEY && process.env.MAILGUN_DOMAIN);
+  && !!(
+    (process.env.MAILGUN_SMTP_USERNAME && process.env.MAILGUN_SMTP_PASSWORD)
+    || (process.env.MAILGUN_API_KEY && process.env.MAILGUN_DOMAIN)
+  );
 
 function formatAuthUser(user: User, customRole?: CustomRole | null) {
   return {

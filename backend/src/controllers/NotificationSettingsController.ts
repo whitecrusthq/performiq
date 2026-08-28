@@ -2,7 +2,7 @@ import { NotificationSettings } from "../models/index.js";
 import { buildSmtpTransport } from "../lib/email.js";
 
 const PLATFORMS = [
-  { key: "mailgun", label: "Mailgun", fields: ["apiKey", "domain", "fromEmail"] },
+  { key: "mailgun", label: "Mailgun", fields: ["authMode", "apiKey", "domain", "username", "password", "host", "port", "fromEmail", "encryption"] },
   { key: "smtp", label: "SMTP / Email", fields: ["host", "port", "username", "password", "fromEmail", "encryption"] },
   { key: "twilio", label: "Twilio (SMS)", fields: ["accountSid", "authToken", "fromNumber"] },
   { key: "slack", label: "Slack", fields: ["webhookUrl", "channel", "botToken"] },
@@ -78,8 +78,28 @@ export default class NotificationSettingsController {
 
     switch (platform) {
       case "mailgun": {
-        if (!config.apiKey || !config.domain) return { error: "API Key and Domain are required", status: 400 };
-        return { data: { success: true, message: "Mailgun configuration looks valid. A test email would be sent to verify." } };
+        if (config.authMode === "smtp") {
+          if (!config.username || !config.password) {
+            return { error: "Mailgun SMTP Username and Password are required", status: 400 };
+          }
+          try {
+            const transporter = buildSmtpTransport({
+              kind: "smtp",
+              host: config.host || "smtp.mailgun.org",
+              port: Number(config.port || 587),
+              username: config.username,
+              password: config.password,
+              fromEmail: config.fromEmail || undefined,
+              encryption: (config.encryption || "tls").toLowerCase(),
+            });
+            await transporter.verify();
+            return { data: { success: true, message: "Mailgun SMTP connection verified successfully." } };
+          } catch (err: any) {
+            return { error: `Mailgun SMTP connection failed: ${err?.message || err}`, status: 400 };
+          }
+        }
+        if (!config.apiKey || !config.domain) return { error: "Mailgun API Key and Domain are required", status: 400 };
+        return { data: { success: true, message: "Mailgun API configuration looks complete." } };
       }
       case "smtp": {
         if (!config.host || !config.port) return { error: "Host and Port are required", status: 400 };

@@ -6,8 +6,8 @@ import { NotificationSettings } from "../models/index.js";
 /**
  * Provider-agnostic email sending. Routes through whichever email provider the
  * admin has enabled in Notification Settings (Mailgun or generic SMTP). Falls
- * back to Mailgun env vars (MAILGUN_API_KEY / MAILGUN_DOMAIN) when no platform
- * row is enabled, preserving the original behavior.
+ * back to Mailgun SMTP or API environment credentials when no platform row is
+ * enabled, preserving the original API behavior while supporting SMTP secrets.
  */
 
 export interface EmailMessage {
@@ -39,7 +39,7 @@ export type EmailProvider = MailgunProvider | SmtpProvider;
 /**
  * Resolves the active email provider.
  * Priority: enabled SMTP settings row → enabled Mailgun settings row →
- * Mailgun env vars → null (email disabled).
+ * Mailgun SMTP env vars → Mailgun API env vars → null (email disabled).
  */
 export async function resolveEmailProvider(): Promise<EmailProvider | null> {
   let rows: NotificationSettings[] = [];
@@ -69,13 +69,38 @@ export async function resolveEmailProvider(): Promise<EmailProvider | null> {
   const mgRow = rows.find(r => r.platform === "mailgun");
   if (mgRow) {
     const c = (mgRow.config ?? {}) as Record<string, string>;
-    if (c.apiKey && c.domain) {
+    if (c.authMode === "smtp" && c.username && c.password) {
+      return {
+        kind: "smtp",
+        host: c.host || "smtp.mailgun.org",
+        port: Number(c.port || 587),
+        username: c.username,
+        password: c.password,
+        fromEmail: c.fromEmail || undefined,
+        encryption: (c.encryption || "tls").toLowerCase(),
+      };
+    }
+    if (c.authMode !== "smtp" && c.apiKey && c.domain) {
       return { kind: "mailgun", apiKey: c.apiKey, domain: c.domain, fromEmail: c.fromEmail || undefined };
     }
-    console.log("[email] Mailgun platform enabled but apiKey/domain missing; ignoring.");
+    console.log("[email] Mailgun platform enabled but the selected credentials are incomplete; ignoring.");
   }
 
-  // Env fallback (original behavior)
+  const smtpUsername = process.env.MAILGUN_SMTP_USERNAME;
+  const smtpPassword = process.env.MAILGUN_SMTP_PASSWORD;
+  if (smtpUsername && smtpPassword) {
+    return {
+      kind: "smtp",
+      host: process.env.MAILGUN_SMTP_HOST || "smtp.mailgun.org",
+      port: Number(process.env.MAILGUN_SMTP_PORT || 587),
+      username: smtpUsername,
+      password: smtpPassword,
+      fromEmail: process.env.MAILGUN_FROM || smtpUsername,
+      encryption: (process.env.MAILGUN_SMTP_ENCRYPTION || "tls").toLowerCase(),
+    };
+  }
+
+  // API environment fallback (original behavior)
   const key = process.env.MAILGUN_API_KEY;
   const domain = process.env.MAILGUN_DOMAIN;
   if (key && domain) {
