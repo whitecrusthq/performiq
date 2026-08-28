@@ -1,7 +1,7 @@
 import bcrypt from "bcryptjs";
 import sequelize from "../db/sequelize.js";
 import { User, CustomRole, Site } from "../models/index.js";
-import { generateToken, generate2FAPendingToken, generateTermsPendingToken } from "../middlewares/auth.js";
+import { generateToken, generate2FAPendingToken, generateTermsPendingToken, generateTemporaryPasswordPendingToken } from "../middlewares/auth.js";
 import { sendOtpEmail } from "../lib/mailgun.js";
 import { generateOtp, storeOtp, verifyOtp } from "../lib/otp-store.js";
 import { verifyToken as verifyTotpToken, consumeBackupCode } from "../lib/totp.js";
@@ -134,6 +134,17 @@ export default class AuthController {
 
     await User.update({ failedLoginAttempts: 0, isLocked: false, lockedAt: null }, { where: { id: user.id } });
 
+    if (user.mustChangePassword) {
+      return {
+        requiresPasswordChange: true as const,
+        pendingToken: generateTemporaryPasswordPendingToken({
+          id: user.id,
+          email: user.email,
+          tokenVersion: user.tokenVersion,
+        }),
+      };
+    }
+
     if (user.twoFactorEnabled && user.twoFactorSecret) {
       const pendingToken = generate2FAPendingToken({ id: user.id, email: user.email, purpose: "2fa-verify" });
       return { requires2FA: true, pendingToken, email: user.email };
@@ -243,6 +254,28 @@ export default class AuthController {
     const newHash = await bcrypt.hash(newPassword, 10);
     await User.update({ passwordHash: newHash }, { where: { id: userId } });
     return { message: "Password updated successfully" };
+  }
+
+  static async changeTemporaryPassword(userId: number, email: string, tokenVersion: number, newPassword: string) {
+    const passwordHash = await bcrypt.hash(newPassword, 10);
+    return sequelize.transaction(async transaction => {
+      const user = await User.findByPk(userId, {
+        transaction,
+        lock: transaction.LOCK.UPDATE,
+      });
+      if (
+        !user
+        || user.email !== email
+        || user.tokenVersion !== tokenVersion
+        || !user.mustChangePassword
+      ) return { error: "Invalid or expired temporary password request", status: 401 };
+      await user.update({
+        passwordHash,
+        mustChangePassword: false,
+        tokenVersion: sequelize.literal("token_version + 1") as any,
+      }, { transaction });
+      return { message: "Password changed. Please sign in with your new password." };
+    });
   }
 
   static async getMe(userId: number) {

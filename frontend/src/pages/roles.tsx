@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { PageHeader, Card, Button, Input, Label, EmptyState } from "@/components/shared";
-import { Shield, Plus, Edit, Trash2, X, LayoutDashboard, ClipboardList, Target, RefreshCcw, ListChecks, Users, BarChart3, Building2, MapPin, CalendarDays, Clock, ClipboardCheck, UserPlus, TrendingUp, CalendarClock, UserCog, Settings, BookOpen, IdCard, Briefcase, ArrowRightLeft, MessageSquareWarning, Award, ShieldAlert, Bell, Paintbrush, Sparkles, Brain, Search, ScrollText, HardDrive, Scale } from "lucide-react";
+import { Shield, Plus, Edit, Trash2, X, LayoutDashboard, ClipboardList, Target, RefreshCcw, ListChecks, Users, BarChart3, Building2, MapPin, CalendarDays, Clock, ClipboardCheck, UserPlus, TrendingUp, CalendarClock, UserCog, Settings, BookOpen, IdCard, Briefcase, ArrowRightLeft, MessageSquareWarning, Award, ShieldAlert, Bell, Paintbrush, Sparkles, Brain, Search, ScrollText, HardDrive, Scale, KeyRound } from "lucide-react";
 import { BulkActionBar } from "@/components/bulk-action-bar";
 import { useAuth } from "@/hooks/use-auth";
 import { apiFetch } from "@/lib/utils";
@@ -43,6 +43,7 @@ const MENU_STRUCTURE: MenuEntry[] = [
   { key: "reports", label: "Reports", icon: BarChart3 },
   { label: "Settings", icon: Settings, items: [
     { key: "users",         label: "Users",         icon: Users },
+    { key: "account-recovery", label: "Account Recovery", icon: KeyRound },
     { key: "departments",   label: "Departments",   icon: Building2 },
     { key: "sites",         label: "Sites",         icon: MapPin },
     { key: "roles",         label: "Roles",         icon: Shield },

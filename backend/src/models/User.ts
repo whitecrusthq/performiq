@@ -80,6 +80,11 @@ class User extends Model {
   declare isActive: boolean;
   declare deactivatedAt: Date | null;
   declare deactivationReason: string | null;
+  declare mustChangePassword: boolean;
+  declare passwordResetCodeHash: string | null;
+  declare passwordResetExpiresAt: Date | null;
+  declare passwordResetAttempts: number;
+  declare passwordResetRequestedAt: Date | null;
 }
 
 User.init(
@@ -162,6 +167,11 @@ User.init(
     isActive: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: true, field: "is_active" },
     deactivatedAt: { type: DataTypes.DATE, field: "deactivated_at" },
     deactivationReason: { type: DataTypes.TEXT, field: "deactivation_reason" },
+    mustChangePassword: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: false, field: "must_change_password" },
+    passwordResetCodeHash: { type: DataTypes.TEXT, field: "password_reset_code_hash" },
+    passwordResetExpiresAt: { type: DataTypes.DATE, field: "password_reset_expires_at" },
+    passwordResetAttempts: { type: DataTypes.INTEGER, allowNull: false, defaultValue: 0, field: "password_reset_attempts" },
+    passwordResetRequestedAt: { type: DataTypes.DATE, field: "password_reset_requested_at" },
   },
   {
     sequelize,

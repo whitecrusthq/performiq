@@ -32,6 +32,10 @@ export class LoginAction {
         res.json({ requires2FA: true, pendingToken: result.pendingToken, email: result.email });
         return;
       }
+      if ("requiresPasswordChange" in result) {
+        res.json({ requiresPasswordChange: true, pendingToken: result.pendingToken });
+        return;
+      }
       if ("requires2FASetup" in result) {
         res.json({ requires2FASetup: true, pendingToken: result.pendingToken, email: result.email });
         return;

@@ -44,6 +44,7 @@ import {
   GraduationCap,
   Trophy,
   Scale,
+  KeyRound,
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { User } from "@/lib";
@@ -111,6 +112,7 @@ const NAV_STRUCTURE: NavEntry[] = [
     icon: Settings,
     items: [
       { name: "Users", path: "/users", icon: Users, roles: ["super_admin", "admin"] },
+      { name: "Account Recovery", path: "/account-recovery", icon: KeyRound, roles: ["super_admin", "admin"] },
       { name: "Departments", path: "/departments", icon: Building2, roles: ["super_admin", "admin"] },
       { name: "Sites", path: "/sites", icon: MapPin, roles: ["super_admin", "admin"] },
       { name: "Roles", path: "/roles", icon: Shield, roles: ["super_admin", "admin"] },
@@ -169,6 +171,9 @@ function NavLinks({ user, onNavigate }: NavLinksProps) {
   }
 
   function isItemVisible(item: NavItem): boolean {
+    if (item.path === "/account-recovery") {
+      return hasMenuAccess(user, "account-recovery");
+    }
     if (customMenuPerms.length > 0) {
       const menuKey = item.path.replace("/", "");
       return customMenuPerms.includes(menuKey);

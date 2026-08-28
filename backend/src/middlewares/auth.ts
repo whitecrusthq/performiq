@@ -105,6 +105,117 @@ export async function requireAuditLogAccess(req: AuthRequest, res: Response, nex
   res.status(403).json({ error: "Forbidden" });
 }
 
+/** Reloads the user and custom role on every request so revoked permissions
+ * take effect immediately rather than relying on JWT role claims. */
+export async function requireAccountRecoveryAccess(req: AuthRequest, res: Response, next: NextFunction) {
+  if (!req.user) { res.status(403).json({ error: "Forbidden" }); return; }
+  try {
+    const { User, CustomRole } = await import("../models/index.js");
+    const u: any = await User.findByPk(req.user.id, { attributes: ["id", "role", "customRoleId", "isActive"] });
+    if (!u || u.isActive === false) { res.status(403).json({ error: "Forbidden" }); return; }
+    if (u.role === "admin" || u.role === "super_admin") { next(); return; }
+    if (u.customRoleId) {
+      const cr: any = await CustomRole.findByPk(u.customRoleId, { attributes: ["menuPermissions"] });
+      let permissions: unknown = [];
+      try { permissions = JSON.parse(cr?.menuPermissions ?? "[]"); } catch {}
+      if (Array.isArray(permissions) && permissions.includes("account-recovery")) { next(); return; }
+    }
+  } catch {}
+  res.status(403).json({ error: "Forbidden" });
+}
+
+/** Gates the full user directory using current database-backed menu access. */
+export async function requireUserDirectoryAccess(req: AuthRequest, res: Response, next: NextFunction) {
+  if (!req.user) { res.status(403).json({ error: "Forbidden" }); return; }
+  try {
+    const { User, CustomRole } = await import("../models/index.js");
+    const actor: any = await User.findByPk(req.user.id, {
+      attributes: ["id", "role", "customRoleId", "isActive"],
+    });
+    if (!actor || actor.isActive === false) {
+      res.status(403).json({ error: "Forbidden" });
+      return;
+    }
+    if (actor.role === "admin" || actor.role === "super_admin") { next(); return; }
+    if (!actor.customRoleId) {
+      if (actor.role === "manager") { next(); return; }
+      res.status(403).json({ error: "Forbidden" });
+      return;
+    }
+
+    const customRole: any = await CustomRole.findByPk(actor.customRoleId, {
+      attributes: ["name", "menuPermissions"],
+    });
+    if (!customRole) {
+      res.status(403).json({ error: "Forbidden" });
+      return;
+    }
+    let permissions: unknown = [];
+    try { permissions = JSON.parse(customRole.menuPermissions ?? "[]"); } catch {}
+    const isHrManager = String(customRole.name ?? "").toLowerCase() === "hr manager";
+    if (Array.isArray(permissions) && permissions.includes("staff")) {
+      next();
+      return;
+    }
+    if (Array.isArray(permissions) && permissions.length === 0 && (actor.role === "manager" || isHrManager)) {
+      next();
+      return;
+    }
+  } catch {}
+  res.status(403).json({ error: "Forbidden" });
+}
+
+/**
+ * Full user records contain HR and financial fields. Allow users to read their
+ * own record, administrators, base managers using inherited access, and custom
+ * roles that explicitly include Staff access. Account Recovery alone never
+ * grants access to these routes.
+ */
+export async function requireUserRecordAccess(req: AuthRequest, res: Response, next: NextFunction) {
+  if (!req.user) { res.status(403).json({ error: "Forbidden" }); return; }
+  const targetId = Number(req.params.id);
+  if (Number.isFinite(targetId) && targetId === req.user.id) { next(); return; }
+
+  try {
+    const { User, CustomRole } = await import("../models/index.js");
+    const actor: any = await User.findByPk(req.user.id, {
+      attributes: ["id", "role", "customRoleId", "isActive"],
+    });
+    if (!actor || actor.isActive === false) {
+      res.status(403).json({ error: "Forbidden" });
+      return;
+    }
+    if (actor.role === "admin" || actor.role === "super_admin") { next(); return; }
+
+    if (!actor.customRoleId) {
+      if (actor.role === "manager") { next(); return; }
+      res.status(403).json({ error: "Forbidden" });
+      return;
+    }
+
+    const customRole: any = await CustomRole.findByPk(actor.customRoleId, {
+      attributes: ["name", "menuPermissions"],
+    });
+    if (!customRole) {
+      res.status(403).json({ error: "Forbidden" });
+      return;
+    }
+    let permissions: unknown = [];
+    try { permissions = JSON.parse(customRole.menuPermissions ?? "[]"); } catch {}
+    const isHrManager = String(customRole.name ?? "").toLowerCase() === "hr manager";
+    if (Array.isArray(permissions) && permissions.includes("staff")) {
+      next();
+      return;
+    }
+    if (Array.isArray(permissions) && permissions.length === 0 && (actor.role === "manager" || isHrManager)) {
+      next();
+      return;
+    }
+  } catch {}
+
+  res.status(403).json({ error: "Forbidden" });
+}
+
 /**
  * Allows: super_admin, admin, OR any user whose custom role name is "hr manager" (case-insensitive).
  */
@@ -123,6 +234,23 @@ export function generateToken(user: { id: number; role: string; email: string; c
 
 export function generate2FAPendingToken(payload: { id: number; email: string; purpose: "2fa-verify" | "2fa-setup" }) {
   return jwt.sign(payload, JWT_SECRET, { expiresIn: "10m" });
+}
+
+export function generateTemporaryPasswordPendingToken(payload: { id: number; email: string; tokenVersion: number }) {
+  return jwt.sign({ ...payload, purpose: "temporary-password-change" }, JWT_SECRET, { expiresIn: "10m" });
+}
+
+export function verifyTemporaryPasswordPendingToken(token: string): { id: number; email: string; tokenVersion: number } | null {
+  try {
+    const payload = jwt.verify(token, JWT_SECRET) as any;
+    if (
+      payload?.purpose !== "temporary-password-change"
+      || typeof payload.id !== "number"
+      || typeof payload.email !== "string"
+      || typeof payload.tokenVersion !== "number"
+    ) return null;
+    return payload;
+  } catch { return null; }
 }
 
 export function verify2FAPendingToken(token: string): { id: number; email: string; purpose: "2fa-verify" | "2fa-setup" } | null {

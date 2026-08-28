@@ -18,6 +18,7 @@ import Cycles from "@/pages/cycles";
 import Goals from "@/pages/goals";
 import Criteria from "@/pages/criteria";
 import Users from "@/pages/users";
+import AccountRecovery from "@/pages/account-recovery";
 import Roles from "@/pages/roles";
 import Reports from "@/pages/reports";
 import Departments from "@/pages/departments";
@@ -98,6 +99,9 @@ function Router() {
       </Route>
       <Route path="/users">
         <AppLayout><ProtectedRoute component={Users} /></AppLayout>
+      </Route>
+      <Route path="/account-recovery">
+        <AppLayout><ProtectedRoute component={AccountRecovery} /></AppLayout>
       </Route>
       <Route path="/roles">
         <AppLayout><ProtectedRoute component={Roles} /></AppLayout>

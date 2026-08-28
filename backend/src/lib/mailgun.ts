@@ -11,6 +11,19 @@ function getClient() {
   return { mg: mailgun.client({ username: "api", key }), domain };
 }
 
+async function getPasswordResetClient() {
+  // Password recovery honors an enabled database Mailgun integration first,
+  // then falls back to deployment environment configuration.
+  const { NotificationSettings } = await import("../models/index.js");
+  const configured: any = await NotificationSettings.findOne({ where: { platform: "mailgun", enabled: true } });
+  const config = configured?.config as Record<string, string> | undefined;
+  const key = config?.apiKey || process.env.MAILGUN_API_KEY;
+  const domain = config?.domain || process.env.MAILGUN_DOMAIN;
+  if (!key || !domain) throw new Error("Mailgun is not configured");
+  const mailgun = new Mailgun(FormData);
+  return { mg: mailgun.client({ username: "api", key }), domain, from: config?.fromEmail || process.env.MAILGUN_FROM || `noreply@${domain}` };
+}
+
 export type LeaveNotifyEvent =
   | "submitted"        // notify first approver: a request awaits their review
   | "awaiting_next"    // notify next approver: previous approved, your turn
@@ -301,5 +314,20 @@ export async function sendOtpEmail(to: string, otp: string, name: string): Promi
       </div>
     `,
     text: `Your PerformIQ login code is: ${otp}\n\nIt expires in 10 minutes.\n\nIf you didn't request this, ignore this email.`,
+  });
+}
+
+export async function sendPasswordResetCodeEmail(to: string, code: string, name: string): Promise<void> {
+  const { mg, domain, from } = await getPasswordResetClient();
+  await mg.messages.create(domain, {
+    from,
+    to: [to],
+    subject: "Your PerformIQ Password Reset Code",
+    html: `<div style="font-family:sans-serif;max-width:480px;margin:0 auto;padding:24px">
+      <h2>Password reset code</h2><p>Hi ${name}, use this code to reset your password. It expires in 10 minutes.</p>
+      <div style="font-size:36px;font-weight:700;letter-spacing:8px;padding:24px;text-align:center;background:#f4f4f5;border-radius:12px">${code}</div>
+      <p style="color:#777;font-size:12px">If you did not request this, you can safely ignore this email.</p>
+    </div>`,
+    text: `Your PerformIQ password reset code is: ${code}\n\nIt expires in 10 minutes. If you did not request this, ignore this email.`,
   });
 }

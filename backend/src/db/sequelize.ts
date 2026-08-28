@@ -79,6 +79,17 @@ export async function connectDatabase(): Promise<void> {
     logger.warn({ err }, "protected accounts schema ensure failed (non-fatal)");
   }
   try {
+    await sequelize.query(`
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS must_change_password BOOLEAN NOT NULL DEFAULT FALSE;
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS password_reset_code_hash TEXT NULL;
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS password_reset_expires_at TIMESTAMP WITH TIME ZONE NULL;
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS password_reset_attempts INTEGER NOT NULL DEFAULT 0;
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS password_reset_requested_at TIMESTAMP WITH TIME ZONE NULL;
+    `);
+  } catch (err) {
+    logger.warn({ err }, "password recovery schema ensure failed (non-fatal)");
+  }
+  try {
     // Repair legacy and partially edited appraisals that have a scalar
     // reviewer_id but no ordered reviewer row, or a manager-review queue with
     // no active reviewer. This is idempotent and also protects deployments

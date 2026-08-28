@@ -63,6 +63,17 @@ const authLimiter = rateLimit({
 app.use("/api/auth/login", authLimiter);
 app.use("/api/auth/verify-otp", authLimiter);
 
+const passwordResetRequestLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, max: 5, standardHeaders: true, legacyHeaders: false,
+  message: { error: "Too many password reset requests, please try again later." },
+});
+const passwordResetCompleteLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, max: 10, standardHeaders: true, legacyHeaders: false,
+  message: { error: "Too many password reset attempts, please try again later." },
+});
+app.use("/api/auth/password-reset/request", passwordResetRequestLimiter);
+app.use("/api/auth/password-reset/complete", passwordResetCompleteLimiter);
+
 // Upload endpoints can be hit unauthenticated (token-based proxy upload and the
 // public careers upload-url minting), so cap volume per IP to limit abuse/cost.
 const uploadLimiter = rateLimit({
