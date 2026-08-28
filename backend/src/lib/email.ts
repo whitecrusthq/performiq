@@ -6,8 +6,8 @@ import { NotificationSettings } from "../models/index.js";
 /**
  * Provider-agnostic email sending. Routes through whichever email provider the
  * admin has enabled in Notification Settings (Mailgun or generic SMTP). Falls
- * back to Mailgun env vars (MAILGUN_API_KEY / MAILGUN_DOMAIN) when no platform
- * row is enabled, preserving the original behavior.
+ * back to Mailgun SMTP or API environment credentials when no platform row is
+ * enabled, preserving the original API behavior while supporting SMTP secrets.
  */
 
 export interface EmailMessage {
@@ -39,7 +39,7 @@ export type EmailProvider = MailgunProvider | SmtpProvider;
 /**
  * Resolves the active email provider.
  * Priority: enabled SMTP settings row → enabled Mailgun settings row →
- * Mailgun env vars → null (email disabled).
+ * Mailgun SMTP env vars → Mailgun API env vars → null (email disabled).
  */
 export async function resolveEmailProvider(): Promise<EmailProvider | null> {
   let rows: NotificationSettings[] = [];
@@ -86,7 +86,21 @@ export async function resolveEmailProvider(): Promise<EmailProvider | null> {
     console.log("[email] Mailgun platform enabled but the selected credentials are incomplete; ignoring.");
   }
 
-  // Env fallback (original behavior)
+  const smtpUsername = process.env.MAILGUN_SMTP_USERNAME;
+  const smtpPassword = process.env.MAILGUN_SMTP_PASSWORD;
+  if (smtpUsername && smtpPassword) {
+    return {
+      kind: "smtp",
+      host: process.env.MAILGUN_SMTP_HOST || "smtp.mailgun.org",
+      port: Number(process.env.MAILGUN_SMTP_PORT || 587),
+      username: smtpUsername,
+      password: smtpPassword,
+      fromEmail: process.env.MAILGUN_FROM || smtpUsername,
+      encryption: (process.env.MAILGUN_SMTP_ENCRYPTION || "tls").toLowerCase(),
+    };
+  }
+
+  // API environment fallback (original behavior)
   const key = process.env.MAILGUN_API_KEY;
   const domain = process.env.MAILGUN_DOMAIN;
   if (key && domain) {
