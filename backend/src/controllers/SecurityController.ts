@@ -1,4 +1,5 @@
-import { User, SecuritySettings } from "../models/index.js";
+import { Op } from "sequelize";
+import { User, SecuritySettings, sequelize } from "../models/index.js";
 
 export default class SecurityController {
   static async getSettings() {
@@ -33,20 +34,62 @@ export default class SecurityController {
     return rows[0];
   }
 
-  static async getLockedAccounts() {
+  static async getLockedAccounts(actorId: number) {
+    const actor: any = await User.findByPk(actorId, { attributes: ["id", "role"] });
+    if (!actor) return [];
     return User.findAll({
-      where: { isLocked: true },
-      attributes: ["id", "name", "email", "role", "lockedAt", "failedLoginAttempts"],
+      where: actor.role === "super_admin"
+        ? { isLocked: true }
+        : { isLocked: true, isProtected: false, role: { [Op.ne]: "super_admin" } },
+      attributes: ["id", "name", "email", "role", "department", "lockedAt", "failedLoginAttempts"],
+      order: [["lockedAt", "DESC"], ["name", "ASC"]],
     });
   }
 
-  static async unlockAccount(userId: number) {
+  static async unlockAccount(userId: number, actorId: number) {
+    const [actor, target]: any[] = await Promise.all([
+      User.findByPk(actorId, { attributes: ["id", "role"] }),
+      User.findByPk(userId, { attributes: ["id", "name", "email", "role", "isProtected", "isLocked"] }),
+    ]);
+    if (!actor || !target || !target.isLocked) return { error: "Locked account not found", status: 404 };
+    if (actor.role !== "super_admin" && (target.isProtected || target.role === "super_admin")) {
+      return { error: "Locked account not found", status: 404 };
+    }
     const [count, rows] = await User.update(
       { isLocked: false, failedLoginAttempts: 0, lockedAt: null },
       { where: { id: userId }, returning: true }
     );
-    if (count === 0) return null;
+    if (count === 0) return { error: "Locked account not found", status: 404 };
     const u = rows[0];
-    return { id: u.id, name: u.name, email: u.email };
+    return { data: { id: u.id, name: u.name, email: u.email } };
+  }
+
+  static async bulkUnlockAccounts(userIdsInput: unknown, actorId: number) {
+    if (!Array.isArray(userIdsInput)) return { error: "userIds must be an array", status: 400 };
+    const userIds = [...new Set(userIdsInput.map(Number))];
+    if (userIds.length === 0 || userIds.length > 500 || userIds.some(id => !Number.isInteger(id) || id <= 0)) {
+      return { error: "Select between 1 and 500 valid accounts", status: 400 };
+    }
+
+    return sequelize.transaction(async transaction => {
+      const actor: any = await User.findByPk(actorId, { attributes: ["id", "role"], transaction });
+      const targets: any[] = await User.findAll({
+        where: { id: { [Op.in]: userIds }, isLocked: true },
+        attributes: ["id", "role", "isProtected"],
+        transaction,
+        lock: transaction.LOCK.UPDATE,
+      });
+      if (!actor || targets.length !== userIds.length) {
+        return { error: "One or more locked accounts were not found", status: 404 };
+      }
+      if (actor.role !== "super_admin" && targets.some(target => target.isProtected || target.role === "super_admin")) {
+        return { error: "One or more locked accounts were not found", status: 404 };
+      }
+      await User.update(
+        { isLocked: false, failedLoginAttempts: 0, lockedAt: null },
+        { where: { id: { [Op.in]: userIds } }, transaction },
+      );
+      return { data: { updated: userIds.length } };
+    });
   }
 }

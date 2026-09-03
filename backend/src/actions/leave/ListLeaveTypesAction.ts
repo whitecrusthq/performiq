@@ -5,8 +5,11 @@ import LeaveController from "../../controllers/LeaveController.js";
 export class ListLeaveTypesAction {
   static async handle(req: AuthRequest, res: Response) {
     try {
-      // ?forMe=1 filters the list to types the requesting user's grade allows
-      const forMe = req.query.forMe === "1" && req.user ? req.user.id : undefined;
+      // Employee-facing lists are always filtered server-side. Admins retain the
+      // full list for leave-type configuration unless they explicitly request
+      // their own eligible types.
+      const isAdmin = req.user?.role === "admin" || req.user?.role === "super_admin";
+      const forMe = req.user && (!isAdmin || req.query.forMe === "1") ? req.user.id : undefined;
       const types = await LeaveController.listLeaveTypes(forMe);
       res.json(types);
     } catch (err) {

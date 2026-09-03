@@ -159,6 +159,12 @@ export default function Leave() {
   const [isPolicyDialogOpen, setIsPolicyDialogOpen] = useState(false);
   const [teamBalances, setTeamBalances] = useState<any[]>([]);
   const [leaveTypes, setLeaveTypes] = useState<LeaveTypeOption[]>([]);
+  const [requestLeaveTypes, setRequestLeaveTypes] = useState<LeaveTypeOption[]>([]);
+  const [requestLeaveTypesLoading, setRequestLeaveTypesLoading] = useState(true);
+  const [requestLeaveTypesError, setRequestLeaveTypesError] = useState<string | null>(null);
+  const [requestPeopleLoading, setRequestPeopleLoading] = useState(true);
+  const [requestPeopleError, setRequestPeopleError] = useState<string | null>(null);
+  const [balancesError, setBalancesError] = useState<string | null>(null);
   const [isLeaveTypeDialogOpen, setIsLeaveTypeDialogOpen] = useState(false);
   const [leaveTypeForm, setLeaveTypeForm] = useState<{ name: string; label: string; gradeIds: number[] }>({ name: "", label: "", gradeIds: [] });
   const [grades, setGrades] = useState<EmployeeGrade[]>([]);
@@ -208,11 +214,20 @@ export default function Leave() {
   };
 
   const loadUsers = async () => {
+    setRequestPeopleLoading(true);
+    setRequestPeopleError(null);
     try {
       const r = await apiFetch("/api/users/coworkers");
       const data = await r.json();
-      if (Array.isArray(data)) setAllUsers(data);
-    } catch {}
+      if (!r.ok) throw new Error(data.error || "Could not load colleagues");
+      if (!Array.isArray(data)) throw new Error("Unexpected colleagues response");
+      setAllUsers(data);
+    } catch (error) {
+      setAllUsers([]);
+      setRequestPeopleError(error instanceof Error ? error.message : "Could not load colleagues");
+    } finally {
+      setRequestPeopleLoading(false);
+    }
     try {
       const r = await apiFetch("/api/sites");
       const data = await r.json();
@@ -221,11 +236,17 @@ export default function Leave() {
   };
 
   const loadBalances = async () => {
+    setBalancesError(null);
     try {
       const r = await apiFetch("/api/leave-balance");
       const data = await r.json();
-      if (data.balances) setBalances(data.balances);
-    } catch {}
+      if (!r.ok) throw new Error(data.error || "Could not load leave balance");
+      if (!Array.isArray(data.balances)) throw new Error("Unexpected leave balance response");
+      setBalances(data.balances);
+    } catch (error) {
+      setBalances([]);
+      setBalancesError(error instanceof Error ? error.message : "Could not load leave balance");
+    }
   };
 
   const loadPolicies = async () => {
@@ -250,6 +271,23 @@ export default function Leave() {
       const data = await r.json();
       if (Array.isArray(data)) setLeaveTypes(data);
     } catch {}
+  };
+
+  const loadRequestLeaveTypes = async () => {
+    setRequestLeaveTypesLoading(true);
+    setRequestLeaveTypesError(null);
+    try {
+      const r = await apiFetch("/api/leave-types?forMe=1");
+      const data = await r.json();
+      if (!r.ok) throw new Error(data.error || "Could not load eligible leave types");
+      if (!Array.isArray(data)) throw new Error("Unexpected leave type response");
+      setRequestLeaveTypes(data);
+    } catch (error) {
+      setRequestLeaveTypes([]);
+      setRequestLeaveTypesError(error instanceof Error ? error.message : "Could not load eligible leave types");
+    } finally {
+      setRequestLeaveTypesLoading(false);
+    }
   };
 
   const loadGrades = async () => {
@@ -305,9 +343,7 @@ export default function Leave() {
   // Leave types the current user may actually request: unmapped types are open
   // to everyone; grade-mapped types only to employees with a matching grade.
   const myGradeId = (user as any)?.gradeId ?? null;
-  const myLeaveTypes = leaveTypes.filter(t =>
-    !t.gradeIds || t.gradeIds.length === 0 || (myGradeId && t.gradeIds.includes(myGradeId))
-  );
+  const myLeaveTypes = requestLeaveTypes;
 
   const handleSaveGrade = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -328,7 +364,7 @@ export default function Leave() {
   const handleDeleteGrade = async (g: EmployeeGrade) => {
     if (!confirm(`Delete grade "${g.name}"? Employees with this grade will become ungraded, and leave types mapped only to it will stop being restricted to it.`)) return;
     const r = await apiFetch(`/api/grades/${g.id}`, { method: "DELETE" });
-    if (r.ok) { loadGrades(); loadLeaveTypes(); }
+    if (r.ok) { loadGrades(); loadLeaveTypes(); loadRequestLeaveTypes(); }
   };
 
   const handleSaveLeaveType = async (e: React.FormEvent) => {
@@ -341,14 +377,14 @@ export default function Leave() {
           method: "PUT",
           body: JSON.stringify({ label: leaveTypeForm.label, gradeIds: leaveTypeForm.gradeIds }),
         });
-        if (r.ok) { setIsLeaveTypeDialogOpen(false); loadLeaveTypes(); setEditingLeaveType(null); }
+        if (r.ok) { setIsLeaveTypeDialogOpen(false); loadLeaveTypes(); loadRequestLeaveTypes(); setEditingLeaveType(null); }
         else { const d = await r.json(); setMutationError(d.error || "Failed to update"); }
       } else {
         const r = await apiFetch("/api/leave-types", {
           method: "POST",
           body: JSON.stringify(leaveTypeForm),
         });
-        if (r.ok) { setIsLeaveTypeDialogOpen(false); loadLeaveTypes(); }
+        if (r.ok) { setIsLeaveTypeDialogOpen(false); loadLeaveTypes(); loadRequestLeaveTypes(); }
         else { const d = await r.json(); setMutationError(d.error || "Failed to create"); }
       }
     } catch (err) {
@@ -361,12 +397,12 @@ export default function Leave() {
     if (!confirm(`Delete "${lt.label}"? This cannot be undone.`)) return;
     try {
       const r = await apiFetch(`/api/leave-types/${lt.id}`, { method: "DELETE" });
-      if (r.ok) loadLeaveTypes();
+      if (r.ok) { loadLeaveTypes(); loadRequestLeaveTypes(); }
       else { const d = await r.json(); setMutationError(d.error || "Failed to delete"); }
     } catch {}
   };
 
-  useEffect(() => { load(); loadUsers(); loadBalances(); loadPolicies(); loadLeaveTypes(); loadGrades(); loadHrApprover(); if (isManager) loadTeamBalances(); }, []);
+  useEffect(() => { load(); loadUsers(); loadBalances(); loadPolicies(); loadLeaveTypes(); loadRequestLeaveTypes(); loadGrades(); loadHrApprover(); if (isManager) loadTeamBalances(); }, []);
   useEffect(() => { load(); }, [filterDepartment, filterEmployee]);
 
   // Keep the selected leave type valid: if the current value isn't a real configured
@@ -374,16 +410,16 @@ export default function Leave() {
   // prevents a controlled <select> from displaying the first option while its state
   // still holds a value that was never actually chosen.
   useEffect(() => {
-    if (leaveTypes.length === 0) return;
+    if (leaveTypes.length === 0 && requestLeaveTypes.length === 0) return;
     const validMine = new Set(myLeaveTypes.map(t => t.name));
     if (!validMine.has(form.leaveType)) {
       setForm(f => ({ ...f, leaveType: myLeaveTypes[0]?.name ?? "" }));
     }
     const valid = new Set(leaveTypes.map(t => t.name));
-    if (!valid.has(policyForm.leaveType)) {
+    if (leaveTypes.length > 0 && !valid.has(policyForm.leaveType)) {
       setPolicyForm(p => ({ ...p, leaveType: leaveTypes[0].name }));
     }
-  }, [leaveTypes, myGradeId]);
+  }, [leaveTypes, requestLeaveTypes, myGradeId]);
 
   const days = calcDays(form.startDate, form.endDate);
 
@@ -573,7 +609,7 @@ export default function Leave() {
   return (
     <div>
       <PageHeader title="Leave Management" description="Apply for leave, track balances, and manage leave policies.">
-        <Button onClick={() => { setMutationError(null); setForm({ leaveType: leaveTypes[0]?.name ?? "", startDate: "", endDate: "", reason: "" }); setApproverSteps([""]); setCoverUserIds(["", ""]); setIsDialogOpen(true); }}>
+        <Button disabled={requestLeaveTypesLoading} onClick={() => { setMutationError(null); setForm({ leaveType: myLeaveTypes[0]?.name ?? "", startDate: "", endDate: "", reason: "" }); setApproverSteps([""]); setCoverUserIds(["", ""]); setIsDialogOpen(true); }}>
           <Plus className="w-4 h-4 mr-2" /> Apply for Leave
         </Button>
       </PageHeader>
@@ -1793,6 +1829,12 @@ export default function Leave() {
               {mutationError && (
                 <div className="bg-destructive/10 text-destructive border-l-4 border-destructive rounded-r-xl p-3 text-sm">{mutationError}</div>
               )}
+              {balancesError && (
+                <div className="flex items-center justify-between gap-3 rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800">
+                  <span>Your leave balance could not be loaded. You can retry before submitting.</span>
+                  <button type="button" className="font-semibold underline" onClick={loadBalances}>Retry</button>
+                </div>
+              )}
 
               {/* Show balance for selected leave type */}
               {balances.length > 0 && (() => {
@@ -1815,12 +1857,19 @@ export default function Leave() {
                   className="w-full px-4 py-2 border rounded-xl bg-background text-sm"
                   value={form.leaveType}
                   onChange={e => setForm({ ...form, leaveType: e.target.value })}
+                  disabled={requestLeaveTypesLoading || !!requestLeaveTypesError}
                   required
                 >
-                  {myLeaveTypes.length === 0 && <option value="">No leave types available</option>}
+                  {requestLeaveTypesLoading && <option value="">Loading eligible leave types…</option>}
+                  {!requestLeaveTypesLoading && myLeaveTypes.length === 0 && <option value="">No leave types available</option>}
                   {myLeaveTypes.map(t => <option key={t.name} value={t.name}>{t.label}</option>)}
                 </select>
-                {myLeaveTypes.length === 0 && (
+                {requestLeaveTypesError ? (
+                  <div className="mt-2 flex items-center justify-between gap-3 rounded-lg bg-destructive/10 p-2 text-xs text-destructive">
+                    <span>{requestLeaveTypesError}</span>
+                    <button type="button" className="font-semibold underline" onClick={loadRequestLeaveTypes}>Retry</button>
+                  </div>
+                ) : !requestLeaveTypesLoading && myLeaveTypes.length === 0 && (
                   <p className="text-xs text-muted-foreground mt-1">
                     {leaveTypes.length === 0
                       ? "No leave types have been set up yet. Ask an administrator to create leave types before applying."
@@ -1854,6 +1903,12 @@ export default function Leave() {
 
               <div>
                 <Label>Approval Chain <span className="text-muted-foreground text-xs font-normal">(sequential — Step 1 approves first)</span></Label>
+                {requestPeopleError && (
+                  <div className="mt-2 flex items-center justify-between gap-3 rounded-lg bg-destructive/10 p-2 text-xs text-destructive">
+                    <span>Approvers and cover officers could not be loaded.</span>
+                    <button type="button" className="font-semibold underline" onClick={loadUsers}>Retry</button>
+                  </div>
+                )}
                 <div className="mt-2 space-y-2">
                   {approverSteps.map((stepVal, idx) => {
                     const alreadyPicked = new Set(approverSteps.filter((v, i) => i !== idx && v));
@@ -1865,8 +1920,9 @@ export default function Leave() {
                           className="flex-1 px-3 py-2 rounded-xl bg-background border border-border text-sm outline-none focus:ring-2 focus:ring-primary/20"
                           value={stepVal}
                           onChange={e => setApproverAtStep(idx, e.target.value)}
+                          disabled={requestPeopleLoading || !!requestPeopleError}
                         >
-                          <option value="">-- Select approver --</option>
+                          <option value="">{requestPeopleLoading ? "Loading approvers…" : "-- Select approver --"}</option>
                           {available.map(u => (
                             <option key={u.id} value={String(u.id)}>{u.name} ({u.role})</option>
                           ))}
@@ -1925,13 +1981,14 @@ export default function Leave() {
                         <select
                           className="flex-1 px-3 py-2 rounded-xl bg-background border border-border text-sm outline-none focus:ring-2 focus:ring-primary/20"
                           value={coverUserIds[idx] ?? ""}
+                          disabled={requestPeopleLoading || !!requestPeopleError}
                           onChange={e => setCoverUserIds(prev => {
                             const next = [...prev];
                             next[idx] = e.target.value;
                             return next;
                           })}
                         >
-                          <option value="">-- Select cover officer{idx === 1 ? " (optional)" : ""} --</option>
+                          <option value="">{requestPeopleLoading ? "Loading cover officers…" : `-- Select cover officer${idx === 1 ? " (optional)" : ""} --`}</option>
                           {available.map(u => (
                             <option key={u.id} value={String(u.id)}>{u.name}{u.department ? ` · ${u.department}` : ""}</option>
                           ))}

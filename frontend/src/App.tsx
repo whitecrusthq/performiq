@@ -33,6 +33,7 @@ import HrKnowledgeBase from "@/pages/hr-knowledge-base";
 import HrSupportDashboard from "@/pages/hr-support-dashboard";
 import Profile from "@/pages/profile";
 import Security from "@/pages/security";
+import AccountLockManagement from "@/pages/account-lock-management";
 import AuditLog from "@/pages/audit-log";
 import Appearance from "@/pages/appearance";
 import Transfers from "@/pages/transfers";
@@ -144,6 +145,9 @@ function Router() {
       </Route>
       <Route path="/security">
         <AppLayout><ProtectedRoute component={Security} /></AppLayout>
+      </Route>
+      <Route path="/account-lock-management">
+        <AppLayout><ProtectedRoute component={AccountLockManagement} /></AppLayout>
       </Route>
       <Route path="/audit-log">
         <AppLayout><ProtectedRoute component={AuditLog} /></AppLayout>

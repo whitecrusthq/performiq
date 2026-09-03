@@ -9,8 +9,12 @@ export class UpsertLeavePolicyAction {
       if (!leaveType || daysAllocated === undefined) {
         res.status(400).json({ error: "leaveType and daysAllocated are required" }); return;
       }
-      const policy = await LeaveController.upsertPolicy({ leaveType, daysAllocated, cycleStartMonth, cycleStartDay, cycleEndMonth, cycleEndDay, prorationMode });
-      res.json(policy);
+      const result = await LeaveController.upsertPolicy({ leaveType, daysAllocated, cycleStartMonth, cycleStartDay, cycleEndMonth, cycleEndDay, prorationMode });
+      if ("error" in result) {
+        res.status(result.status).json({ error: result.error });
+        return;
+      }
+      res.json(result);
     } catch (err) {
       console.error(err);
       res.status(500).json({ error: "Server error" });

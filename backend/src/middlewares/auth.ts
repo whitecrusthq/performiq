@@ -81,6 +81,23 @@ export function requireRole(...roles: Array<string | string[]>) {
   };
 }
 
+export async function requireCurrentSuperAdmin(req: AuthRequest, res: Response, next: NextFunction): Promise<void> {
+  if (!req.user) {
+    res.status(401).json({ error: "Authentication required" });
+    return;
+  }
+  try {
+    const actor = await User.findByPk(req.user.id, { attributes: ["role", "isActive"] });
+    if (!actor || actor.isActive === false || actor.role !== "super_admin") {
+      res.status(403).json({ error: "Super Admin access required" });
+      return;
+    }
+    next();
+  } catch {
+    res.status(500).json({ error: "Could not verify permissions" });
+  }
+}
+
 /**
  * Allows: super_admin/admin always, plus any user whose custom role grants the
  * "view_audit_log" permission via the menuPermissions JSON list. Used to gate
@@ -100,6 +117,34 @@ export async function requireAuditLogAccess(req: AuthRequest, res: Response, nex
           if (Array.isArray(perms) && perms.includes("audit-log")) { next(); return; }
         } catch {}
       }
+    }
+  } catch {}
+  res.status(403).json({ error: "Forbidden" });
+}
+
+/** Dedicated account-lock permission. Super Admin always retains emergency
+ * access; every other user must receive the explicit custom-role menu key. */
+export async function requireAccountLockManagementAccess(req: AuthRequest, res: Response, next: NextFunction) {
+  if (!req.user) { res.status(403).json({ error: "Forbidden" }); return; }
+  try {
+    const { User, CustomRole } = await import("../models/index.js");
+    const actor: any = await User.findByPk(req.user.id, {
+      attributes: ["id", "role", "customRoleId", "isActive"],
+    });
+    if (!actor || actor.isActive === false) {
+      res.status(403).json({ error: "Forbidden" });
+      return;
+    }
+    if (actor.role === "super_admin") { next(); return; }
+    if (actor.customRoleId) {
+      const role: any = await CustomRole.findByPk(actor.customRoleId, { attributes: ["id", "menuPermissions"] });
+      try {
+        const permissions = JSON.parse(role?.menuPermissions ?? "[]");
+        if (Array.isArray(permissions) && permissions.includes("account-lock-management")) {
+          next();
+          return;
+        }
+      } catch {}
     }
   } catch {}
   res.status(403).json({ error: "Forbidden" });

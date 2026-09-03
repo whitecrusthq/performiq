@@ -9,6 +9,7 @@ import { verifyToken as verifyTotpToken, consumeBackupCode } from "../lib/totp.j
 import SecurityController from "./SecurityController.js";
 import LegalController from "./LegalController.js";
 import { auditRecovery, expirePending, recoveryContext } from "../lib/account-recovery.js";
+import { sendAdministrativeNotification } from "../lib/administrative-notifications.js";
 
 // Email login codes require configured Mailgun API or SMTP credentials and explicit opt-in,
 // so that merely configuring email notifications never locks users out of login.
@@ -155,6 +156,10 @@ export default class AuthController {
           lockedAt: shouldLock ? new Date() : user.lockedAt,
         }, { where: { id: user.id } });
         if (shouldLock) {
+          void sendAdministrativeNotification({
+            subject: "PerformIQ account locked",
+            text: `${user.name}'s account (${user.email}) was locked after ${settings.maxAttempts} failed sign-in attempts.`,
+          });
           return { error: `Account locked after ${settings.maxAttempts} failed attempts. Contact your administrator to unlock.`, status: 403 };
         }
         const remaining = settings.maxAttempts - newAttempts;

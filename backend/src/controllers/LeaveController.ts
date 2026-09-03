@@ -98,10 +98,20 @@ export default class LeaveController {
   /** True when the employee may request this leave type (by slug). */
   static async isLeaveTypeAllowedForUser(userId: number, leaveTypeSlug: string): Promise<boolean> {
     const type: any = await LeaveType.findOne({ where: { name: leaveTypeSlug } });
-    if (!type) return true; // unknown/legacy types are not grade-restricted
+    if (!type) return false;
     const user: any = await User.findByPk(userId, { attributes: ["id", "gradeId"] });
     const allowed = await LeaveController.getAllowedLeaveTypeIds({ gradeId: user?.gradeId ?? null });
     return allowed.has(type.id);
+  }
+
+  static async getAllowedLeaveTypeSlugsForUser(userId: number): Promise<Set<string>> {
+    const user: any = await User.findByPk(userId, { attributes: ["id", "gradeId"] });
+    if (!user) return new Set();
+    const [types, allowedIds] = await Promise.all([
+      LeaveType.findAll({ attributes: ["id", "name"] }),
+      LeaveController.getAllowedLeaveTypeIds({ gradeId: user.gradeId ?? null }),
+    ]);
+    return new Set(types.filter((type: any) => allowedIds.has(type.id)).map((type: any) => type.name));
   }
 
   static getCurrentCycleYear() {
@@ -123,7 +133,14 @@ export default class LeaveController {
       where: { employeeId, leaveType, cycleYear: effectiveCycle },
     });
 
-    if (existing) return existing;
+    if (existing) {
+      if (policy && !existing.isManual && (
+        Number(existing.allocated) !== allocated || existing.policyId !== policyId
+      )) {
+        await existing.update({ allocated, policyId, updatedAt: new Date() });
+      }
+      return existing;
+    }
 
     const alloc = await LeaveAllocation.create({
       employeeId,
@@ -278,20 +295,16 @@ export default class LeaveController {
   static async listPolicies(user?: { id: number; role: string; customRoleName?: string | null }) {
     const policies = await LeavePolicy.findAll({ order: [["leaveType", "ASC"]] });
     if (!user) return policies;
+    if (user.role === "admin" || user.role === "super_admin") return policies;
 
-    const visibleIds = await LeaveController.getVisibleEmployeeIds(user.id, user.role, user.customRoleName);
-    if (visibleIds === null) return policies;
-
-    const allocations = await LeaveAllocation.findAll({
-      where: { employeeId: visibleIds },
-      attributes: ["leaveType"],
-    });
-    const applicableTypes = new Set(allocations.map((a: any) => a.leaveType));
-    return policies.filter(p => applicableTypes.has(p.leaveType));
+    const applicableTypes = await LeaveController.getAllowedLeaveTypeSlugsForUser(user.id);
+    return policies.filter(policy => applicableTypes.has(policy.leaveType));
   }
 
   static async upsertPolicy(data: { leaveType: string; daysAllocated: number; cycleStartMonth?: number; cycleStartDay?: number; cycleEndMonth?: number; cycleEndDay?: number; prorationMode?: string }) {
     const { leaveType, daysAllocated, cycleStartMonth, cycleStartDay, cycleEndMonth, cycleEndDay } = data;
+    const configuredLeaveType: any = await LeaveType.findOne({ where: { name: leaveType }, attributes: ["id"] });
+    if (!configuredLeaveType) return { error: "Unknown leave type", status: 400 };
     const prorationMode = ["none", "monthly", "monthly_incl"].includes(data.prorationMode ?? "")
       ? data.prorationMode
       : "none";
@@ -322,8 +335,14 @@ export default class LeaveController {
     }
 
     const cycleYear = getCycleKey(policy);
-    const employees = await User.findAll({ attributes: ["id", "startDate"] });
+    const employees = await User.findAll({ attributes: ["id", "startDate", "gradeId"] });
+    const mappings = await LeaveTypeGrade.findAll({
+      where: { leaveTypeId: configuredLeaveType.id },
+      attributes: ["gradeId"],
+    });
+    const mappedGrades = new Set(mappings.map((mapping: any) => mapping.gradeId));
     for (const emp of employees as any[]) {
+      if (mappedGrades.size > 0 && (!emp.gradeId || !mappedGrades.has(emp.gradeId))) continue;
       const allocated = prorateAllocation(policy, emp.startDate ?? null, cycleYear);
       const existingAlloc = await LeaveAllocation.findOne({
         where: { employeeId: emp.id, leaveType, cycleYear },
@@ -358,7 +377,8 @@ export default class LeaveController {
   }
 
   static async getLeaveBalance(userId: number) {
-    const policies = await LeavePolicy.findAll();
+    const allowedTypes = await LeaveController.getAllowedLeaveTypeSlugsForUser(userId);
+    const policies = (await LeavePolicy.findAll()).filter(policy => allowedTypes.has(policy.leaveType));
     const policyMap = Object.fromEntries(policies.map(p => [p.leaveType, p]));
 
     for (const p of policies) {
@@ -373,7 +393,7 @@ export default class LeaveController {
       const rows = await LeaveAllocation.findAll({
         where: { employeeId: userId, cycleYear: ck },
       });
-      allAllocations.push(...rows.map(r => r.toJSON()));
+      allAllocations.push(...rows.map(r => r.toJSON()).filter(row => allowedTypes.has(row.leaveType)));
     }
 
     const seen = new Set<string>();
@@ -442,8 +462,11 @@ export default class LeaveController {
       return { cycleYear, employees: [] };
     }
 
+    const allowedTypesByEmployee = new Map<number, Set<string>>();
     for (const empId of employeeIds) {
-      for (const p of policies) {
+      const allowedTypes = await LeaveController.getAllowedLeaveTypeSlugsForUser(empId);
+      allowedTypesByEmployee.set(empId, allowedTypes);
+      for (const p of policies.filter(policy => allowedTypes.has(policy.leaveType))) {
         await LeaveController.ensureAllocation(empId, p.leaveType);
       }
     }
@@ -463,7 +486,8 @@ export default class LeaveController {
 
     const employeeBalances = users.map(u => {
       const uJson = u.toJSON() as any;
-      const empAllocs = allAllocations.filter(a => a.employeeId === uJson.id);
+      const allowedTypes = allowedTypesByEmployee.get(uJson.id) ?? new Set<string>();
+      const empAllocs = allAllocations.filter(a => a.employeeId === uJson.id && allowedTypes.has(a.leaveType));
       const seen = new Set<string>();
       const deduped = empAllocs.filter(a => {
         if (seen.has(a.leaveType)) return false;
@@ -566,6 +590,8 @@ export default class LeaveController {
     // their grade (unmapped types are open to everyone).
     const typeAllowed = await LeaveController.isLeaveTypeAllowedForUser(userId, leaveType);
     if (!typeAllowed) {
+      const knownType = await LeaveType.findOne({ where: { name: leaveType }, attributes: ["id"] });
+      if (!knownType) return { error: "Unknown leave type.", status: 400 };
       return { error: "This leave type is not available for your employee grade.", status: 403 };
     }
 
@@ -647,6 +673,9 @@ export default class LeaveController {
     const type = await LeaveType.findOne({ where: { name: leaveType } });
     const policy = await LeavePolicy.findOne({ where: { leaveType } });
     if (!type && !policy) return { error: "Unknown leave type", status: 400 };
+    if (!await LeaveController.isLeaveTypeAllowedForUser(employeeId, leaveType)) {
+      return { error: "This leave type is not available for the employee's grade.", status: 400 };
+    }
     const alloc = await LeaveController.ensureAllocation(employeeId, leaveType);
     await LeaveAllocation.update(
       { allocated, isManual: true, updatedAt: new Date() },
