@@ -115,6 +115,17 @@ export async function connectDatabase(): Promise<void> {
     logger.warn({ err }, "recovery request schema ensure failed (non-fatal)");
   }
   try {
+    await sequelize.query(`
+      CREATE TABLE IF NOT EXISTS notification_admin_recipients (
+        user_id INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+        created_by_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+    `);
+  } catch (err) {
+    logger.warn({ err }, "notification admin recipients schema ensure failed (non-fatal)");
+  }
+  try {
     // Repair legacy and partially edited appraisals that have a scalar
     // reviewer_id but no ordered reviewer row, or a manager-review queue with
     // no active reviewer. This is idempotent and also protects deployments

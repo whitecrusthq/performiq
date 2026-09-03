@@ -81,6 +81,23 @@ export function requireRole(...roles: Array<string | string[]>) {
   };
 }
 
+export async function requireCurrentSuperAdmin(req: AuthRequest, res: Response, next: NextFunction): Promise<void> {
+  if (!req.user) {
+    res.status(401).json({ error: "Authentication required" });
+    return;
+  }
+  try {
+    const actor = await User.findByPk(req.user.id, { attributes: ["role", "isActive"] });
+    if (!actor || actor.isActive === false || actor.role !== "super_admin") {
+      res.status(403).json({ error: "Super Admin access required" });
+      return;
+    }
+    next();
+  } catch {
+    res.status(500).json({ error: "Could not verify permissions" });
+  }
+}
+
 /**
  * Allows: super_admin/admin always, plus any user whose custom role grants the
  * "view_audit_log" permission via the menuPermissions JSON list. Used to gate

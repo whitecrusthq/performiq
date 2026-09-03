@@ -56,6 +56,7 @@ import LeaveTypeGrade from "./LeaveTypeGrade.js";
 import LeaveHrApprover from "./LeaveHrApprover.js";
 import RecoveryRequest from "./RecoveryRequest.js";
 import RecoveryAuditLog from "./RecoveryAuditLog.js";
+import NotificationAdminRecipient from "./NotificationAdminRecipient.js";
 
 export {
   sequelize,
@@ -116,4 +117,5 @@ export {
   LeaveHrApprover,
   RecoveryRequest,
   RecoveryAuditLog,
+  NotificationAdminRecipient,
 };

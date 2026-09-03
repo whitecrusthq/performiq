@@ -1,8 +1,8 @@
 import { Request } from "express";
 import { Op, Transaction } from "sequelize";
-import { RecoveryAuditLog, RecoveryRequest, User, sequelize } from "../models/index.js";
-import { sendEmail } from "./email.js";
+import { RecoveryAuditLog, RecoveryRequest, sequelize } from "../models/index.js";
 import { logger } from "./logger.js";
+import { sendAdministrativeNotification } from "./administrative-notifications.js";
 
 export interface RecoveryRequestContext {
   ipAddress: string | null;
@@ -53,19 +53,5 @@ export async function expirePending(request: RecoveryRequest, context: RecoveryR
 }
 
 export async function notifyRecoveryAdmins(subject: string, text: string, superAdminsOnly = false): Promise<void> {
-  try {
-    const admins = await User.findAll({
-      where: { role: superAdminsOnly ? "super_admin" : { [Op.in]: ["admin", "super_admin"] }, isActive: true },
-      attributes: ["email"],
-    });
-    const emails = [...new Set(admins.map(admin => admin.email.toLowerCase().trim()).filter(Boolean))];
-    await Promise.all(emails.map(to => sendEmail({
-      to,
-      subject,
-      text,
-      html: `<p>${text.replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]!)}</p>`,
-    }, "account-recovery").catch(err => logger.error({ err, to }, "Recovery notification failed"))));
-  } catch (err) {
-    logger.error({ err }, "Could not load recovery notification recipients");
-  }
+  await sendAdministrativeNotification({ subject, text, superAdminsOnly });
 }
