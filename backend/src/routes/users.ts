@@ -31,6 +31,7 @@ import { UpdateReferencesAction } from "../actions/users/UpdateReferencesAction.
 import { BulkImportAction } from "../actions/users/BulkImportAction.js";
 import { SetUserProtectedAction } from "../actions/users/SetUserProtectedAction.js";
 import { AccountRecoveryAction } from "../actions/users/AccountRecoveryAction.js";
+import { BulkAssignGradeAction } from "../actions/users/BulkAssignGradeAction.js";
 
 const router = Router();
 
@@ -40,6 +41,8 @@ router.post("/account-recovery/users/:id/reset-2fa", requireAuth, requireAccount
 router.get("/account-recovery/requests", requireAuth, requireAccountRecoveryAccess, AccountRecoveryAction.requests);
 router.post("/account-recovery/requests/:id/approve", requireAuth, requireAccountRecoveryAccess, AccountRecoveryAction.approve);
 router.post("/account-recovery/requests/:id/reject", requireAuth, requireAccountRecoveryAccess, AccountRecoveryAction.reject);
+
+router.patch("/users/bulk/grade", requireAuth, requireRole("admin"), BulkAssignGradeAction.handle);
 
 /**
  * Protected accounts: for anyone below super_admin (and who isn't the account

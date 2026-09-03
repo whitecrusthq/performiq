@@ -1,5 +1,5 @@
 import bcrypt from "bcryptjs";
-import { User, CustomRole, StaffDocument, StaffBeneficiary, StaffWorkExperience, StaffEducation, StaffReference, Site, sequelize } from "../models/index.js";
+import { User, CustomRole, StaffDocument, StaffBeneficiary, StaffWorkExperience, StaffEducation, StaffReference, Site, EmployeeGrade, sequelize } from "../models/index.js";
 import { QueryTypes } from "sequelize";
 
 const ELEVATED_ROLES = ["admin", "super_admin"];
@@ -147,6 +147,39 @@ export default class UserController {
     if (count === 0) return { error: "User not found", status: 404 };
     const result = await getUserWithRole(rows[0].id);
     return { data: result };
+  }
+
+  static async bulkAssignGrade(userIdsInput: unknown, gradeIdInput: unknown, actorRole: string) {
+    if (!Array.isArray(userIdsInput)) {
+      return { error: "userIds must be an array", status: 400 };
+    }
+    const userIds = [...new Set(userIdsInput.map(Number))];
+    if (userIds.length === 0 || userIds.length > 500 || userIds.some(id => !Number.isInteger(id) || id <= 0)) {
+      return { error: "Select between 1 and 500 valid users", status: 400 };
+    }
+
+    const gradeId = gradeIdInput === null || gradeIdInput === "" ? null : Number(gradeIdInput);
+    if (gradeId !== null) {
+      if (!Number.isInteger(gradeId) || gradeId <= 0) {
+        return { error: "Invalid grade", status: 400 };
+      }
+      if (!await EmployeeGrade.findByPk(gradeId)) {
+        return { error: "Grade not found", status: 404 };
+      }
+    }
+
+    return sequelize.transaction(async transaction => {
+      const targets = await User.findAll({ where: { id: userIds }, transaction, lock: transaction.LOCK.UPDATE });
+      if (targets.length !== userIds.length) {
+        return { error: "One or more selected users no longer exist", status: 404 };
+      }
+      if (actorRole !== "super_admin" && targets.some(target => target.isProtected || target.role === "super_admin")) {
+        return { error: "Only a Super Admin can update protected or Super Admin accounts", status: 403 };
+      }
+
+      await User.update({ gradeId }, { where: { id: userIds }, transaction });
+      return { data: { updated: userIds.length, gradeId } };
+    });
   }
 
   static async updateProfilePhoto(targetId: number, profilePhoto: string | null) {
