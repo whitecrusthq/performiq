@@ -15,7 +15,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Textarea } from "@/components/ui/textarea";
 import {
   Bell, Mail, MessageSquare, Phone, Send, Globe, Smartphone,
-  Settings2, CheckCircle2, XCircle, ChevronRight, Shield, Zap, FlaskConical
+  Settings2, CheckCircle2, XCircle, ChevronRight, Shield, Zap, FlaskConical,
+  Search, UserCheck
 } from "lucide-react";
 
 function authHeader() {
@@ -24,7 +25,7 @@ function authHeader() {
 }
 
 const PLATFORM_META: Record<string, { icon: any; color: string; description: string; category: string }> = {
-  mailgun: { icon: Mail, color: "#F06B59", description: "Transactional email delivery via Mailgun API", category: "Email" },
+  mailgun: { icon: Mail, color: "#F06B59", description: "Transactional email through Mailgun API or SMTP", category: "Email" },
   smtp: { icon: Mail, color: "#3B82F6", description: "Send emails through any SMTP server", category: "Email" },
   twilio: { icon: Phone, color: "#F22F46", description: "Send SMS notifications via Twilio", category: "SMS" },
   slack: { icon: MessageSquare, color: "#4A154B", description: "Post notifications to Slack channels", category: "Chat" },
@@ -36,8 +37,8 @@ const PLATFORM_META: Record<string, { icon: any; color: string; description: str
 };
 
 const FIELD_LABELS: Record<string, string> = {
-  apiKey: "API Key", domain: "Domain", fromEmail: "From Email",
-  host: "SMTP Host", port: "Port", username: "Username", password: "Password", encryption: "Encryption",
+  authMode: "Authentication Method", apiKey: "API Key", domain: "Domain", fromEmail: "From Email",
+  host: "SMTP Host", port: "Port", username: "SMTP Username", password: "SMTP Password", encryption: "Encryption",
   accountSid: "Account SID", authToken: "Auth Token", fromNumber: "From Number",
   webhookUrl: "Webhook URL", channel: "Channel", botToken: "Bot Token",
   chatId: "Chat ID", serviceAccountJson: "Service Account JSON", projectId: "Project ID",
@@ -47,6 +48,14 @@ const FIELD_LABELS: Record<string, string> = {
 const SENSITIVE_FIELDS = ["apiKey", "authToken", "password", "botToken", "secret", "serviceAccountJson"];
 
 interface PlatformDef { key: string; label: string; fields: string[]; }
+interface AdministrativeRecipient {
+  id: number;
+  name: string;
+  email: string;
+  role: string;
+  isProtected: boolean;
+  selected: boolean;
+}
 
 export default function NotificationSettings() {
   const { user } = useAuth();
@@ -57,6 +66,8 @@ export default function NotificationSettings() {
   const [editPlatform, setEditPlatform] = useState<string | null>(null);
   const [formValues, setFormValues] = useState<Record<string, string>>({});
   const [formEnabled, setFormEnabled] = useState(false);
+  const [recipientSearch, setRecipientSearch] = useState("");
+  const [selectedRecipientIds, setSelectedRecipientIds] = useState<Set<number>>(new Set());
 
   const platforms = useQuery<PlatformDef[]>({
     queryKey: ["notification-platforms"],
@@ -66,6 +77,31 @@ export default function NotificationSettings() {
   const settings = useQuery<Record<string, any>>({
     queryKey: ["notification-settings"],
     queryFn: () => apiFetch("/api/notification-settings", { headers: authHeader() }).then(r => r.json()),
+  });
+
+  const administrativeRecipients = useQuery<AdministrativeRecipient[]>({
+    queryKey: ["administrative-notification-recipients"],
+    enabled: user?.role === "super_admin",
+    queryFn: () => apiFetch("/api/notification-settings/admin-recipients/list")
+      .then(r => r.ok ? r.json() : r.json().then((e: any) => Promise.reject(e.error))),
+  });
+
+  useEffect(() => {
+    if (administrativeRecipients.data) {
+      setSelectedRecipientIds(new Set(administrativeRecipients.data.filter(recipient => recipient.selected).map(recipient => recipient.id)));
+    }
+  }, [administrativeRecipients.data]);
+
+  const saveRecipients = useMutation({
+    mutationFn: () => apiFetch("/api/notification-settings/admin-recipients/list", {
+      method: "PUT",
+      body: JSON.stringify({ userIds: [...selectedRecipientIds] }),
+    }).then(r => r.ok ? r.json() : r.json().then((e: any) => Promise.reject(e.error))),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["administrative-notification-recipients"] });
+      toast({ title: "Recipients saved", description: "Administrative alerts will be sent to the selected administrators." });
+    },
+    onError: (e: any) => toast({ title: "Could not save recipients", description: String(e), variant: "destructive" }),
   });
 
   const saveMutation = useMutation({
@@ -118,6 +154,25 @@ export default function NotificationSettings() {
   const editMeta = editPlatform ? PLATFORM_META[editPlatform] : null;
 
   const categories = ["Email", "SMS", "Chat", "Messaging", "Push", "Integration"];
+  const filteredRecipients = (administrativeRecipients.data ?? []).filter(recipient => {
+    const term = recipientSearch.trim().toLowerCase();
+    return !term || recipient.name.toLowerCase().includes(term) || recipient.email.toLowerCase().includes(term);
+  });
+  const allFilteredRecipientsSelected = filteredRecipients.length > 0
+    && filteredRecipients.every(recipient => selectedRecipientIds.has(recipient.id));
+  const toggleRecipient = (id: number) => setSelectedRecipientIds(previous => {
+    const next = new Set(previous);
+    if (next.has(id)) next.delete(id); else next.add(id);
+    return next;
+  });
+  const toggleAllRecipients = () => setSelectedRecipientIds(previous => {
+    if (allFilteredRecipientsSelected) {
+      const next = new Set(previous);
+      filteredRecipients.forEach(recipient => next.delete(recipient.id));
+      return next;
+    }
+    return new Set([...previous, ...filteredRecipients.map(recipient => recipient.id)]);
+  });
 
   return (
     <div className="p-6 space-y-6 max-w-4xl">
@@ -167,6 +222,75 @@ export default function NotificationSettings() {
           </CardContent>
         </Card>
       </div>
+
+      {user?.role === "super_admin" && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <UserCheck className="h-5 w-5 text-primary" />
+              Administrative Alert Recipients
+              {selectedRecipientIds.size > 0 && <Badge variant="secondary">{selectedRecipientIds.size} selected</Badge>}
+            </CardTitle>
+            <CardDescription>
+              Choose the active administrators who should receive account-lock and account-recovery alerts.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="flex flex-wrap gap-3">
+              <div className="relative flex-1 min-w-[220px]">
+                <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                <Input
+                  value={recipientSearch}
+                  onChange={event => setRecipientSearch(event.target.value)}
+                  placeholder="Search administrators"
+                  className="pl-9"
+                />
+              </div>
+              <Button variant="outline" onClick={toggleAllRecipients} disabled={filteredRecipients.length === 0}>
+                {allFilteredRecipientsSelected ? "Clear filtered" : "Select all filtered"}
+              </Button>
+            </div>
+
+            {administrativeRecipients.isLoading ? (
+              <p className="py-6 text-center text-sm text-muted-foreground">Loading administrators…</p>
+            ) : filteredRecipients.length === 0 ? (
+              <p className="py-6 text-center text-sm text-muted-foreground">No active administrators match this search.</p>
+            ) : (
+              <div className="max-h-72 divide-y overflow-y-auto rounded-lg border">
+                {filteredRecipients.map(recipient => (
+                  <label key={recipient.id} className="flex cursor-pointer items-center gap-3 p-3 hover:bg-muted/40">
+                    <input
+                      type="checkbox"
+                      checked={selectedRecipientIds.has(recipient.id)}
+                      onChange={() => toggleRecipient(recipient.id)}
+                      className="h-4 w-4 accent-primary"
+                    />
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-2">
+                        <span className="truncate text-sm font-medium">{recipient.name}</span>
+                        <Badge variant="outline" className="text-[10px]">
+                          {recipient.role === "super_admin" ? "Super Admin" : "Admin"}
+                        </Badge>
+                        {recipient.isProtected && <Badge variant="secondary" className="text-[10px]">Protected</Badge>}
+                      </div>
+                      <p className="truncate text-xs text-muted-foreground">{recipient.email}</p>
+                    </div>
+                  </label>
+                ))}
+              </div>
+            )}
+
+            <div className="flex items-center justify-between gap-3">
+              <p className="text-xs text-muted-foreground">
+                If nobody is selected, administrative alerts are not sent.
+              </p>
+              <Button onClick={() => saveRecipients.mutate()} disabled={saveRecipients.isPending || administrativeRecipients.isLoading}>
+                {saveRecipients.isPending ? "Saving…" : "Save Recipients"}
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {categories.map(cat => {
         const catPlatforms = platforms.data?.filter(p => PLATFORM_META[p.key]?.category === cat) || [];
@@ -254,8 +378,31 @@ export default function NotificationSettings() {
               </div>
 
               {editPlatformDef?.fields.map(field => {
+                if (editPlatform === "mailgun") {
+                  const authMode = formValues.authMode || "api";
+                  if (authMode === "api" && ["username", "password", "host", "port", "encryption"].includes(field)) return null;
+                  if (authMode === "smtp" && field === "apiKey") return null;
+                }
                 const isSensitive = SENSITIVE_FIELDS.includes(field);
                 const isLargeField = field === "serviceAccountJson" || field === "headers";
+
+                if (field === "authMode") {
+                  return (
+                    <div key={field} className="space-y-1.5">
+                      <Label className="text-sm">{FIELD_LABELS[field]}</Label>
+                      <Select
+                        value={formValues[field] || "api"}
+                        onValueChange={val => setFormValues(prev => ({ ...prev, [field]: val }))}
+                      >
+                        <SelectTrigger><SelectValue /></SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="api">Private API Key</SelectItem>
+                          <SelectItem value="smtp">SMTP Username & Password</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  );
+                }
 
                 if (field === "encryption") {
                   return (

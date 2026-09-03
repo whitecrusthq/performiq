@@ -2,6 +2,7 @@ import { Response } from "express";
 import { AuthRequest } from "../../middlewares/auth.js";
 import LeaveController from "../../controllers/LeaveController.js";
 import { User, LeaveApprover } from "../../models/index.js";
+import { getProtectedUserIds } from "../../utils/protectedUsers.js";
 
 export class GetLeaveRequestAction {
   static async handle(req: AuthRequest, res: Response) {
@@ -13,14 +14,20 @@ export class GetLeaveRequestAction {
       // else may only view requests from employees in their visible scope, or any
       // request where they are personally an approver or cover officer.
       const visibleIds = await LeaveController.getVisibleEmployeeIds(id, role, customRoleName);
+      const approvers = await LeaveApprover.findAll({ where: { leaveRequestId: row.id } });
+      const isInChain = approvers.some(a => a.approverId === id);
+      const isCover = row.coverUserId1 === id || row.coverUserId2 === id;
       if (visibleIds !== null) {
         const visibleSet = new Set(visibleIds);
-        const approvers = await LeaveApprover.findAll({ where: { leaveRequestId: row.id } });
-        const isInChain = approvers.some(a => a.approverId === id);
-        const isCover = row.coverUserId1 === id || row.coverUserId2 === id;
         if (!visibleSet.has(row.employeeId) && !isInChain && !isCover) {
           res.status(403).json({ error: "Forbidden" }); return;
         }
+      }
+      // A protected employee's request is hidden below super admin, except from
+      // the employee themself or someone in its approver/cover chain.
+      const hiddenIds = role === "super_admin" ? new Set<number>() : await getProtectedUserIds(id);
+      if (hiddenIds.has(row.employeeId) && !isInChain && !isCover) {
+        res.status(404).json({ error: "Not found" }); return;
       }
       const userMap: Record<number, any> = {};
       const lookupIds = [
@@ -34,7 +41,7 @@ export class GetLeaveRequestAction {
         attributes: ["id", "name", "email", "department", "jobTitle"],
       });
       users.forEach(u => { userMap[u.id] = u.toJSON(); });
-      res.json(await LeaveController.enrichLeaveRequest(row, userMap));
+      res.json(await LeaveController.enrichLeaveRequest(row, userMap, hiddenIds));
     } catch (err) {
       res.status(500).json({ error: "Server error" });
     }

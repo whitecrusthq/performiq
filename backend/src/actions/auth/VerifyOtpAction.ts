@@ -12,7 +12,7 @@ export class VerifyOtpAction {
         return;
       }
       const normalizedEmail = String(email).toLowerCase().trim();
-      const result = await AuthController.verifyOtp(email, otp);
+      const result = await AuthController.verifyOtp(email, otp, req);
       if ("error" in result) {
         if (result.status && result.status >= 400 && result.status < 500) {
           recordAuthEvent(req, {
@@ -26,6 +26,10 @@ export class VerifyOtpAction {
       }
       if ("requiresTermsAcceptance" in result) {
         res.json({ requiresTermsAcceptance: true, pendingToken: result.pendingToken, termsVersion: result.termsVersion });
+        return;
+      }
+      if ("recoveryPending" in result) {
+        res.json({ recoveryPending: true, pendingToken: result.pendingToken, expiresAt: result.expiresAt });
         return;
       }
       recordAuthEvent(req, {

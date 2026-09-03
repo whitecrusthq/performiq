@@ -1,6 +1,7 @@
 import { Op } from "sequelize";
 import { Appraisal, AppraisalScore, AppraisalReviewer, AppraisalReviewerScore, User, Cycle, Criterion, CriteriaGroupItem } from "../models/index.js";
 import sequelize from "../db/sequelize.js";
+import { getProtectedUserIds } from "../utils/protectedUsers.js";
 
 const formatUser = (u: any) => u ? ({
   id: u.id, name: u.name, email: u.email, role: u.role,
@@ -180,11 +181,19 @@ export default class AppraisalController {
     }
   }
 
-  static async getReviewersForAppraisal(appraisalId: number) {
-    const rows = await AppraisalReviewer.findAll({
+  /** IDs the viewer must never see (protected accounts); empty for super admins. */
+  static async hiddenIdsFor(viewer?: { id: number; role: string }): Promise<Set<number>> {
+    if (!viewer || viewer.role === "super_admin") return new Set();
+    return getProtectedUserIds(viewer.id);
+  }
+
+  static async getReviewersForAppraisal(appraisalId: number, hiddenIds?: Set<number>) {
+    let rows = await AppraisalReviewer.findAll({
       where: { appraisalId },
       order: [["orderIndex", "ASC"]],
     });
+    // Protected reviewers stay hidden below super admin.
+    if (hiddenIds && hiddenIds.size > 0) rows = rows.filter((r: any) => !hiddenIds.has(r.reviewerId));
     if (rows.length === 0) return [];
     const reviewerIds = rows.map((r: any) => r.reviewerId);
     const reviewerUsers = await User.findAll({ where: { id: { [Op.in]: reviewerIds } } });
@@ -199,8 +208,10 @@ export default class AppraisalController {
     }));
   }
 
-  static async getReviewerScoresForAppraisal(appraisalId: number) {
-    const reviewerScoreRows = await AppraisalReviewerScore.findAll({ where: { appraisalId } });
+  static async getReviewerScoresForAppraisal(appraisalId: number, hiddenIds?: Set<number>) {
+    let reviewerScoreRows = await AppraisalReviewerScore.findAll({ where: { appraisalId } });
+    // Protected reviewers stay hidden below super admin.
+    if (hiddenIds && hiddenIds.size > 0) reviewerScoreRows = reviewerScoreRows.filter((r: any) => !hiddenIds.has(r.reviewerId));
     const reviewerIds = [...new Set(reviewerScoreRows.map((r: any) => r.reviewerId))];
     const reviewerUsers = reviewerIds.length > 0
       ? await User.findAll({ where: { id: { [Op.in]: reviewerIds } } })
@@ -230,11 +241,11 @@ export default class AppraisalController {
     }).sort((a: any, b: any) => a.orderIndex - b.orderIndex);
   }
 
-  static async enrichAppraisal(appraisal: any) {
+  static async enrichAppraisal(appraisal: any, hiddenIds?: Set<number>) {
     const plain = appraisal.get ? appraisal.get({ plain: true }) : appraisal;
     const employee = await User.findByPk(plain.employeeId);
     const cycle = await Cycle.findByPk(plain.cycleId);
-    const reviewers = await AppraisalController.getReviewersForAppraisal(plain.id);
+    const reviewers = await AppraisalController.getReviewersForAppraisal(plain.id, hiddenIds);
     const currentReviewer = reviewers.find((r: any) => r.stepStatus === 'in_progress') ?? reviewers.find((r: any) => r.stepStatus === 'pending') ?? null;
     const reviewer = currentReviewer ?? (reviewers.length > 0 ? reviewers[0] : null);
 
@@ -252,32 +263,10 @@ export default class AppraisalController {
   }
 
   static async activateNextReviewer(appraisalId: number): Promise<boolean> {
-    let row = await AppraisalReviewer.findOne({
+    const row = await AppraisalReviewer.findOne({
       where: { appraisalId, status: 'pending' },
       order: [["orderIndex", "ASC"]],
     });
-    // Legacy appraisals may only have appraisals.reviewer_id. Materialize that
-    // assignment into the ordered queue so the reviewer can actually submit.
-    if (!row) {
-      const appraisal: any = await Appraisal.findByPk(appraisalId);
-      const reviewerCount = await AppraisalReviewer.count({ where: { appraisalId } });
-      if (
-        appraisal?.reviewerId
-        && appraisal.workflowType !== "self_only"
-        && reviewerCount === 0
-      ) {
-        await AppraisalReviewer.create({
-          appraisalId,
-          reviewerId: Number(appraisal.reviewerId),
-          orderIndex: 0,
-          status: "pending",
-        });
-        row = await AppraisalReviewer.findOne({
-          where: { appraisalId, status: "pending" },
-          order: [["orderIndex", "ASC"]],
-        });
-      }
-    }
     if (!row) return false;
     await AppraisalReviewer.update({ status: 'in_progress' }, { where: { id: (row as any).id } });
     return true;
@@ -321,7 +310,23 @@ export default class AppraisalController {
       where[Op.or as any] = orConditions;
     }
 
-    const appraisals = await Appraisal.findAll({ where, order: [["createdAt", "ASC"]] });
+    let appraisals = await Appraisal.findAll({ where, order: [["createdAt", "ASC"]] });
+    if (filters.userRole !== "super_admin") {
+      // Appraisals of protected accounts stay hidden below super admin, except
+      // for the protected user themself or someone assigned to review it.
+      const protectedIds = await getProtectedUserIds(filters.userId);
+      if (protectedIds.size > 0) {
+        const viewerReviewerRows = await AppraisalReviewer.findAll({
+          where: { reviewerId: filters.userId },
+          attributes: ["appraisalId"],
+        });
+        const viewerReviewIds = new Set(viewerReviewerRows.map((r: any) => r.appraisalId));
+        appraisals = appraisals.filter((a: any) =>
+          !protectedIds.has(a.employeeId) || viewerReviewIds.has(a.id)
+        );
+      }
+      return Promise.all(appraisals.map((a: any) => AppraisalController.enrichAppraisal(a, protectedIds)));
+    }
     return Promise.all(appraisals.map((a: any) => AppraisalController.enrichAppraisal(a)));
   }
 
@@ -330,7 +335,13 @@ export default class AppraisalController {
     workflowType: string; criteriaGroupId?: number | null;
     budgetValues?: Record<number, number>;
     scheduledStartAt?: Date | string | null;
-  }) {
+  }, actor?: { id: number; role: string }) {
+    // Protected accounts are invisible below super admin: block creating an
+    // appraisal for them (and don't return their enriched record).
+    if (actor && actor.role !== "super_admin" && data.employeeId !== actor.id) {
+      const target: any = await User.findByPk(data.employeeId, { attributes: ["id", "isProtected"] });
+      if (target?.isProtected) return null;
+    }
     const orderedIds = data.reviewerIds;
     const scheduledAt = parseScheduledStart(data.scheduledStartAt);
     const isScheduled = !!(scheduledAt && scheduledAt.getTime() > Date.now());
@@ -389,7 +400,7 @@ export default class AppraisalController {
       });
     }
 
-    return AppraisalController.enrichAppraisal(appraisal);
+    return AppraisalController.enrichAppraisal(appraisal, await AppraisalController.hiddenIdsFor(actor));
   }
 
   static async bulkCreate(data: {
@@ -406,6 +417,13 @@ export default class AppraisalController {
 
     const employees = await User.findAll({ where: { id: { [Op.in]: uniqueEmpIds } } });
     const empMap = Object.fromEntries(employees.map((e: any) => [e.id, e]));
+
+    // Protected accounts are invisible below super admin: they cannot be
+    // targeted in bulk appraisal creation.
+    if (data.currentUser.role !== "super_admin") {
+      const blocked = uniqueEmpIds.filter(id => empMap[id]?.isProtected && id !== data.currentUser.id);
+      if (blocked.length > 0) throw new Error("FORBIDDEN:One or more selected employees are not available");
+    }
 
     if (data.currentUser.role === "manager") {
       const teamMembers = await User.findAll({ where: { managerId: data.currentUser.id }, attributes: ["id"] });
@@ -491,9 +509,16 @@ export default class AppraisalController {
     return { created: results.length, appraisalIds: results.map((a: any) => a.id) };
   }
 
-  static async getById(id: number) {
+  static async getById(id: number, viewer?: { id: number; role: string }) {
+    const hiddenIds = await AppraisalController.hiddenIdsFor(viewer);
     const appraisal = await Appraisal.findByPk(id);
     if (!appraisal) return null;
+    // The appraisal of a protected account is hidden below super admin,
+    // except from the protected user themself or an assigned reviewer.
+    if (viewer && hiddenIds.has((appraisal as any).employeeId)) {
+      const isReviewer = await AppraisalReviewer.findOne({ where: { appraisalId: id, reviewerId: viewer.id } });
+      if (!isReviewer) return null;
+    }
 
     const scores = await AppraisalScore.findAll({ where: { appraisalId: id } });
     const enrichedScores = await Promise.all(scores.map(async (s: any) => {
@@ -502,8 +527,8 @@ export default class AppraisalController {
     }));
 
     const [enriched, reviewerScores] = await Promise.all([
-      AppraisalController.enrichAppraisal(appraisal),
-      AppraisalController.getReviewerScoresForAppraisal(id),
+      AppraisalController.enrichAppraisal(appraisal, hiddenIds),
+      AppraisalController.getReviewerScoresForAppraisal(id, hiddenIds),
     ]);
     return { ...enriched, scores: enrichedScores, reviewerScores };
   }
@@ -829,9 +854,10 @@ export default class AppraisalController {
       return { ...s.get({ plain: true }), criterion: criterion ? criterion.get({ plain: true }) : null };
     }));
 
+    const updateHidden = await AppraisalController.hiddenIdsFor(currentUser);
     const [enriched, reviewerScores] = await Promise.all([
-      AppraisalController.enrichAppraisal(updatedAppraisal),
-      AppraisalController.getReviewerScoresForAppraisal(appraisalId),
+      AppraisalController.enrichAppraisal(updatedAppraisal, updateHidden),
+      AppraisalController.getReviewerScoresForAppraisal(appraisalId, updateHidden),
     ]);
     return { data: { ...enriched, scores: enrichedScores, reviewerScores } };
   }
@@ -839,12 +865,6 @@ export default class AppraisalController {
   static async addReviewer(appraisalId: number, reviewerId: number) {
     const appraisal = await Appraisal.findByPk(appraisalId);
     if (!appraisal) return { error: "Not found", status: 404 };
-    if ((appraisal as any).workflowType === "self_only") {
-      return { error: "Self-only appraisals cannot have reviewers", status: 400 };
-    }
-    if (["pending_approval", "completed"].includes((appraisal as any).status)) {
-      return { error: "Reviewers cannot be added after manager review is complete", status: 400 };
-    }
 
     const existing = await AppraisalController.getReviewersForAppraisal(appraisalId);
     const nextOrder = existing.length;
@@ -856,12 +876,6 @@ export default class AppraisalController {
 
     if (!(appraisal as any).reviewerId) {
       await Appraisal.update({ reviewerId: Number(reviewerId) }, { where: { id: appraisalId } });
-    }
-    if ((appraisal as any).status === "manager_review") {
-      const active = await AppraisalReviewer.findOne({
-        where: { appraisalId, status: "in_progress" },
-      });
-      if (!active) await AppraisalController.activateNextReviewer(appraisalId);
     }
 
     const reviewers = await AppraisalController.getReviewersForAppraisal(appraisalId);
@@ -889,28 +903,6 @@ export default class AppraisalController {
   }
 
   static async removeReviewer(appraisalId: number, reviewerId: number) {
-    const appraisal: any = await Appraisal.findByPk(appraisalId);
-    if (!appraisal) return { error: "Not found", status: 404 };
-    const target: any = await AppraisalReviewer.findOne({
-      where: { appraisalId, reviewerId },
-    });
-    if (!target) return { error: "Reviewer not found", status: 404 };
-    if (appraisal.status === "manager_review" && target.status === "in_progress") {
-      const replacement = await AppraisalReviewer.findOne({
-        where: {
-          appraisalId,
-          id: { [Op.ne]: target.id },
-          status: "pending",
-        },
-      });
-      if (!replacement) {
-        return {
-          error: "Add a replacement reviewer before removing the active reviewer",
-          status: 400,
-        };
-      }
-    }
-
     await AppraisalReviewer.destroy({
       where: { appraisalId, reviewerId },
     });
@@ -925,12 +917,6 @@ export default class AppraisalController {
       { reviewerId: remaining.length > 0 ? remaining[0].id : null },
       { where: { id: appraisalId } }
     );
-    if (appraisal.status === "manager_review") {
-      const active = await AppraisalReviewer.findOne({
-        where: { appraisalId, status: "in_progress" },
-      });
-      if (!active) await AppraisalController.activateNextReviewer(appraisalId);
-    }
-    return { data: await AppraisalController.getReviewersForAppraisal(appraisalId) };
+    return await AppraisalController.getReviewersForAppraisal(appraisalId);
   }
 }

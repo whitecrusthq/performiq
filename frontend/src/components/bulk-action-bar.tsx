@@ -1,13 +1,15 @@
 import { Trash2, X } from "lucide-react";
+import type { ReactNode } from "react";
 
 interface BulkActionBarProps {
   count: number;
   onDelete: () => void;
   onClear: () => void;
   deleting?: boolean;
+  actions?: ReactNode;
 }
 
-export function BulkActionBar({ count, onDelete, onClear, deleting }: BulkActionBarProps) {
+export function BulkActionBar({ count, onDelete, onClear, deleting, actions }: BulkActionBarProps) {
   if (count === 0) return null;
   return (
     <div className="flex items-center justify-between gap-4 px-4 py-2.5 mb-4 rounded-xl bg-primary/10 border border-primary/20 text-sm font-medium">
@@ -15,6 +17,7 @@ export function BulkActionBar({ count, onDelete, onClear, deleting }: BulkAction
         <span className="text-primary font-semibold">{count} selected</span>
       </div>
       <div className="flex items-center gap-2">
+        {actions}
         <button
           onClick={onDelete}
           disabled={deleting}

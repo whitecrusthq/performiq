@@ -19,6 +19,7 @@
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1057.0",
     "@google-cloud/storage": "^7.19.0",
+    "@types/nodemailer": "^8.0.1",
     "bcryptjs": "^3.0.3",
     "cookie-parser": "^1.4.7",
     "cors": "^2",
@@ -32,6 +33,7 @@
     "http-proxy-middleware": "^3.0.7",
     "jsonwebtoken": "^9.0.3",
     "mailgun.js": "^12.7.1",
+    "nodemailer": "^9.0.5",
     "pg": "^8.13.3",
     "pino": "^9",
     "pino-http": "^10",

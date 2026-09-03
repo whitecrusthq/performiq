@@ -13,7 +13,7 @@ import { PasswordInput } from "@/components/ui/password-input";
 import { Checkbox } from "@/components/ui/checkbox";
 import { useToast } from "@/hooks/use-toast";
 import {
-  LockOpen, ShieldAlert, ShieldCheck, User, Clock,
+  ShieldAlert, ShieldCheck, Clock,
   Smartphone, KeyRound, Copy, Check, Download, AlertCircle, X,
 } from "lucide-react";
 
@@ -31,15 +31,6 @@ interface SecuritySettings {
   enforce2faRoles?: string | null;
   idleTimeoutMinutes?: number;
   updatedAt: string;
-}
-
-interface LockedAccount {
-  id: number;
-  name: string;
-  email: string;
-  role: string;
-  lockedAt: string | null;
-  failedLoginAttempts: number;
 }
 
 const ROLE_OPTIONS = [
@@ -478,16 +469,6 @@ export default function Security() {
       ),
   });
 
-  const { data: locked = [], isLoading: lockedLoading } = useQuery<LockedAccount[]>({
-    queryKey: ["locked-accounts"],
-    enabled: isAdmin,
-    queryFn: () =>
-      apiFetch("/api/security/locked-accounts", { headers: authHeader() }).then(r =>
-        r.ok ? r.json() : Promise.reject("Failed to load locked accounts")
-      ),
-    refetchInterval: 30000,
-  });
-
   const [form, setForm] = useState<{ lockoutEnabled: boolean; maxAttempts: number; lockoutDurationMinutes: number; idleTimeoutMinutes: number } | null>(null);
 
   const currentForm = form ?? (settings ? {
@@ -512,25 +493,12 @@ export default function Security() {
     onError: (e: any) => toast({ title: "Error", description: String(e), variant: "destructive" }),
   });
 
-  const unlockAccount = useMutation({
-    mutationFn: (id: number) =>
-      apiFetch(`/api/security/unlock/${id}`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json", ...authHeader() },
-      }).then(r => r.ok ? r.json() : r.json().then((e: any) => Promise.reject(e.error))),
-    onSuccess: (data: any) => {
-      queryClient.invalidateQueries({ queryKey: ["locked-accounts"] });
-      toast({ title: "Account unlocked", description: `${data.name}'s account has been unlocked.` });
-    },
-    onError: (e: any) => toast({ title: "Error", description: String(e), variant: "destructive" }),
-  });
-
   return (
     <div className="p-6 space-y-6 max-w-3xl">
       <PageHeader
         title="Security Settings"
         description={isAdmin
-          ? "Manage your own two-factor authentication, configure lockout policies, and review locked accounts."
+          ? "Manage your own two-factor authentication and configure account lockout policies."
           : "Manage your own two-factor authentication."}
       />
 
@@ -627,62 +595,6 @@ export default function Security() {
             </CardContent>
           </Card>
 
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <LockOpen className="h-5 w-5 text-red-500" />
-                Locked Accounts
-                {locked.length > 0 && (
-                  <Badge variant="destructive" className="ml-2">{locked.length}</Badge>
-                )}
-              </CardTitle>
-              <CardDescription>
-                Accounts currently locked due to repeated failed login attempts.
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              {lockedLoading ? (
-                <p className="text-sm text-muted-foreground">Loading…</p>
-              ) : locked.length === 0 ? (
-                <div className="flex flex-col items-center py-10 text-muted-foreground gap-2">
-                  <ShieldAlert className="h-8 w-8 opacity-30" />
-                  <p className="text-sm">No accounts are currently locked</p>
-                </div>
-              ) : (
-                <div className="divide-y">
-                  {locked.map(account => (
-                    <div key={account.id} className="flex items-center justify-between py-3">
-                      <div className="flex items-center gap-3">
-                        <div className="h-9 w-9 rounded-full bg-red-100 flex items-center justify-center">
-                          <User className="h-4 w-4 text-red-600" />
-                        </div>
-                        <div>
-                          <p className="text-sm font-medium">{account.name}</p>
-                          <p className="text-xs text-muted-foreground">{account.email}</p>
-                          {account.lockedAt && (
-                            <p className="text-xs text-muted-foreground flex items-center gap-1 mt-0.5">
-                              <Clock className="h-3 w-3" />
-                              Locked {new Date(account.lockedAt).toLocaleString()}
-                              &nbsp;·&nbsp;{account.failedLoginAttempts} failed attempt{account.failedLoginAttempts !== 1 ? "s" : ""}
-                            </p>
-                          )}
-                        </div>
-                      </div>
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={() => unlockAccount.mutate(account.id)}
-                        disabled={unlockAccount.isPending}
-                      >
-                        <LockOpen className="h-4 w-4 mr-1" />
-                        Unlock
-                      </Button>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </CardContent>
-          </Card>
         </>
       )}
     </div>

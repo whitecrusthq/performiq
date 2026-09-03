@@ -79,6 +79,53 @@ export async function connectDatabase(): Promise<void> {
     logger.warn({ err }, "protected accounts schema ensure failed (non-fatal)");
   }
   try {
+    await sequelize.query(`
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS must_change_password BOOLEAN NOT NULL DEFAULT FALSE;
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS password_reset_code_hash TEXT NULL;
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS password_reset_expires_at TIMESTAMP WITH TIME ZONE NULL;
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS password_reset_attempts INTEGER NOT NULL DEFAULT 0;
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS password_reset_requested_at TIMESTAMP WITH TIME ZONE NULL;
+    `);
+  } catch (err) {
+    logger.warn({ err }, "password recovery schema ensure failed (non-fatal)");
+  }
+  try {
+    await sequelize.query(`
+      CREATE TABLE IF NOT EXISTS recovery_requests (
+        id SERIAL PRIMARY KEY,
+        user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending','approved','rejected','expired')),
+        expires_at TIMESTAMPTZ NOT NULL, ip_address TEXT, user_agent TEXT,
+        recurrence_count INTEGER NOT NULL DEFAULT 1, risk_flag BOOLEAN NOT NULL DEFAULT FALSE,
+        elevated BOOLEAN NOT NULL DEFAULT FALSE, resolved_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+        resolved_at TIMESTAMPTZ, rejection_reason TEXT,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+      CREATE UNIQUE INDEX IF NOT EXISTS recovery_requests_one_pending_user ON recovery_requests(user_id) WHERE status = 'pending';
+      CREATE INDEX IF NOT EXISTS recovery_requests_status_created_idx ON recovery_requests(status, created_at DESC);
+      CREATE TABLE IF NOT EXISTS recovery_audit_logs (
+        id SERIAL PRIMARY KEY, request_id INTEGER REFERENCES recovery_requests(id) ON DELETE SET NULL,
+        user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        actor_id INTEGER REFERENCES users(id) ON DELETE SET NULL, event TEXT NOT NULL, detail TEXT,
+        ip_address TEXT, user_agent TEXT, created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+      CREATE INDEX IF NOT EXISTS recovery_audit_user_created_idx ON recovery_audit_logs(user_id, created_at DESC);
+    `);
+  } catch (err) {
+    logger.warn({ err }, "recovery request schema ensure failed (non-fatal)");
+  }
+  try {
+    await sequelize.query(`
+      CREATE TABLE IF NOT EXISTS notification_admin_recipients (
+        user_id INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+        created_by_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+    `);
+  } catch (err) {
+    logger.warn({ err }, "notification admin recipients schema ensure failed (non-fatal)");
+  }
+  try {
     // Repair legacy and partially edited appraisals that have a scalar
     // reviewer_id but no ordered reviewer row, or a manager-review queue with
     // no active reviewer. This is idempotent and also protects deployments

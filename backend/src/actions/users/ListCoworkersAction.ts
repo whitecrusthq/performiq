@@ -8,8 +8,8 @@ export class ListCoworkersAction {
       const users = await User.findAll({
         attributes: ["id", "name", "role", "department", "jobTitle"],
         where: req.user?.role === "super_admin"
-          ? { isLocked: false }
-          : { isLocked: false, isProtected: false },
+          ? { isLocked: false, isActive: true }
+          : { isLocked: false, isActive: true, isProtected: false },
         order: [["name", "ASC"]],
       });
       res.json(users.map(u => ({

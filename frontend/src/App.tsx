@@ -18,6 +18,7 @@ import Cycles from "@/pages/cycles";
 import Goals from "@/pages/goals";
 import Criteria from "@/pages/criteria";
 import Users from "@/pages/users";
+import AccountRecovery from "@/pages/account-recovery";
 import Roles from "@/pages/roles";
 import Reports from "@/pages/reports";
 import Departments from "@/pages/departments";
@@ -32,6 +33,7 @@ import HrKnowledgeBase from "@/pages/hr-knowledge-base";
 import HrSupportDashboard from "@/pages/hr-support-dashboard";
 import Profile from "@/pages/profile";
 import Security from "@/pages/security";
+import AccountLockManagement from "@/pages/account-lock-management";
 import AuditLog from "@/pages/audit-log";
 import Appearance from "@/pages/appearance";
 import Transfers from "@/pages/transfers";
@@ -99,6 +101,9 @@ function Router() {
       <Route path="/users">
         <AppLayout><ProtectedRoute component={Users} /></AppLayout>
       </Route>
+      <Route path="/account-recovery">
+        <AppLayout><ProtectedRoute component={AccountRecovery} /></AppLayout>
+      </Route>
       <Route path="/roles">
         <AppLayout><ProtectedRoute component={Roles} /></AppLayout>
       </Route>
@@ -140,6 +145,9 @@ function Router() {
       </Route>
       <Route path="/security">
         <AppLayout><ProtectedRoute component={Security} /></AppLayout>
+      </Route>
+      <Route path="/account-lock-management">
+        <AppLayout><ProtectedRoute component={AccountLockManagement} /></AppLayout>
       </Route>
       <Route path="/audit-log">
         <AppLayout><ProtectedRoute component={AuditLog} /></AppLayout>

@@ -3,9 +3,9 @@ import { AuthRequest } from "../../middlewares/auth.js";
 import LeaveController from "../../controllers/LeaveController.js";
 
 export class GetHrApproverAction {
-  static async handle(_req: AuthRequest, res: Response) {
+  static async handle(req: AuthRequest, res: Response) {
     try {
-      res.json({ hrApprovers: await LeaveController.listHrLeaveApprovers() });
+      res.json({ hrApprovers: await LeaveController.listHrLeaveApprovers(req.user ? { id: req.user.id, role: req.user.role } : undefined) });
     } catch (err) {
       console.error(err);
       res.status(500).json({ error: "Server error" });
@@ -24,7 +24,7 @@ export class SetHrApproverAction {
       const assignedUserId = assignedRaw === null || assignedRaw === undefined || assignedRaw === "" ? null : Number(assignedRaw);
       const result = await LeaveController.setHrLeaveApprovers(raw.map(Number), assignedUserId);
       if ("error" in result) { res.status(result.status ?? 400).json({ error: result.error }); return; }
-      res.json({ hrApprovers: await LeaveController.listHrLeaveApprovers() });
+      res.json({ hrApprovers: await LeaveController.listHrLeaveApprovers(req.user ? { id: req.user.id, role: req.user.role } : undefined) });
     } catch (err) {
       console.error(err);
       res.status(500).json({ error: "Server error" });

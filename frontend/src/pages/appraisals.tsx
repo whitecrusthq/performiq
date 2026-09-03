@@ -84,6 +84,14 @@ export default function Appraisals() {
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
   const [bulkDeleting, setBulkDeleting] = useState(false);
 
+  const removeAppraisalsFromList = (ids: Iterable<number>) => {
+    const idsToRemove = new Set(ids);
+    queryClient.setQueriesData({ queryKey: ["/api/appraisals"] }, (cached: unknown) => {
+      if (!Array.isArray(cached)) return cached;
+      return cached.filter((appraisal: any) => !idsToRemove.has(Number(appraisal.id)));
+    });
+  };
+
   const toggleSelect = (id: number) => setSelectedIds(prev => {
     const next = new Set(prev);
     if (next.has(id)) next.delete(id); else next.add(id);
@@ -98,16 +106,58 @@ export default function Appraisals() {
   const handleBulkDelete = async () => {
     if (!confirm(`Delete ${selectedIds.size} selected appraisal(s)? This cannot be undone.`)) return;
     setBulkDeleting(true);
-    await Promise.all([...selectedIds].map(id => apiFetch(`/api/appraisals/${id}`, { method: "DELETE" })));
-    queryClient.invalidateQueries({ queryKey: ["/api/appraisals"] });
-    setSelectedIds(new Set());
-    setBulkDeleting(false);
+    const idsToDelete = [...selectedIds];
+
+    try {
+      const results = await Promise.allSettled(
+        idsToDelete.map(id => apiFetch(`/api/appraisals/${id}`, { method: "DELETE" }))
+      );
+      const deletedIds: number[] = [];
+      const failedIds: number[] = [];
+
+      results.forEach((result, index) => {
+        if (result.status === "fulfilled" && result.value.ok) {
+          deletedIds.push(idsToDelete[index]);
+        } else {
+          failedIds.push(idsToDelete[index]);
+        }
+      });
+
+      if (deletedIds.length > 0) {
+        removeAppraisalsFromList(deletedIds);
+        queryClient.invalidateQueries({ queryKey: ["/api/appraisals"] });
+      }
+
+      setSelectedIds(new Set(failedIds));
+      if (failedIds.length > 0) {
+        alert(`${failedIds.length} appraisal(s) could not be deleted. They remain selected so you can try again.`);
+      }
+    } catch {
+      alert("The selected appraisals could not be deleted. Please check your connection and try again.");
+    } finally {
+      setBulkDeleting(false);
+    }
   };
 
   const handleDeleteOne = async (id: number) => {
     if (!confirm("Delete this appraisal? This cannot be undone.")) return;
-    await apiFetch(`/api/appraisals/${id}`, { method: "DELETE" });
-    queryClient.invalidateQueries({ queryKey: ["/api/appraisals"] });
+    try {
+      const response = await apiFetch(`/api/appraisals/${id}`, { method: "DELETE" });
+      if (!response.ok) {
+        alert("This appraisal could not be deleted. Please try again.");
+        return;
+      }
+
+      removeAppraisalsFromList([id]);
+      queryClient.invalidateQueries({ queryKey: ["/api/appraisals"] });
+      setSelectedIds(prev => {
+        const next = new Set(prev);
+        next.delete(id);
+        return next;
+      });
+    } catch {
+      alert("This appraisal could not be deleted. Please check your connection and try again.");
+    }
   };
 
   const WORKFLOW_OPTIONS = [

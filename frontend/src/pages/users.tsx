@@ -50,6 +50,7 @@ export default function Users() {
   const [filterRole, setFilterRole] = useState("");
   const [filterDept, setFilterDept] = useState("");
   const [filterSite, setFilterSite] = useState("");
+  const [filterGrade, setFilterGrade] = useState("");
 
   const filteredUsers = useMemo(() => {
     if (!users) return [];
@@ -58,9 +59,12 @@ export default function Users() {
       const matchRole = !filterRole || u.role === filterRole;
       const matchDept = !filterDept || (u.department ?? "") === filterDept;
       const matchSite = !filterSite || String((u as any).siteId ?? "") === filterSite;
-      return matchSearch && matchRole && matchDept && matchSite;
+      const matchGrade = !filterGrade || (filterGrade === "unassigned"
+        ? !(u as any).gradeId
+        : String((u as any).gradeId ?? "") === filterGrade);
+      return matchSearch && matchRole && matchDept && matchSite && matchGrade;
     });
-  }, [users, search, filterRole, filterDept, filterSite]);
+  }, [users, search, filterRole, filterDept, filterSite, filterGrade]);
 
   useEffect(() => {
     apiFetch("/api/custom-roles")
@@ -223,6 +227,8 @@ export default function Users() {
 
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
   const [bulkDeleting, setBulkDeleting] = useState(false);
+  const [bulkGradeId, setBulkGradeId] = useState("");
+  const [bulkAssigningGrade, setBulkAssigningGrade] = useState(false);
 
   const toggleSelect = (id: number) => setSelectedIds(prev => {
     const next = new Set(prev);
@@ -242,7 +248,7 @@ export default function Users() {
     user?.role === "super_admin" || targetRole !== "super_admin";
 
   const toggleAll = () => {
-    if (selectableUsers.length > 0 && selectedIds.size === selectableUsers.length) setSelectedIds(new Set());
+    if (selectableUsers.length > 0 && selectableUsers.every(u => selectedIds.has(u.id))) setSelectedIds(new Set());
     else setSelectedIds(new Set(selectableUsers.map(u => u.id)));
   };
 
@@ -255,6 +261,34 @@ export default function Users() {
     setBulkDeleting(false);
   };
 
+  const handleBulkAssignGrade = async () => {
+    if (!bulkGradeId) {
+      toast({ title: "Choose a grade", description: "Select the grade to apply to the selected users.", variant: "destructive" });
+      return;
+    }
+    setBulkAssigningGrade(true);
+    try {
+      const response = await apiFetch("/api/users/bulk/grade", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          userIds: [...selectedIds],
+          gradeId: bulkGradeId === "unassigned" ? null : Number(bulkGradeId),
+        }),
+      });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || "Failed to apply grade");
+      await queryClient.invalidateQueries({ queryKey: ["/api/users"] });
+      toast({ title: "Grade applied", description: `Updated ${result.updated} user(s).` });
+      setSelectedIds(new Set());
+      setBulkGradeId("");
+    } catch (err: any) {
+      toast({ title: "Could not apply grade", description: err?.message || "Please try again.", variant: "destructive" });
+    } finally {
+      setBulkAssigningGrade(false);
+    }
+  };
+
   if (isLoading) return <div className="p-8">Loading users...</div>;
   if (user?.role !== 'admin' && user?.role !== 'super_admin') return <div className="p-8 text-destructive">Unauthorized</div>;
 
@@ -265,6 +299,9 @@ export default function Users() {
           <Plus className="w-4 h-4 mr-2" /> Add User
         </Button>
       </PageHeader>
+      <p className="mb-4 text-sm text-muted-foreground">
+        Assigning a grade applies the leave types and policies configured for that grade.
+      </p>
 
       {/* Filter bar */}
       <div className="flex flex-wrap gap-3 mb-4">
@@ -313,17 +350,55 @@ export default function Users() {
           </select>
           <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground pointer-events-none" />
         </div>
-        {(search || filterRole || filterDept || filterSite) && (
+        <div className="relative">
+          <select
+            className="pl-3 pr-8 py-2 rounded-xl border border-border bg-card text-sm appearance-none cursor-pointer focus:outline-none focus:ring-2 focus:ring-primary/20"
+            value={filterGrade}
+            onChange={e => setFilterGrade(e.target.value)}
+          >
+            <option value="">All Grades</option>
+            <option value="unassigned">No Grade</option>
+            {grades.map(g => <option key={g.id} value={String(g.id)}>{g.name}</option>)}
+          </select>
+          <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground pointer-events-none" />
+        </div>
+        {(search || filterRole || filterDept || filterSite || filterGrade) && (
           <button
             className="px-3 py-2 text-xs text-muted-foreground underline hover:text-foreground"
-            onClick={() => { setSearch(""); setFilterRole(""); setFilterDept(""); setFilterSite(""); }}
+            onClick={() => { setSearch(""); setFilterRole(""); setFilterDept(""); setFilterSite(""); setFilterGrade(""); }}
           >
             Clear filters
           </button>
         )}
       </div>
 
-      <BulkActionBar count={selectedIds.size} onDelete={handleBulkDelete} onClear={() => setSelectedIds(new Set())} deleting={bulkDeleting} />
+      <BulkActionBar
+        count={selectedIds.size}
+        onDelete={handleBulkDelete}
+        onClear={() => setSelectedIds(new Set())}
+        deleting={bulkDeleting}
+        actions={
+          <>
+            <select
+              className="px-2.5 py-1.5 rounded-lg border border-border bg-card text-xs"
+              value={bulkGradeId}
+              onChange={e => setBulkGradeId(e.target.value)}
+              aria-label="Grade to apply"
+            >
+              <option value="">Apply grade…</option>
+              <option value="unassigned">Remove grade</option>
+              {grades.map(g => <option key={g.id} value={String(g.id)}>{g.name}</option>)}
+            </select>
+            <button
+              onClick={handleBulkAssignGrade}
+              disabled={bulkAssigningGrade || !bulkGradeId}
+              className="px-3 py-1.5 rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 transition-colors text-xs font-semibold disabled:opacity-50"
+            >
+              {bulkAssigningGrade ? "Applying…" : "Apply"}
+            </button>
+          </>
+        }
+      />
 
       <Card className="overflow-x-auto">
         <table className="w-full text-left border-collapse min-w-[720px]">
@@ -332,7 +407,7 @@ export default function Users() {
               <th className="p-4 w-10">
                 <input
                   type="checkbox"
-                  checked={selectableUsers.length > 0 && selectedIds.size === selectableUsers.length}
+                  checked={selectableUsers.length > 0 && selectableUsers.every(u => selectedIds.has(u.id))}
                   onChange={toggleAll}
                   disabled={selectableUsers.length === 0}
                   className="w-4 h-4 accent-primary cursor-pointer disabled:cursor-not-allowed disabled:opacity-40"
@@ -341,13 +416,14 @@ export default function Users() {
               <th className="p-4">Name</th>
               <th className="p-4 hidden sm:table-cell">Role</th>
               <th className="p-4 hidden md:table-cell">Department / Title</th>
+               <th className="p-4 hidden lg:table-cell">Grade</th>
               <th className="p-4 hidden lg:table-cell">Phone / Staff ID</th>
               <th className="p-4 text-right">Actions</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-border">
             {filteredUsers.length === 0 && (
-              <tr><td colSpan={6} className="p-8 text-center text-muted-foreground text-sm">No users match the current filters.</td></tr>
+              <tr><td colSpan={7} className="p-8 text-center text-muted-foreground text-sm">No users match the current filters.</td></tr>
             )}
             {filteredUsers.map(u => (
               <tr key={u.id} className={`hover:bg-muted/30 ${selectedIds.has(u.id) ? "bg-primary/5" : ""}`}>
@@ -400,6 +476,9 @@ export default function Users() {
                 <td className="p-4 hidden md:table-cell text-sm">
                   {u.department && <div>{u.department}</div>}
                   {u.jobTitle && <div className="text-muted-foreground">{u.jobTitle}</div>}
+                </td>
+                <td className="p-4 hidden lg:table-cell text-sm">
+                  {grades.find(g => g.id === (u as any).gradeId)?.name || <span className="text-muted-foreground">Not assigned</span>}
                 </td>
                 <td className="p-4 hidden lg:table-cell text-sm">
                   {u.phone && <div>{u.phone}</div>}

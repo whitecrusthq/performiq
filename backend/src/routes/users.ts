@@ -1,5 +1,5 @@
 import { Router, Response, NextFunction } from "express";
-import { requireAuth, requireRole, AuthRequest } from "../middlewares/auth.js";
+import { requireAuth, requireRole, requireAccountRecoveryAccess, requireUserDirectoryAccess, requireUserRecordAccess, AuthRequest } from "../middlewares/auth.js";
 import User from "../models/User.js";
 import { ListUsersAction } from "../actions/users/ListUsersAction.js";
 import { ListCoworkersAction } from "../actions/users/ListCoworkersAction.js";
@@ -30,8 +30,19 @@ import { GetReferencesAction } from "../actions/users/GetReferencesAction.js";
 import { UpdateReferencesAction } from "../actions/users/UpdateReferencesAction.js";
 import { BulkImportAction } from "../actions/users/BulkImportAction.js";
 import { SetUserProtectedAction } from "../actions/users/SetUserProtectedAction.js";
+import { AccountRecoveryAction } from "../actions/users/AccountRecoveryAction.js";
+import { BulkAssignGradeAction } from "../actions/users/BulkAssignGradeAction.js";
 
 const router = Router();
+
+router.get("/account-recovery/users", requireAuth, requireAccountRecoveryAccess, AccountRecoveryAction.list);
+router.post("/account-recovery/users/:id/password", requireAuth, requireAccountRecoveryAccess, AccountRecoveryAction.password);
+router.post("/account-recovery/users/:id/reset-2fa", requireAuth, requireAccountRecoveryAccess, AccountRecoveryAction.reset2FA);
+router.get("/account-recovery/requests", requireAuth, requireAccountRecoveryAccess, AccountRecoveryAction.requests);
+router.post("/account-recovery/requests/:id/approve", requireAuth, requireAccountRecoveryAccess, AccountRecoveryAction.approve);
+router.post("/account-recovery/requests/:id/reject", requireAuth, requireAccountRecoveryAccess, AccountRecoveryAction.reject);
+
+router.patch("/users/bulk/grade", requireAuth, requireRole("admin"), BulkAssignGradeAction.handle);
 
 /**
  * Protected accounts: for anyone below super_admin (and who isn't the account
@@ -52,10 +63,13 @@ async function blockProtectedTarget(req: AuthRequest, res: Response, next: NextF
   }
 }
 
-router.use("/users/:id", requireAuth, blockProtectedTarget);
-
-router.get("/users", requireAuth, requireRole("admin", "manager"), ListUsersAction.handle);
+router.get("/users", requireAuth, requireUserDirectoryAccess, ListUsersAction.handle);
+// Keep named collection routes above /users/:id. Otherwise Express treats
+// "coworkers" as an ID and applies record-level access, blocking employees.
 router.get("/users/coworkers", requireAuth, ListCoworkersAction.handle);
+
+router.use("/users/:id", requireAuth, blockProtectedTarget, requireUserRecordAccess);
+
 router.post("/users", requireAuth, requireRole("admin"), CreateUserAction.handle);
 router.get("/users/:id", requireAuth, GetUserAction.handle);
 router.put("/users/:id", requireAuth, requireRole("admin"), UpdateUserAction.handle);

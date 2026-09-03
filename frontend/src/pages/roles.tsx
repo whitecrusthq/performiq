@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { PageHeader, Card, Button, Input, Label, EmptyState } from "@/components/shared";
-import { Shield, Plus, Edit, Trash2, X, LayoutDashboard, ClipboardList, Target, RefreshCcw, ListChecks, Users, BarChart3, Building2, MapPin, CalendarDays, Clock, ClipboardCheck, UserPlus, TrendingUp, CalendarClock, UserCog, Settings, BookOpen, IdCard, Briefcase, ArrowRightLeft, MessageSquareWarning, Award, ShieldAlert, Bell, Paintbrush, Sparkles, Brain, Search, ScrollText, HardDrive, Scale } from "lucide-react";
+import { Shield, Plus, Edit, Trash2, X, LayoutDashboard, ClipboardList, Target, RefreshCcw, ListChecks, Users, BarChart3, Building2, MapPin, CalendarDays, Clock, ClipboardCheck, UserPlus, TrendingUp, CalendarClock, UserCog, Settings, BookOpen, IdCard, Briefcase, ArrowRightLeft, MessageSquareWarning, Award, ShieldAlert, Bell, Paintbrush, Sparkles, Brain, Search, ScrollText, HardDrive, Scale, LockOpen } from "lucide-react";
 import { BulkActionBar } from "@/components/bulk-action-bar";
 import { useAuth } from "@/hooks/use-auth";
 import { apiFetch } from "@/lib/utils";
@@ -47,6 +47,7 @@ const MENU_STRUCTURE: MenuEntry[] = [
     { key: "sites",         label: "Sites",         icon: MapPin },
     { key: "roles",         label: "Roles",         icon: Shield },
     { key: "security",      label: "Security",      icon: ShieldAlert },
+    { key: "account-lock-management", label: "Account Lock Management", icon: LockOpen },
     { key: "notifications", label: "Notifications", icon: Bell },
     { key: "appearance",    label: "Appearance",    icon: Paintbrush },
     { key: "ai-settings",   label: "AI Assistant",  icon: Sparkles },

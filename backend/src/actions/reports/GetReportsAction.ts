@@ -10,7 +10,7 @@ export class GetReportsAction {
         siteId: req.query.siteId as string | undefined,
         from: req.query.from as string | undefined,
         to: req.query.to as string | undefined,
-      });
+      }, req.user?.role);
       res.json(data);
     } catch (err) {
       console.error("GET /reports error:", err);

@@ -1,6 +1,7 @@
 import { Op } from "sequelize";
 import { User, Cycle, Appraisal, Goal, LeavePolicy, LeaveAllocation, LeaveRequest, LeaveType } from "../models/index.js";
 import LeaveController from "./LeaveController.js";
+import { protectedWhere, getProtectedUserIds } from "../utils/protectedUsers.js";
 
 const getCycleKey = (policy: any) => LeaveController.getCycleKey(policy);
 
@@ -54,23 +55,29 @@ async function getLeaveBalance(userId: number) {
 export default class DashboardController {
   static async getDashboard(userId: number, role: string) {
     if (role === "admin" || role === "super_admin") {
-      const empCount = await User.count({ where: { role: "employee" } });
-      const mgrCount = await User.count({ where: { role: "manager" } });
+      // Protected accounts are excluded from everything below super admin.
+      const hiddenIds = role === "super_admin" ? new Set<number>() : await getProtectedUserIds();
+      const empCount = await User.count({ where: { role: "employee", ...protectedWhere(role) } });
+      const mgrCount = await User.count({ where: { role: "manager", ...protectedWhere(role) } });
+      const hiddenFilter = hiddenIds.size > 0 ? { [Op.notIn]: [...hiddenIds] } : null;
+      const apprWhere = (status: string) => hiddenFilter ? { status, employeeId: hiddenFilter } : { status };
       const activeCount = await Cycle.count({ where: { status: "active" } });
-      const pendingCount = await Appraisal.count({ where: { status: "pending" } });
-      const awaitingApprovalCount = await Appraisal.count({ where: { status: "pending_approval" } });
-      const completedCount = await Appraisal.count({ where: { status: "completed" } });
-      const myGoals = await Goal.count();
-      const activeGoals = await Goal.count({ where: { status: "in_progress" } });
+      const pendingCount = await Appraisal.count({ where: apprWhere("pending") });
+      const awaitingApprovalCount = await Appraisal.count({ where: apprWhere("pending_approval") });
+      const completedCount = await Appraisal.count({ where: apprWhere("completed") });
+      const myGoals = await Goal.count({ where: hiddenFilter ? { userId: hiddenFilter } : {} });
+      const activeGoals = await Goal.count({ where: hiddenFilter ? { status: "in_progress", userId: hiddenFilter } : { status: "in_progress" } });
 
-      const recentAppraisals = await Appraisal.findAll({ order: [["createdAt", "ASC"]], limit: 5 });
+      const recentAppraisalsRaw = await Appraisal.findAll({ order: [["createdAt", "ASC"]] });
+      const recentAppraisals = recentAppraisalsRaw.filter((a: any) => !hiddenIds.has(a.employeeId)).slice(0, 5);
       const enrichedAppraisals = await Promise.all(recentAppraisals.map(async (a: any) => {
         const emp = await User.findByPk(a.employeeId);
         const cyc = await Cycle.findByPk(a.cycleId);
         return { ...a.get({ plain: true }), employee: emp ? emp.get({ plain: true }) : null, cycle: cyc ? cyc.get({ plain: true }) : null, reviewer: null };
       }));
 
-      const recentGoals = await Goal.findAll({ order: [["createdAt", "ASC"]], limit: 5 });
+      const recentGoalsRaw = await Goal.findAll({ order: [["createdAt", "ASC"]] });
+      const recentGoals = recentGoalsRaw.filter((g: any) => !hiddenIds.has(g.userId)).slice(0, 5);
       const enrichedGoals = await Promise.all(recentGoals.map(async (g: any) => {
         const u = await User.findByPk(g.userId);
         return { ...g.get({ plain: true }), user: u ? u.get({ plain: true }) : null };
@@ -93,7 +100,7 @@ export default class DashboardController {
         leaveBalance,
       };
     } else if (role === "manager") {
-      const team = await User.findAll({ where: { managerId: userId }, attributes: ["id"] });
+      const team = await User.findAll({ where: { managerId: userId, isProtected: false }, attributes: ["id"] });
       const teamIds = team.map((m: any) => m.id);
       // Managers see their own appraisals on the dashboard too (e.g. when
       // another manager reviews them), not just their team's.
