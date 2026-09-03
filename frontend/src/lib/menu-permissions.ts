@@ -29,6 +29,7 @@ export const MENU_KEY_PATHS: { key: string; path: string }[] = [
   { key: "sites", path: "/sites" },
   { key: "roles", path: "/roles" },
   { key: "security", path: "/security" },
+  { key: "account-lock-management", path: "/account-lock-management" },
   { key: "notifications", path: "/notifications" },
   { key: "appearance", path: "/appearance" },
   { key: "ai-settings", path: "/ai-settings" },
@@ -52,6 +53,10 @@ export function getCustomMenuPerms(user: any): string[] {
 export function hasMenuAccess(user: any, menuKey: string): boolean {
   if (menuKey === "account-recovery") {
     return user?.role === "admin" || user?.role === "super_admin";
+  }
+  if (menuKey === "account-lock-management") {
+    if (user?.role === "super_admin") return true;
+    return getCustomMenuPerms(user).includes(menuKey);
   }
   const perms = getCustomMenuPerms(user);
   if (perms.length === 0) return true; // inherit defaults — base-role rules apply
