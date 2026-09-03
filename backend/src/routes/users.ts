@@ -63,10 +63,13 @@ async function blockProtectedTarget(req: AuthRequest, res: Response, next: NextF
   }
 }
 
+router.get("/users", requireAuth, requireUserDirectoryAccess, ListUsersAction.handle);
+// Keep named collection routes above /users/:id. Otherwise Express treats
+// "coworkers" as an ID and applies record-level access, blocking employees.
+router.get("/users/coworkers", requireAuth, ListCoworkersAction.handle);
+
 router.use("/users/:id", requireAuth, blockProtectedTarget, requireUserRecordAccess);
 
-router.get("/users", requireAuth, requireUserDirectoryAccess, ListUsersAction.handle);
-router.get("/users/coworkers", requireAuth, ListCoworkersAction.handle);
 router.post("/users", requireAuth, requireRole("admin"), CreateUserAction.handle);
 router.get("/users/:id", requireAuth, GetUserAction.handle);
 router.put("/users/:id", requireAuth, requireRole("admin"), UpdateUserAction.handle);
