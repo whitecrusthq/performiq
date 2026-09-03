@@ -16,7 +16,7 @@ export class AdministrativeRecipientsAction {
     try {
       const result = await AdministrativeNotificationController.update(req.body?.userIds, req.user!.id);
       if ("error" in result) {
-        res.status(result.status).json({ error: result.error });
+        res.status(result.status ?? 400).json({ error: result.error });
         return;
       }
       res.json(result.data);
