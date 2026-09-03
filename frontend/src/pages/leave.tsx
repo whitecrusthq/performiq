@@ -305,9 +305,9 @@ export default function Leave() {
   // Leave types the current user may actually request: unmapped types are open
   // to everyone; grade-mapped types only to employees with a matching grade.
   const myGradeId = (user as any)?.gradeId ?? null;
-  const myLeaveTypes = leaveTypes.filter(t =>
-    !t.gradeIds || t.gradeIds.length === 0 || (myGradeId && t.gradeIds.includes(myGradeId))
-  );
+  const myLeaveTypes = isAdmin
+    ? leaveTypes.filter(t => !t.gradeIds || t.gradeIds.length === 0 || (myGradeId && t.gradeIds.includes(myGradeId)))
+    : leaveTypes;
 
   const handleSaveGrade = async (e: React.FormEvent) => {
     e.preventDefault();
