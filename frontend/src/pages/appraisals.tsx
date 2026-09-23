@@ -62,10 +62,14 @@ export default function Appraisals() {
   const [filterStatus, setFilterStatus] = useState("");
   const [filterCycle, setFilterCycle] = useState("");
   const [filterSite, setFilterSite] = useState("");
+  const [filterSiteCategory, setFilterSiteCategory] = useState("");
   const [sites, setSites] = useState<any[]>([]);
   useEffect(() => {
     apiFetch("/api/sites").then(r => r.json()).then(d => setSites(Array.isArray(d) ? d : [])).catch(() => {});
   }, []);
+
+  const siteCategories = useMemo(() => [...new Set(sites.map((s: any) => s.category).filter(Boolean))] as string[], [sites]);
+  const siteIdToCategory = useMemo(() => new Map(sites.map((s: any) => [String(s.id), s.category ?? null])), [sites]);
 
   const filteredAppraisals = useMemo(() => {
     if (!appraisals) return [];
@@ -74,11 +78,12 @@ export default function Appraisals() {
       const matchStatus = !filterStatus || a.status === filterStatus;
       const matchCycle = !filterCycle || String(a.cycleId) === filterCycle;
       const matchSite = !filterSite || String((a.employee as any)?.siteId ?? "") === filterSite;
-      return matchSearch && matchStatus && matchCycle && matchSite;
+      const matchCategory = !filterSiteCategory || siteIdToCategory.get(String((a.employee as any)?.siteId ?? "")) === filterSiteCategory;
+      return matchSearch && matchStatus && matchCycle && matchSite && matchCategory;
     });
-  }, [appraisals, search, filterStatus, filterCycle, filterSite]);
+  }, [appraisals, search, filterStatus, filterCycle, filterSite, filterSiteCategory, siteIdToCategory]);
 
-  const activeFilters = search || filterStatus || filterCycle || filterSite;
+  const activeFilters = search || filterStatus || filterCycle || filterSite || filterSiteCategory;
   const isAdmin = user?.role === 'admin' || user?.role === 'super_admin';
 
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
@@ -342,10 +347,23 @@ export default function Appraisals() {
           </select>
           <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground pointer-events-none" />
         </div>
+        {siteCategories.length > 0 && (
+          <div className="relative">
+            <select
+              className="pl-3 pr-8 py-2 rounded-xl border border-border bg-card text-sm appearance-none cursor-pointer focus:outline-none focus:ring-2 focus:ring-primary/20"
+              value={filterSiteCategory}
+              onChange={e => setFilterSiteCategory(e.target.value)}
+            >
+              <option value="">All Categories</option>
+              {siteCategories.map(c => <option key={c} value={c}>{c}</option>)}
+            </select>
+            <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground pointer-events-none" />
+          </div>
+        )}
         {activeFilters && (
           <button
             className="px-3 py-2 text-xs text-muted-foreground underline hover:text-foreground"
-            onClick={() => { setSearch(""); setFilterStatus(""); setFilterCycle(""); setFilterSite(""); }}
+            onClick={() => { setSearch(""); setFilterStatus(""); setFilterCycle(""); setFilterSite(""); setFilterSiteCategory(""); }}
           >
             Clear filters
           </button>

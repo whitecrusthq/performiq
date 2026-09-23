@@ -59,6 +59,33 @@ function fmtCoords(lat?: string | null, lng?: string | null) { if (!lat || !lng)
 function mapsUrl(lat: string | number, lng: string | number) { return `https://www.google.com/maps?q=${lat},${lng}`; }
 function fmtCountdown(secs: number) { const m = Math.floor(secs / 60); const s = secs % 60; return m > 0 ? `${m}m ${String(s).padStart(2, "0")}s` : `${s}s`; }
 
+// Maps getUserMedia()/video.play() failures to a specific, actionable message
+// instead of a generic "access denied" — the underlying causes (permission
+// blocked, no camera, camera busy, insecure connection) each need a different
+// fix from the user, and lumping them together made it impossible to tell
+// which devices were failing for which reason.
+function cameraErrorMessage(err: any): string {
+  const name = err?.name ?? "";
+  switch (name) {
+    case "NotAllowedError":
+    case "PermissionDeniedError":
+      return "Camera permission was denied. Allow camera access for this site in your browser or phone Settings, then Retry.";
+    case "NotFoundError":
+    case "DevicesNotFoundError":
+      return "No camera was found on this device.";
+    case "NotReadableError":
+    case "TrackStartError":
+      return "The camera is already in use by another app. Close any other camera or video app and Retry.";
+    case "SecurityError":
+      return "Camera access is blocked on this connection. Make sure you're using the site's https:// link.";
+    case "OverconstrainedError":
+    case "ConstraintNotSatisfiedError":
+      return "This device's camera doesn't support the requested settings. Retry to try again.";
+    default:
+      return "Couldn't open the camera. You can Retry, or skip photo capture and continue.";
+  }
+}
+
 // ─── Face Capture Modal ────────────────────────────────────────────────────────
 interface FaceCaptureProps {
   open: boolean;
@@ -85,8 +112,21 @@ function FaceCaptureModal({ open, action, onConfirm, onCancel }: FaceCaptureProp
     setStarting(true);
     setCamError(null);
     setCaptured(null);
+    // Defensively release any stream from a previous failed attempt first —
+    // most mobile browsers only allow one active camera stream per tab, so an
+    // orphaned stream from an earlier failure (e.g. video.play() rejecting)
+    // makes every subsequent Retry fail with "camera already in use".
+    stopCamera();
+
+    if (!navigator.mediaDevices?.getUserMedia) {
+      setCamError("This browser or connection doesn't support camera capture. Make sure you're using the site's https:// link in an up-to-date browser, then Retry.");
+      setStarting(false);
+      return;
+    }
+
+    let stream: MediaStream | null = null;
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({
+      stream = await navigator.mediaDevices.getUserMedia({
         video: { facingMode: "user", width: { ideal: CAPTURE_WIDTH }, height: { ideal: CAPTURE_HEIGHT } },
         audio: false,
       });
@@ -95,12 +135,16 @@ function FaceCaptureModal({ open, action, onConfirm, onCancel }: FaceCaptureProp
         videoRef.current.srcObject = stream;
         await videoRef.current.play();
       }
-    } catch {
-      setCamError("Camera access denied. You can skip photo capture and continue.");
+    } catch (err: any) {
+      // Playback failed after permission was already granted — release the
+      // camera immediately so it isn't left locked (orphaned) for the retry.
+      stream?.getTracks().forEach(t => t.stop());
+      streamRef.current = null;
+      setCamError(cameraErrorMessage(err));
     } finally {
       setStarting(false);
     }
-  }, []);
+  }, [stopCamera]);
 
   useEffect(() => {
     if (open) { startCamera(); }
@@ -571,6 +615,7 @@ export default function Attendance() {
   const [filterDate, setFilterDate] = useState("");
   const [filterUserId, setFilterUserId] = useState("");
   const [filterSiteId, setFilterSiteId] = useState("");
+  const [filterSiteCategory, setFilterSiteCategory] = useState("");
   const [filterDepartment, setFilterDepartment] = useState("");
   const [autoOnly, setAutoOnly] = useState(false);
   const [elapsed, setElapsed] = useState("");
@@ -600,12 +645,13 @@ export default function Attendance() {
   });
 
   const { data: logs = [], isLoading: logsLoading } = useQuery({
-    queryKey: ["attendance", filterDate, filterUserId, filterSiteId, filterDepartment, autoOnly],
+    queryKey: ["attendance", filterDate, filterUserId, filterSiteId, filterSiteCategory, filterDepartment, autoOnly],
     queryFn: () => {
       const params = new URLSearchParams();
       if (filterDate) { params.set("startDate", filterDate); params.set("endDate", filterDate); }
       if (filterUserId) params.set("userId", filterUserId);
       if (filterSiteId) params.set("siteId", filterSiteId);
+      if (filterSiteCategory) params.set("siteCategory", filterSiteCategory);
       if (filterDepartment) params.set("department", filterDepartment);
       if (autoOnly) params.set("autoClosedOnly", "true");
       return apiFetch(`/api/attendance?${params}`);
@@ -623,6 +669,7 @@ export default function Attendance() {
     queryFn: () => apiFetch("/api/sites"),
     enabled: isManager,
   });
+  const siteCategories = [...new Set((sites as any[]).map((s: any) => s.category).filter(Boolean))] as string[];
 
   const { data: departments = [] } = useQuery({
     queryKey: ["departments-list"],
@@ -1038,6 +1085,20 @@ export default function Attendance() {
                 </SelectContent>
               </Select>
             </div>
+            {siteCategories.length > 0 && (
+              <div className="flex items-center gap-2">
+                <MapPin className="w-4 h-4 text-muted-foreground" />
+                <Select value={filterSiteCategory || "all"} onValueChange={v => setFilterSiteCategory(v === "all" ? "" : v)}>
+                  <SelectTrigger className="w-44 h-9 text-sm"><SelectValue placeholder="All categories" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All categories</SelectItem>
+                    {siteCategories.map(c => (
+                      <SelectItem key={c} value={c}>{c}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
             <div className="flex items-center gap-2">
               <Users className="w-4 h-4 text-muted-foreground" />
               <Select value={filterDepartment || "all"} onValueChange={v => setFilterDepartment(v === "all" ? "" : v)}>
@@ -1050,12 +1111,12 @@ export default function Attendance() {
                 </SelectContent>
               </Select>
             </div>
-            {(filterUserId || filterSiteId || filterDepartment) && (
+            {(filterUserId || filterSiteId || filterSiteCategory || filterDepartment) && (
               <Button
                 variant="ghost"
                 size="sm"
                 className="h-9 px-2 text-xs"
-                onClick={() => { setFilterUserId(""); setFilterSiteId(""); setFilterDepartment(""); }}
+                onClick={() => { setFilterUserId(""); setFilterSiteId(""); setFilterSiteCategory(""); setFilterDepartment(""); }}
               >
                 Clear filters
               </Button>

@@ -521,7 +521,7 @@ function StaffPanel({ staffId, canEdit, onClose, onUpdated }: {
                   ["Surname", (s as any).surname ?? ""], ["First Name", (s as any).firstName ?? ""], ["Middle Name", (s as any).middleName ?? ""],
                   ["Name", s.name ?? ""], ["Email", s.email ?? ""], ["Phone", s.phone ?? ""],
                   ["Staff ID", s.staffId ?? ""], ["Department", s.department ?? ""], ["Job Title", s.jobTitle ?? ""],
-                  ["Role", s.role?.replace("_", " ") ?? ""], ["Site", s.site?.name ?? ""],
+                  ["Role", s.role?.replace("_", " ") ?? ""], ["Site", s.site?.name ?? ""], ["Site Category", (s as any).site?.category ?? ""],
                   ["Date of Birth", s.dateOfBirth ?? ""], ["Gender", s.gender ?? ""],
                   ["National ID", s.nationalId ?? ""], ["Start Date", s.startDate ?? ""],
                   ["Marital Status", s.maritalStatus ?? ""], ["Nationality", s.nationality ?? ""],
@@ -677,13 +677,15 @@ function StaffPanel({ staffId, canEdit, onClose, onUpdated }: {
                     <Field label="Start Date" value={d.startDate} editing={editing} type="date" onChange={set("startDate")} />
                     {editing && sites.length > 0 ? (
                       <SelectField label="Site" value={d.siteId} editing={editing}
-                        options={sites.map((s: any) => ({ value: String(s.id), label: s.name }))}
+                        options={sites.map((s: any) => ({ value: String(s.id), label: s.category ? `${s.name} · ${s.category}` : s.name }))}
                         onChange={set("siteId")} />
                     ) : (
                       <div>
                         <label className="block text-xs font-semibold text-muted-foreground mb-1 uppercase tracking-wide">Site</label>
                         <p className={`text-sm py-1.5 ${staff?.site?.name ? "text-foreground" : "text-muted-foreground/60 italic"}`}>
-                          {staff?.site?.name || "Not set"}
+                          {staff?.site?.name
+                            ? `${staff.site.name}${staff.site.category ? ` · ${staff.site.category}` : ""}`
+                            : "Not set"}
                         </p>
                       </div>
                     )}
@@ -2096,6 +2098,7 @@ export default function Staff() {
   const [filterDept, setFilterDept] = useState("");
   const [filterRole, setFilterRole] = useState("");
   const [filterSite, setFilterSite] = useState("");
+  const [filterCategory, setFilterCategory] = useState("");
   const effectiveLevel = (user as any)?.customRole?.permissionLevel ?? user?.role;
   const isAdmin = effectiveLevel === "admin" || effectiveLevel === "super_admin";
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
@@ -2121,6 +2124,8 @@ export default function Staff() {
   });
 
   const departments = useMemo(() => [...new Set((users as any[]).map(u => u.department).filter(Boolean))].sort(), [users]);
+  const siteCategories = useMemo(() => [...new Set((sites as any[]).map(s => s.category).filter(Boolean))] as string[], [sites]);
+  const siteIdToCategory = useMemo(() => new Map((sites as any[]).map(s => [String(s.id), s.category ?? null])), [sites]);
 
   const filtered = useMemo(() => {
     return (users as any[]).filter(u => {
@@ -2128,9 +2133,10 @@ export default function Staff() {
       const matchDept = !filterDept || u.department === filterDept;
       const matchRole = !filterRole || u.role === filterRole;
       const matchSite = !filterSite || String(u.siteId ?? "") === filterSite;
-      return matchQ && matchDept && matchRole && matchSite;
+      const matchCategory = !filterCategory || siteIdToCategory.get(String(u.siteId ?? "")) === filterCategory;
+      return matchQ && matchDept && matchRole && matchSite && matchCategory;
     });
-  }, [users, search, filterDept, filterRole, filterSite]);
+  }, [users, search, filterDept, filterRole, filterSite, filterCategory, siteIdToCategory]);
 
   const handleUpdated = useCallback((updated: any) => {
     qc.setQueryData(["staff-list"], (old: any[]) =>
@@ -2156,14 +2162,14 @@ export default function Staff() {
     }
   };
 
-  const EXPORT_HEADERS = ["Staff ID", "Surname", "First Name", "Middle Name", "Name", "Email", "Phone", "Department", "Job Title", "Role", "Site", "Start Date", "Date of Birth", "Gender", "Marital Status", "Religion", "Nationality", "State of Origin", "Address", "City", "State/Province", "Country", "Postal Code", "National ID", "Bank Name", "Bank Account Name", "Bank Account Number", "Bank Branch", "Emergency Contact", "Emergency Phone", "Emergency Relationship"];
+  const EXPORT_HEADERS = ["Staff ID", "Surname", "First Name", "Middle Name", "Name", "Email", "Phone", "Department", "Job Title", "Role", "Site", "Site Category", "Start Date", "Date of Birth", "Gender", "Marital Status", "Religion", "Nationality", "State of Origin", "Address", "City", "State/Province", "Country", "Postal Code", "National ID", "Bank Name", "Bank Account Name", "Bank Account Number", "Bank Branch", "Emergency Contact", "Emergency Phone", "Emergency Relationship"];
 
   const staffToRow = (u: any) => [
     u.staffId ?? "",
     u.surname ?? "", u.firstName ?? "", u.middleName ?? "",
     u.name ?? "", u.email ?? "", u.phone ?? "",
     u.department ?? "", u.jobTitle ?? "", u.role?.replace("_", " ") ?? "",
-    u.site?.name ?? u.siteName ?? "", u.startDate ?? "", u.dateOfBirth ?? "",
+    u.site?.name ?? u.siteName ?? "", u.site?.category ?? "", u.startDate ?? "", u.dateOfBirth ?? "",
     u.gender ?? "", u.maritalStatus ?? "", u.religion ?? "", u.nationality ?? "",
     u.stateOfOrigin ?? "", u.address ?? "", u.city ?? "", u.stateProvince ?? "",
     u.country ?? "", u.postalCode ?? "", u.nationalId ?? "", u.bankName ?? "",
@@ -2246,8 +2252,15 @@ export default function Staff() {
             {(sites as any[]).map((s: any) => <option key={s.id} value={String(s.id)}>{s.name}</option>)}
           </select>
         )}
-        {(search || filterDept || filterRole || filterSite) && (
-          <button onClick={() => { setSearch(""); setFilterDept(""); setFilterRole(""); setFilterSite(""); }}
+        {siteCategories.length > 0 && (
+          <select value={filterCategory} onChange={e => setFilterCategory(e.target.value)}
+            className="px-3 py-2 rounded-xl border border-border bg-background text-sm outline-none">
+            <option value="">All Categories</option>
+            {siteCategories.map(c => <option key={c} value={c}>{c}</option>)}
+          </select>
+        )}
+        {(search || filterDept || filterRole || filterSite || filterCategory) && (
+          <button onClick={() => { setSearch(""); setFilterDept(""); setFilterRole(""); setFilterSite(""); setFilterCategory(""); }}
             className="px-3 py-2 text-xs text-muted-foreground hover:text-foreground underline">
             Clear
           </button>
@@ -2488,7 +2501,7 @@ function AddStaffModal({ sites, onClose, onCreated }: { sites: any[]; onClose: (
               <select value={form.siteId} onChange={set("siteId")} required
                 className="w-full px-3 py-2 rounded-xl border border-border bg-background text-sm outline-none">
                 <option value="">Select a site…</option>
-                {sites.map((s: any) => <option key={s.id} value={s.id}>{s.name}</option>)}
+                {sites.map((s: any) => <option key={s.id} value={s.id}>{s.category ? `${s.name} · ${s.category}` : s.name}</option>)}
               </select>
             </div>
             <div className="space-y-1.5">

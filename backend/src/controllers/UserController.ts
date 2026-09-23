@@ -18,12 +18,16 @@ function canAssignRole(actorRole: string, targetRole: string): boolean {
   return true;
 }
 
-function formatUser(u: User, customRole?: CustomRole | null) {
+function formatUser(u: User, customRole?: CustomRole | null, site?: Site | null) {
   return {
     id: u.id, name: u.name, email: u.email, role: u.role,
     customRoleId: u.customRoleId,
     customRole: customRole ? { id: customRole.id, name: customRole.name, permissionLevel: customRole.permissionLevel } : null,
-    managerId: u.managerId, siteId: u.siteId, department: u.department, jobTitle: u.jobTitle,
+    managerId: u.managerId, siteId: u.siteId,
+    // Nested site (with category) for read-only display — siteId above remains
+    // the source of truth for filtering/updates.
+    site: site ? { id: site.id, name: site.name, category: site.category } : null,
+    department: u.department, jobTitle: u.jobTitle,
     gradeId: u.gradeId ?? null,
     shiftType: u.shiftType ?? null, clockOutSlot: u.clockOutSlot ?? null,
     phone: u.phone, staffId: u.staffId, profilePhoto: u.profilePhoto, isLocked: u.isLocked, isProtected: u.isProtected, createdAt: u.createdAt,
@@ -58,7 +62,8 @@ async function getUserWithRole(userId: number) {
   if (user.customRoleId) {
     customRole = await CustomRole.findByPk(user.customRoleId) ?? null;
   }
-  return formatUser(user, customRole);
+  const site = user.siteId ? await Site.findByPk(user.siteId) : null;
+  return formatUser(user, customRole, site);
 }
 
 export default class UserController {
@@ -70,7 +75,13 @@ export default class UserController {
     const allUsers = await User.findAll({ where, order: [["name", "ASC"]] });
     const customRoles = await CustomRole.findAll();
     const roleMap = new Map<number, CustomRole>(customRoles.map((r: CustomRole) => [r.id, r]));
-    return allUsers.map((u: User) => formatUser(u, u.customRoleId ? roleMap.get(u.customRoleId) ?? null : null));
+    const sites = await Site.findAll();
+    const siteMap = new Map<number, Site>(sites.map((s: Site) => [s.id, s]));
+    return allUsers.map((u: User) => formatUser(
+      u,
+      u.customRoleId ? roleMap.get(u.customRoleId) ?? null : null,
+      u.siteId ? siteMap.get(u.siteId) ?? null : null,
+    ));
   }
 
   static async create(data: any, actorRole: string) {

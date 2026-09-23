@@ -878,6 +878,17 @@ export default class AppraisalController {
       await Appraisal.update({ reviewerId: Number(reviewerId) }, { where: { id: appraisalId } });
     }
 
+    // If the appraisal is already awaiting manager review and nobody is
+    // currently active (e.g. the previous reviewer was just removed), this
+    // newly added reviewer is the one who should act next. Without this, the
+    // row sits at 'pending' forever since nothing else promotes it.
+    if ((appraisal as any).status === "manager_review") {
+      const activeRow = await AppraisalReviewer.findOne({ where: { appraisalId, status: 'in_progress' } });
+      if (!activeRow) {
+        await AppraisalController.activateNextReviewer(appraisalId);
+      }
+    }
+
     const reviewers = await AppraisalController.getReviewersForAppraisal(appraisalId);
     return { data: { reviewers } };
   }
@@ -903,6 +914,7 @@ export default class AppraisalController {
   }
 
   static async removeReviewer(appraisalId: number, reviewerId: number) {
+    const appraisal = await Appraisal.findByPk(appraisalId);
     await AppraisalReviewer.destroy({
       where: { appraisalId, reviewerId },
     });
@@ -917,6 +929,17 @@ export default class AppraisalController {
       { reviewerId: remaining.length > 0 ? remaining[0].id : null },
       { where: { id: appraisalId } }
     );
+
+    // Removing the currently active reviewer (e.g. they were deactivated or
+    // reassigned) must not leave the appraisal stuck at manager_review with
+    // no one able to act: promote the next pending reviewer immediately.
+    if ((appraisal as any)?.status === "manager_review") {
+      const activeRow = await AppraisalReviewer.findOne({ where: { appraisalId, status: 'in_progress' } });
+      if (!activeRow) {
+        await AppraisalController.activateNextReviewer(appraisalId);
+      }
+    }
+
     return await AppraisalController.getReviewersForAppraisal(appraisalId);
   }
 }

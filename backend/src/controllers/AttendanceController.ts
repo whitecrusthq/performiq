@@ -126,7 +126,7 @@ export default class AttendanceController {
     return { data: updatedRows[0] };
   }
 
-  static async listLogs(userId: number, role: string, filters: { startDate?: string; endDate?: string; userId?: string; siteId?: string; department?: string; autoClosedOnly?: boolean }) {
+  static async listLogs(userId: number, role: string, filters: { startDate?: string; endDate?: string; userId?: string; siteId?: string; siteCategory?: string; department?: string; autoClosedOnly?: boolean }) {
     let rows = await AttendanceLog.findAll({ order: [["date", "DESC"]] });
     let rowsJson = rows.map(r => r.toJSON() as any);
 
@@ -152,6 +152,14 @@ export default class AttendanceController {
     if (filters.siteId) {
       const sid = parseInt(filters.siteId);
       rowsJson = rowsJson.filter((r: any) => r.siteId === sid);
+    }
+
+    // Site category filter — resolves to every site in that category, then
+    // filters the same way as the exact-site filter above.
+    if (filters.siteCategory) {
+      const sitesInCategory = await Site.findAll({ where: { category: filters.siteCategory }, attributes: ["id"] });
+      const categorySiteIds = new Set(sitesInCategory.map(s => s.id));
+      rowsJson = rowsJson.filter((r: any) => categorySiteIds.has(r.siteId));
     }
 
     // Department filter — needs a join through users

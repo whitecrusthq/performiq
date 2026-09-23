@@ -56,6 +56,7 @@ export default function QuizResults() {
   const [filterDoc, setFilterDoc] = useState("");
   const [filterUser, setFilterUser] = useState("");
   const [filterSite, setFilterSite] = useState("");
+  const [filterSiteCategory, setFilterSiteCategory] = useState("");
   const [filterDept, setFilterDept] = useState("");
   const [filterFrom, setFilterFrom] = useState("");
   const [filterTo, setFilterTo] = useState("");
@@ -64,7 +65,7 @@ export default function QuizResults() {
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState<25 | 50 | 100>(25);
 
-  const [sites, setSites] = useState<{ id: number; name: string }[]>([]);
+  const [sites, setSites] = useState<{ id: number; name: string; category?: string | null }[]>([]);
   const [departments, setDepartments] = useState<{ id: number; name: string }[]>([]);
 
   const [detail, setDetail] = useState<AttemptDetail | null>(null);
@@ -78,6 +79,7 @@ export default function QuizResults() {
     if (filterDoc) params.set("documentId", filterDoc);
     if (filterUser && isAdmin) params.set("userId", filterUser);
     if (filterSite && isAdmin) params.set("siteId", filterSite);
+    if (filterSiteCategory && isAdmin) params.set("siteCategory", filterSiteCategory);
     if (filterDept && isAdmin) params.set("department", filterDept);
     if (filterFrom) params.set("from", filterFrom);
     if (filterTo) params.set("to", filterTo);
@@ -117,10 +119,12 @@ export default function QuizResults() {
   }, [resp, isAdmin]);
 
   function clearFilters() {
-    setFilterDoc(""); setFilterUser(""); setFilterSite(""); setFilterDept("");
+    setFilterDoc(""); setFilterUser(""); setFilterSite(""); setFilterSiteCategory(""); setFilterDept("");
     setFilterFrom(""); setFilterTo(""); setSearch("");
     setReloadKey(k => k + 1);
   }
+
+  const siteCategories = useMemo(() => [...new Set(sites.map(s => s.category).filter(Boolean))] as string[], [sites]);
 
   const filteredRows = useMemo(() => {
     if (!resp?.data) return [];
@@ -146,7 +150,7 @@ export default function QuizResults() {
   useEffect(() => { setPage(1); }, [search, pageSize, resp]);
 
   const activeFilterCount =
-    (filterDoc ? 1 : 0) + (filterUser ? 1 : 0) + (filterSite ? 1 : 0) +
+    (filterDoc ? 1 : 0) + (filterUser ? 1 : 0) + (filterSite ? 1 : 0) + (filterSiteCategory ? 1 : 0) +
     (filterDept ? 1 : 0) + (filterFrom ? 1 : 0) + (filterTo ? 1 : 0);
 
   function exportCSV() {
@@ -281,6 +285,15 @@ export default function QuizResults() {
               <select className="h-9 rounded-md border border-input bg-background px-3 text-sm w-full mt-1" value={filterSite} onChange={e => setFilterSite(e.target.value)}>
                 <option value="">All sites</option>
                 {sites.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+              </select>
+            </div>
+          )}
+          {isAdmin && siteCategories.length > 0 && (
+            <div>
+              <Label>Category</Label>
+              <select className="h-9 rounded-md border border-input bg-background px-3 text-sm w-full mt-1" value={filterSiteCategory} onChange={e => setFilterSiteCategory(e.target.value)}>
+                <option value="">All categories</option>
+                {siteCategories.map(c => <option key={c} value={c}>{c}</option>)}
               </select>
             </div>
           )}
