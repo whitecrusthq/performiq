@@ -615,6 +615,7 @@ export default function Attendance() {
   const [filterDate, setFilterDate] = useState("");
   const [filterUserId, setFilterUserId] = useState("");
   const [filterSiteId, setFilterSiteId] = useState("");
+  const [filterSiteCategory, setFilterSiteCategory] = useState("");
   const [filterDepartment, setFilterDepartment] = useState("");
   const [autoOnly, setAutoOnly] = useState(false);
   const [elapsed, setElapsed] = useState("");
@@ -644,12 +645,13 @@ export default function Attendance() {
   });
 
   const { data: logs = [], isLoading: logsLoading } = useQuery({
-    queryKey: ["attendance", filterDate, filterUserId, filterSiteId, filterDepartment, autoOnly],
+    queryKey: ["attendance", filterDate, filterUserId, filterSiteId, filterSiteCategory, filterDepartment, autoOnly],
     queryFn: () => {
       const params = new URLSearchParams();
       if (filterDate) { params.set("startDate", filterDate); params.set("endDate", filterDate); }
       if (filterUserId) params.set("userId", filterUserId);
       if (filterSiteId) params.set("siteId", filterSiteId);
+      if (filterSiteCategory) params.set("siteCategory", filterSiteCategory);
       if (filterDepartment) params.set("department", filterDepartment);
       if (autoOnly) params.set("autoClosedOnly", "true");
       return apiFetch(`/api/attendance?${params}`);
@@ -667,6 +669,7 @@ export default function Attendance() {
     queryFn: () => apiFetch("/api/sites"),
     enabled: isManager,
   });
+  const siteCategories = [...new Set((sites as any[]).map((s: any) => s.category).filter(Boolean))] as string[];
 
   const { data: departments = [] } = useQuery({
     queryKey: ["departments-list"],
@@ -1082,6 +1085,20 @@ export default function Attendance() {
                 </SelectContent>
               </Select>
             </div>
+            {siteCategories.length > 0 && (
+              <div className="flex items-center gap-2">
+                <MapPin className="w-4 h-4 text-muted-foreground" />
+                <Select value={filterSiteCategory || "all"} onValueChange={v => setFilterSiteCategory(v === "all" ? "" : v)}>
+                  <SelectTrigger className="w-44 h-9 text-sm"><SelectValue placeholder="All categories" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All categories</SelectItem>
+                    {siteCategories.map(c => (
+                      <SelectItem key={c} value={c}>{c}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
             <div className="flex items-center gap-2">
               <Users className="w-4 h-4 text-muted-foreground" />
               <Select value={filterDepartment || "all"} onValueChange={v => setFilterDepartment(v === "all" ? "" : v)}>
@@ -1094,12 +1111,12 @@ export default function Attendance() {
                 </SelectContent>
               </Select>
             </div>
-            {(filterUserId || filterSiteId || filterDepartment) && (
+            {(filterUserId || filterSiteId || filterSiteCategory || filterDepartment) && (
               <Button
                 variant="ghost"
                 size="sm"
                 className="h-9 px-2 text-xs"
-                onClick={() => { setFilterUserId(""); setFilterSiteId(""); setFilterDepartment(""); }}
+                onClick={() => { setFilterUserId(""); setFilterSiteId(""); setFilterSiteCategory(""); setFilterDepartment(""); }}
               >
                 Clear filters
               </Button>

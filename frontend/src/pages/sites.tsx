@@ -6,7 +6,7 @@ import { BulkActionBar } from "@/components/bulk-action-bar";
 import { useAuth } from "@/hooks/use-auth";
 import { apiFetch } from "@/lib/utils";
 
-const SITE_IMPORT_HEADERS = ["name", "address", "city", "region", "country", "description", "require2Fa"];
+const SITE_IMPORT_HEADERS = ["name", "address", "city", "region", "country", "category", "description", "require2Fa"];
 
 const SITE_FIELD_MAP: Record<string, string> = {
   "name": "name", "site name": "name", "site": "name",
@@ -14,6 +14,7 @@ const SITE_FIELD_MAP: Record<string, string> = {
   "city": "city", "town": "city",
   "region": "region", "state": "region", "state/province": "region", "province": "region",
   "country": "country",
+  "category": "category", "site category": "category", "type": "category", "site type": "category",
   "description": "description", "notes": "description",
   "require2fa": "require2Fa", "require 2fa": "require2Fa", "2fa": "require2Fa", "two factor": "require2Fa",
 };
@@ -56,8 +57,8 @@ function BulkImportSitesModal({ onClose, onComplete }: { onClose: () => void; on
 
   const downloadTemplate = () => {
     const csv = SITE_IMPORT_HEADERS.join(",") +
-      "\nHead Office,123 Marina Road,Lagos,Lagos,Nigeria,Main HQ branch,false" +
-      "\nAbuja Branch,Plot 42 Wuse Zone 5,Abuja,FCT,Nigeria,Northern regional office,true\n";
+      "\nHead Office,123 Marina Road,Lagos,Lagos,Nigeria,HQ,Main HQ branch,false" +
+      "\nAbuja Branch,Plot 42 Wuse Zone 5,Abuja,FCT,Nigeria,Branch,Northern regional office,true\n";
     const blob = new Blob(["\uFEFF" + csv], { type: "text/csv;charset=utf-8;" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
@@ -195,6 +196,7 @@ function BulkImportSitesModal({ onClose, onComplete }: { onClose: () => void; on
                         <th className="text-left px-3 py-2 font-semibold">Name</th>
                         <th className="text-left px-3 py-2 font-semibold">City</th>
                         <th className="text-left px-3 py-2 font-semibold">Country</th>
+                        <th className="text-left px-3 py-2 font-semibold">Category</th>
                         <th className="text-left px-3 py-2 font-semibold">2FA</th>
                       </tr>
                     </thead>
@@ -205,6 +207,7 @@ function BulkImportSitesModal({ onClose, onComplete }: { onClose: () => void; on
                           <td className="px-3 py-2 font-medium">{r.name || <span className="text-red-600">missing</span>}</td>
                           <td className="px-3 py-2">{r.city || "—"}</td>
                           <td className="px-3 py-2">{r.country || "—"}</td>
+                          <td className="px-3 py-2">{r.category || "—"}</td>
                           <td className="px-3 py-2">{["true", "yes", "y", "1"].includes((r.require2Fa ?? "").toLowerCase()) ? "Yes" : "No"}</td>
                         </tr>
                       ))}
@@ -305,6 +308,7 @@ interface Site {
   region?: string | null;
   country?: string | null;
   description?: string | null;
+  category?: string | null;
   require2Fa?: boolean;
   createdAt: string;
 }
@@ -329,7 +333,7 @@ function useSites() {
   return { sites, isLoading, refresh };
 }
 
-const EMPTY_FORM = { name: "", address: "", city: "", region: "", country: "", description: "", require2Fa: false };
+const EMPTY_FORM = { name: "", address: "", city: "", region: "", country: "", category: "", description: "", require2Fa: false };
 
 export default function Sites() {
   const { user } = useAuth();
@@ -343,14 +347,19 @@ export default function Sites() {
   const [error, setError] = useState<string | null>(null);
   const [showBulkImport, setShowBulkImport] = useState(false);
   const [search, setSearch] = useState("");
+  const [filterCategory, setFilterCategory] = useState("");
 
-  const filteredSites = sites.filter(s => {
-    if (!search.trim()) return true;
-    const q = search.trim().toLowerCase();
-    return [s.name, s.address, s.city, s.region, s.country, s.description]
-      .filter(Boolean)
-      .some(v => (v as string).toLowerCase().includes(q));
-  });
+  const categories = [...new Set(sites.map(s => s.category).filter(Boolean))] as string[];
+
+  const filteredSites = sites
+    .filter(s => !filterCategory || s.category === filterCategory)
+    .filter(s => {
+      if (!search.trim()) return true;
+      const q = search.trim().toLowerCase();
+      return [s.name, s.address, s.city, s.region, s.country, s.category, s.description]
+        .filter(Boolean)
+        .some(v => (v as string).toLowerCase().includes(q));
+    });
 
   const openCreate = () => {
     setFormData(EMPTY_FORM);
@@ -360,7 +369,7 @@ export default function Sites() {
   };
 
   const openEdit = (site: Site) => {
-    setFormData({ name: site.name, address: site.address || "", city: site.city || "", region: site.region || "", country: site.country || "", description: site.description || "", require2Fa: !!site.require2Fa });
+    setFormData({ name: site.name, address: site.address || "", city: site.city || "", region: site.region || "", country: site.country || "", category: site.category || "", description: site.description || "", require2Fa: !!site.require2Fa });
     setEditingId(site.id);
     setError(null);
     setIsDialogOpen(true);
@@ -448,18 +457,30 @@ export default function Sites() {
         </Card>
       ) : (
         <>
-          <div className="mb-4 relative max-w-md">
-            <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none" />
-            <input
-              value={search}
-              onChange={e => setSearch(e.target.value)}
-              placeholder="Search sites by name, city, region, country…"
-              className="w-full pl-9 pr-9 py-2 rounded-xl border border-border bg-background text-sm outline-none focus:ring-2 focus:ring-primary/20"
-            />
-            {search && (
-              <button onClick={() => setSearch("")} className="absolute right-2 top-1/2 -translate-y-1/2 p-1 rounded-md text-muted-foreground hover:bg-muted">
-                <X className="w-3.5 h-3.5" />
-              </button>
+          <div className="mb-4 flex flex-wrap gap-3">
+            <div className="relative max-w-md flex-1 min-w-[220px]">
+              <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none" />
+              <input
+                value={search}
+                onChange={e => setSearch(e.target.value)}
+                placeholder="Search sites by name, city, region, country…"
+                className="w-full pl-9 pr-9 py-2 rounded-xl border border-border bg-background text-sm outline-none focus:ring-2 focus:ring-primary/20"
+              />
+              {search && (
+                <button onClick={() => setSearch("")} className="absolute right-2 top-1/2 -translate-y-1/2 p-1 rounded-md text-muted-foreground hover:bg-muted">
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              )}
+            </div>
+            {categories.length > 0 && (
+              <select
+                value={filterCategory}
+                onChange={e => setFilterCategory(e.target.value)}
+                className="px-3 py-2 rounded-xl border border-border bg-background text-sm outline-none focus:ring-2 focus:ring-primary/20"
+              >
+                <option value="">All Categories</option>
+                {categories.map(c => <option key={c} value={c}>{c}</option>)}
+              </select>
             )}
           </div>
           <BulkActionBar count={selectedIds.size} onDelete={handleBulkDelete} onClear={() => setSelectedIds(new Set())} deleting={bulkDeleting} />
@@ -486,7 +507,12 @@ export default function Sites() {
                         <MapPin className="w-4 h-4 text-primary" />
                       </div>
                       <div className="min-w-0">
-                        <p className="font-semibold text-foreground truncate">{site.name}</p>
+                        <div className="flex items-center gap-1.5 min-w-0">
+                          <p className="font-semibold text-foreground truncate">{site.name}</p>
+                          {site.category && (
+                            <span className="shrink-0 text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-muted text-muted-foreground">{site.category}</span>
+                          )}
+                        </div>
                         {(site.city || site.region || site.country) && (
                           <p className="text-xs text-muted-foreground flex items-center gap-1 mt-0.5">
                             <Globe className="w-3 h-3" />
@@ -534,6 +560,18 @@ export default function Sites() {
                 <div><Label>Region</Label><Input value={formData.region} onChange={e => setFormData({ ...formData, region: e.target.value })} placeholder="e.g. West Africa, South East" /></div>
               </div>
               <div><Label>Country</Label><Input value={formData.country} onChange={e => setFormData({ ...formData, country: e.target.value })} placeholder="Country" /></div>
+              <div>
+                <Label>Category</Label>
+                <Input
+                  list="site-categories"
+                  value={formData.category}
+                  onChange={e => setFormData({ ...formData, category: e.target.value })}
+                  placeholder="e.g. Retail, Warehouse, HQ"
+                />
+                <datalist id="site-categories">
+                  {categories.map(c => <option key={c} value={c} />)}
+                </datalist>
+              </div>
               <div><Label>Description</Label><Input value={formData.description} onChange={e => setFormData({ ...formData, description: e.target.value })} placeholder="Optional notes" /></div>
               <label className="flex items-start gap-3 rounded-xl border border-border bg-muted/30 p-3 cursor-pointer hover:bg-muted/50 transition-colors">
                 <input

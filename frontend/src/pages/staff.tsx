@@ -2096,6 +2096,7 @@ export default function Staff() {
   const [filterDept, setFilterDept] = useState("");
   const [filterRole, setFilterRole] = useState("");
   const [filterSite, setFilterSite] = useState("");
+  const [filterCategory, setFilterCategory] = useState("");
   const effectiveLevel = (user as any)?.customRole?.permissionLevel ?? user?.role;
   const isAdmin = effectiveLevel === "admin" || effectiveLevel === "super_admin";
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
@@ -2121,6 +2122,8 @@ export default function Staff() {
   });
 
   const departments = useMemo(() => [...new Set((users as any[]).map(u => u.department).filter(Boolean))].sort(), [users]);
+  const siteCategories = useMemo(() => [...new Set((sites as any[]).map(s => s.category).filter(Boolean))] as string[], [sites]);
+  const siteIdToCategory = useMemo(() => new Map((sites as any[]).map(s => [String(s.id), s.category ?? null])), [sites]);
 
   const filtered = useMemo(() => {
     return (users as any[]).filter(u => {
@@ -2128,9 +2131,10 @@ export default function Staff() {
       const matchDept = !filterDept || u.department === filterDept;
       const matchRole = !filterRole || u.role === filterRole;
       const matchSite = !filterSite || String(u.siteId ?? "") === filterSite;
-      return matchQ && matchDept && matchRole && matchSite;
+      const matchCategory = !filterCategory || siteIdToCategory.get(String(u.siteId ?? "")) === filterCategory;
+      return matchQ && matchDept && matchRole && matchSite && matchCategory;
     });
-  }, [users, search, filterDept, filterRole, filterSite]);
+  }, [users, search, filterDept, filterRole, filterSite, filterCategory, siteIdToCategory]);
 
   const handleUpdated = useCallback((updated: any) => {
     qc.setQueryData(["staff-list"], (old: any[]) =>
@@ -2246,8 +2250,15 @@ export default function Staff() {
             {(sites as any[]).map((s: any) => <option key={s.id} value={String(s.id)}>{s.name}</option>)}
           </select>
         )}
-        {(search || filterDept || filterRole || filterSite) && (
-          <button onClick={() => { setSearch(""); setFilterDept(""); setFilterRole(""); setFilterSite(""); }}
+        {siteCategories.length > 0 && (
+          <select value={filterCategory} onChange={e => setFilterCategory(e.target.value)}
+            className="px-3 py-2 rounded-xl border border-border bg-background text-sm outline-none">
+            <option value="">All Categories</option>
+            {siteCategories.map(c => <option key={c} value={c}>{c}</option>)}
+          </select>
+        )}
+        {(search || filterDept || filterRole || filterSite || filterCategory) && (
+          <button onClick={() => { setSearch(""); setFilterDept(""); setFilterRole(""); setFilterSite(""); setFilterCategory(""); }}
             className="px-3 py-2 text-xs text-muted-foreground hover:text-foreground underline">
             Clear
           </button>

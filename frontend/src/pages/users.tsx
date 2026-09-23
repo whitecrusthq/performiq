@@ -11,7 +11,7 @@ import { matchesPerson } from "@/lib/search";
 import { useToast } from "@/hooks/use-toast";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 
-interface Site { id: number; name: string; city?: string | null; country?: string | null; }
+interface Site { id: number; name: string; city?: string | null; country?: string | null; category?: string | null; }
 
 const authHeader = () => ({ Authorization: `Bearer ${localStorage.getItem('token')}`, "Content-Type": "application/json" });
 
@@ -50,7 +50,11 @@ export default function Users() {
   const [filterRole, setFilterRole] = useState("");
   const [filterDept, setFilterDept] = useState("");
   const [filterSite, setFilterSite] = useState("");
+  const [filterCategory, setFilterCategory] = useState("");
   const [filterGrade, setFilterGrade] = useState("");
+
+  const siteCategories = useMemo(() => [...new Set(sites.map(s => s.category).filter(Boolean))] as string[], [sites]);
+  const siteIdToCategory = useMemo(() => new Map(sites.map(s => [String(s.id), s.category ?? null])), [sites]);
 
   const filteredUsers = useMemo(() => {
     if (!users) return [];
@@ -59,12 +63,13 @@ export default function Users() {
       const matchRole = !filterRole || u.role === filterRole;
       const matchDept = !filterDept || (u.department ?? "") === filterDept;
       const matchSite = !filterSite || String((u as any).siteId ?? "") === filterSite;
+      const matchCategory = !filterCategory || siteIdToCategory.get(String((u as any).siteId ?? "")) === filterCategory;
       const matchGrade = !filterGrade || (filterGrade === "unassigned"
         ? !(u as any).gradeId
         : String((u as any).gradeId ?? "") === filterGrade);
-      return matchSearch && matchRole && matchDept && matchSite && matchGrade;
+      return matchSearch && matchRole && matchDept && matchSite && matchCategory && matchGrade;
     });
-  }, [users, search, filterRole, filterDept, filterSite, filterGrade]);
+  }, [users, search, filterRole, filterDept, filterSite, filterCategory, siteIdToCategory, filterGrade]);
 
   useEffect(() => {
     apiFetch("/api/custom-roles")
@@ -350,6 +355,19 @@ export default function Users() {
           </select>
           <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground pointer-events-none" />
         </div>
+        {siteCategories.length > 0 && (
+          <div className="relative">
+            <select
+              className="pl-3 pr-8 py-2 rounded-xl border border-border bg-card text-sm appearance-none cursor-pointer focus:outline-none focus:ring-2 focus:ring-primary/20"
+              value={filterCategory}
+              onChange={e => setFilterCategory(e.target.value)}
+            >
+              <option value="">All Categories</option>
+              {siteCategories.map(c => <option key={c} value={c}>{c}</option>)}
+            </select>
+            <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground pointer-events-none" />
+          </div>
+        )}
         <div className="relative">
           <select
             className="pl-3 pr-8 py-2 rounded-xl border border-border bg-card text-sm appearance-none cursor-pointer focus:outline-none focus:ring-2 focus:ring-primary/20"
@@ -362,10 +380,10 @@ export default function Users() {
           </select>
           <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground pointer-events-none" />
         </div>
-        {(search || filterRole || filterDept || filterSite || filterGrade) && (
+        {(search || filterRole || filterDept || filterSite || filterCategory || filterGrade) && (
           <button
             className="px-3 py-2 text-xs text-muted-foreground underline hover:text-foreground"
-            onClick={() => { setSearch(""); setFilterRole(""); setFilterDept(""); setFilterSite(""); setFilterGrade(""); }}
+            onClick={() => { setSearch(""); setFilterRole(""); setFilterDept(""); setFilterSite(""); setFilterCategory(""); setFilterGrade(""); }}
           >
             Clear filters
           </button>
