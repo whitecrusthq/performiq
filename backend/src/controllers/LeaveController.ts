@@ -604,6 +604,28 @@ export default class LeaveController {
     const cleanCoverers = Array.isArray(coverUserIds)
       ? Array.from(new Set(coverUserIds.map(Number).filter(v => Number.isFinite(v) && v !== userId)))
       : [];
+
+    // Cover officers stand in for day-to-day duties, so they must be
+    // colleagues in the requester's own department — enforced here, not just
+    // in the picker UI, since this is called directly from the request body.
+    if (cleanCoverers.length > 0) {
+      const requester = await User.findByPk(userId, { attributes: ["department"] });
+      if (requester?.department) {
+        const coverers = await User.findAll({
+          where: { id: cleanCoverers },
+          attributes: ["id", "name", "department"],
+        });
+        const outOfDept = coverers.find(c => c.department !== requester.department);
+        if (outOfDept) {
+          return { error: `${outOfDept.name} is not in your department and cannot be selected as a cover officer.`, status: 400 };
+        }
+        const missing = cleanCoverers.filter(id => !coverers.some(c => c.id === id));
+        if (missing.length > 0) {
+          return { error: "One or more selected cover officers could not be found.", status: 400 };
+        }
+      }
+    }
+
     const coverUserId1 = cleanCoverers[0] ?? null;
     const coverUserId2 = cleanCoverers[1] ?? null;
 

@@ -101,7 +101,7 @@ interface LeaveRequest {
   }[];
 }
 
-interface UserOption { id: number; name: string; role: string; department?: string | null }
+interface UserOption { id: number; name: string; role: string; department?: string | null; jobTitle?: string | null }
 
 interface LeavePolicy {
   id: number; leaveType: string; daysAllocated: number;
@@ -138,6 +138,10 @@ export default function Leave() {
   const [includeHrApprover, setIncludeHrApprover] = useState(true);
   const [approverSteps, setApproverSteps] = useState<string[]>([""]);
   const [coverUserIds, setCoverUserIds] = useState<string[]>(["", ""]);
+  const [coverOfficerSearch, setCoverOfficerSearch] = useState("");
+  const [approverSearch, setApproverSearch] = useState("");
+  const [hrApproverSearch, setHrApproverSearch] = useState("");
+  const [employeeFilterSearch, setEmployeeFilterSearch] = useState("");
   const [coverRespondingId, setCoverRespondingId] = useState<number | null>(null);
   const [coverFilter, setCoverFilter] = useState({
     coverStatus: "all" as "all" | "pending" | "agreed" | "declined",
@@ -435,9 +439,6 @@ export default function Leave() {
   const setApproverAtStep = (idx: number, val: string) =>
     setApproverSteps(prev => prev.map((v, i) => i === idx ? val : v));
 
-  const eligibleApprovers = allUsers.filter(u =>
-    u.id !== user?.id && ["manager", "admin", "super_admin"].includes(u.role)
-  );
 
   const handleCoverResponse = async (requestId: number, decision: "agreed" | "declined") => {
     let note: string | undefined;
@@ -678,6 +679,13 @@ export default function Leave() {
               </div>
               <div className="flex items-center gap-2">
                 <Users className="w-4 h-4 text-muted-foreground" />
+                <input
+                  type="text"
+                  placeholder="Search employee..."
+                  className="px-3 py-1.5 rounded-lg border bg-background text-sm w-36"
+                  value={employeeFilterSearch}
+                  onChange={e => setEmployeeFilterSearch(e.target.value)}
+                />
                 <select
                   className="px-3 py-1.5 rounded-lg border bg-background text-sm"
                   value={filterEmployee}
@@ -687,6 +695,9 @@ export default function Leave() {
                   {allUsers
                     .filter(u => isAdmin || u.department === myDepartment || u.id === user?.id)
                     .filter(u => filterDepartment === "all" || u.department === filterDepartment)
+                    // Keep the active filter's employee visible even if they no longer
+                    // match the search box, so the select doesn't appear to reset.
+                    .filter(u => String(u.id) === filterEmployee || matchesPerson(employeeFilterSearch, u, [u.department, u.jobTitle]))
                     .map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
                 </select>
               </div>
@@ -1495,6 +1506,16 @@ export default function Leave() {
                     ))}
                   </div>
                 )}
+                <div className="relative w-full md:w-96">
+                  <Filter className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none" />
+                  <input
+                    type="text"
+                    placeholder="Search people by name..."
+                    className="w-full pl-9 pr-4 py-2 border rounded-xl bg-background text-sm mb-2"
+                    value={hrApproverSearch}
+                    onChange={e => setHrApproverSearch(e.target.value)}
+                  />
+                </div>
                 <select
                   className="w-full md:w-96 px-4 py-2 border rounded-xl bg-background text-sm"
                   value=""
@@ -1507,7 +1528,10 @@ export default function Leave() {
                   }}
                 >
                   <option value="">+ Add an HR approver…</option>
-                  {allUsers.filter(u => !hrApprovers.some(h => h.id === u.id)).map(u => (
+                  {allUsers
+                    .filter(u => !hrApprovers.some(h => h.id === u.id))
+                    .filter(u => matchesPerson(hrApproverSearch, u, [u.department, u.jobTitle]))
+                    .map(u => (
                     <option key={u.id} value={String(u.id)}>{u.name}{u.department ? ` · ${u.department}` : ""}</option>
                   ))}
                 </select>
@@ -1909,10 +1933,25 @@ export default function Leave() {
                     <button type="button" className="font-semibold underline" onClick={loadUsers}>Retry</button>
                   </div>
                 )}
+                <div className="relative mt-2">
+                  <Filter className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none" />
+                  <input
+                    type="text"
+                    placeholder="Search approvers by name..."
+                    className="w-full pl-9 pr-4 py-2 border rounded-xl bg-background text-sm"
+                    value={approverSearch}
+                    onChange={e => setApproverSearch(e.target.value)}
+                  />
+                </div>
                 <div className="mt-2 space-y-2">
                   {approverSteps.map((stepVal, idx) => {
                     const alreadyPicked = new Set(approverSteps.filter((v, i) => i !== idx && v));
-                    const available = eligibleApprovers.filter(u => !alreadyPicked.has(String(u.id)));
+                    // Keep this step's current selection visible even if it no longer
+                    // matches the search box, so picking a name doesn't blank the select.
+                    const available = allUsers
+                      .filter(u => u.id !== user?.id && ["manager", "admin", "super_admin"].includes(u.role))
+                      .filter(u => !alreadyPicked.has(String(u.id)))
+                      .filter(u => String(u.id) === stepVal || matchesPerson(approverSearch, u, [u.department, u.jobTitle]));
                     return (
                       <div key={idx} className="flex items-center gap-2">
                         <span className="flex items-center justify-center w-6 h-6 rounded-full bg-amber-100 text-amber-700 text-xs font-bold shrink-0">{idx + 1}</span>
@@ -1968,13 +2007,29 @@ export default function Leave() {
               </div>
 
               <div>
-                <Label>Cover Officers <span className="text-muted-foreground text-xs font-normal">(up to 2 colleagues who will cover for you)</span></Label>
+                <Label>Cover Officers <span className="text-muted-foreground text-xs font-normal">(up to 2 colleagues in your department who will cover for you)</span></Label>
+                <div className="relative mt-2">
+                  <Filter className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none" />
+                  <input
+                    type="text"
+                    placeholder="Search colleagues by name..."
+                    className="w-full pl-9 pr-4 py-2 border rounded-xl bg-background text-sm"
+                    value={coverOfficerSearch}
+                    onChange={e => setCoverOfficerSearch(e.target.value)}
+                  />
+                </div>
                 <div className="mt-2 space-y-2">
                   {[0, 1].map(idx => {
                     const otherPicked = coverUserIds[idx === 0 ? 1 : 0];
-                    const available = allUsers.filter(u =>
-                      u.id !== user?.id && String(u.id) !== otherPicked
-                    );
+                    const thisPicked = coverUserIds[idx];
+                    const available = allUsers
+                      .filter(u => u.id !== user?.id && String(u.id) !== otherPicked)
+                      // Cover officers must be colleagues who can actually stand in day-to-day,
+                      // so scope the picker to the requester's own department.
+                      .filter(u => !myDepartment || u.department === myDepartment)
+                      // Keep this slot's current selection visible even if it no longer
+                      // matches the search box, so picking a name doesn't blank the select.
+                      .filter(u => String(u.id) === thisPicked || matchesPerson(coverOfficerSearch, u, [u.department, u.jobTitle]));
                     return (
                       <div key={idx} className="flex items-center gap-2">
                         <span className="flex items-center justify-center w-6 h-6 rounded-full bg-emerald-100 text-emerald-700 text-xs font-bold shrink-0">{idx + 1}</span>
