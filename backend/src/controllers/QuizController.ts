@@ -151,9 +151,13 @@ export default class QuizController {
     }
 
     // Site / department filters narrow the user set first (admin-only honoured)
-    if (isAdmin && (filters.siteId || filters.department)) {
+    if (isAdmin && (filters.siteId || filters.siteCategory || filters.department)) {
       const userWhere: any = {};
       if (filters.siteId) userWhere.siteId = Number(filters.siteId);
+      if (filters.siteCategory) {
+        const sitesInCategory = await Site.findAll({ where: { category: String(filters.siteCategory) }, attributes: ["id"] });
+        userWhere.siteId = { [Op.in]: sitesInCategory.map((s: any) => s.id) };
+      }
       if (filters.department) userWhere.department = String(filters.department);
       const matchingUsers = await User.findAll({ where: userWhere, attributes: ["id"] });
       const matchingIds = matchingUsers.map((u: any) => u.id);

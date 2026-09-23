@@ -583,7 +583,7 @@ export default class LeaveController {
     return getProtectedUserIds(viewerId);
   }
 
-  static async createLeaveRequest(userId: number, data: { leaveType: string; startDate: string; endDate: string; reason?: string; approverIds?: number[]; coverUserIds?: number[]; includeHrApprover?: boolean }, viewerRole?: string) {
+  static async createLeaveRequest(userId: number, data: { leaveType: string; startDate: string; endDate: string; reason?: string; approverIds?: number[]; coverUserIds?: number[]; includeHrApprover?: boolean }, viewer?: { role?: string; customRoleName?: string | null }) {
     const { leaveType, startDate, endDate, reason, approverIds, coverUserIds } = data;
 
     // Grade restriction: employees may only request leave types mapped to
@@ -651,11 +651,18 @@ export default class LeaveController {
     }
 
     // The assigned HR approver (designated by an admin from the configured
-    // list) is suggested as the final approval step but is NOT compulsory:
-    // the applicant can opt out (includeHrApprover: false). The admin — not
-    // the employee — decides who handles the HR step. Skipped when they are
-    // the requester or already in the chain.
-    if (data.includeHrApprover !== false) {
+    // list) is suggested as the final approval step. Only senior staff —
+    // managers, admins, or the HR Manager custom role — may opt a request out
+    // of it (includeHrApprover: false); a regular employee's own request
+    // always keeps the HR step, regardless of what the client sends, since
+    // that decision belongs to the org, not the requester. Skipped when the
+    // HR approver is the requester or already in the chain.
+    const viewerCanSkipHrApprover = !!viewer && (
+      ["manager", "admin", "super_admin"].includes(viewer.role ?? "")
+      || (viewer.customRoleName ?? "").toLowerCase() === "hr manager"
+    );
+    const includeHrApprover = viewerCanSkipHrApprover ? data.includeHrApprover !== false : true;
+    if (includeHrApprover) {
       const chosen = await LeaveController.getAssignedHrApproverId();
       if (chosen && chosen !== userId && !orderedApproverIds.includes(chosen)) {
         orderedApproverIds.push(chosen);
@@ -683,7 +690,7 @@ export default class LeaveController {
     const userMap: Record<number, any> = {};
     users.forEach(u => { userMap[u.id] = u.toJSON(); });
 
-    const enriched = await LeaveController.enrichLeaveRequest(row, userMap, await LeaveController.hiddenIdsForViewer(userId, viewerRole));
+    const enriched = await LeaveController.enrichLeaveRequest(row, userMap, await LeaveController.hiddenIdsForViewer(userId, viewer?.role));
 
     return { enriched, orderedApproverIds, userMap, row: row.toJSON() };
   }

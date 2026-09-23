@@ -343,13 +343,17 @@ export default function Timesheets() {
 
   // Pending for manager: submitted timesheets where I am the current approver
   const [filterSite, setFilterSite] = useState("");
+  const [filterSiteCategory, setFilterSiteCategory] = useState("");
   const { data: sites = [] } = useQuery({
     queryKey: ["sites-list"],
     queryFn: () => apiFetch("/api/sites"),
     enabled: isManager,
   });
+  const siteCategories = [...new Set((sites as any[]).map((s: any) => s.category).filter(Boolean))] as string[];
+  const siteIdToCategory = new Map((sites as any[]).map((s: any) => [String(s.id), s.category ?? null]));
   const bySite = (t: any) => !filterSite || String(t.user?.siteId ?? "") === filterSite;
-  const allFiltered = (all as any[]).filter(bySite);
+  const byCategory = (t: any) => !filterSiteCategory || siteIdToCategory.get(String(t.user?.siteId ?? "")) === filterSiteCategory;
+  const allFiltered = (all as any[]).filter(bySite).filter(byCategory);
 
   const pendingTeam = isManager
     ? (all as any[]).filter(bySite).filter((t: any) => {
@@ -569,6 +573,16 @@ export default function Timesheets() {
             >
               <option value="">All Sites</option>
               {(sites as any[]).map((s: any) => <option key={s.id} value={String(s.id)}>{s.name}</option>)}
+            </select>
+          )}
+          {isManager && siteCategories.length > 0 && (
+            <select
+              className="px-3 py-1.5 rounded-lg border border-border bg-card text-sm cursor-pointer focus:outline-none focus:ring-2 focus:ring-primary/20"
+              value={filterSiteCategory}
+              onChange={e => setFilterSiteCategory(e.target.value)}
+            >
+              <option value="">All Categories</option>
+              {siteCategories.map(c => <option key={c} value={c}>{c}</option>)}
             </select>
           )}
         </div>

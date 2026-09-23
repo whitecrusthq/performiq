@@ -131,7 +131,8 @@ export default function Leave() {
   const [filterDepartment, setFilterDepartment] = useState<string>("all");
   const [filterEmployee, setFilterEmployee] = useState<string>("all");
   const [filterSite, setFilterSite] = useState<string>("all");
-  const [sites, setSites] = useState<{ id: number; name: string }[]>([]);
+  const [filterSiteCategory, setFilterSiteCategory] = useState<string>("all");
+  const [sites, setSites] = useState<{ id: number; name: string; category?: string | null }[]>([]);
   const [mutationError, setMutationError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [form, setForm] = useState({ leaveType: "", startDate: "", endDate: "", reason: "" });
@@ -543,9 +544,13 @@ export default function Leave() {
     loadPolicies();
   };
 
+  const siteCategories = [...new Set(sites.map(s => s.category).filter(Boolean))] as string[];
+  const siteIdToCategory = new Map(sites.map(s => [String(s.id), s.category ?? null]));
+
   const filtered = requests
     .filter(r => filterStatus === "all" || r.status === filterStatus)
-    .filter(r => filterSite === "all" || String((r.employee as any)?.siteId ?? "") === filterSite);
+    .filter(r => filterSite === "all" || String((r.employee as any)?.siteId ?? "") === filterSite)
+    .filter(r => filterSiteCategory === "all" || siteIdToCategory.get(String((r.employee as any)?.siteId ?? "")) === filterSiteCategory);
 
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
   const [bulkDeleting, setBulkDeleting] = useState(false);
@@ -711,6 +716,18 @@ export default function Leave() {
                   {sites.map(s => <option key={s.id} value={String(s.id)}>{s.name}</option>)}
                 </select>
               </div>
+              {siteCategories.length > 0 && (
+                <div className="flex items-center gap-2">
+                  <select
+                    className="px-3 py-1.5 rounded-lg border bg-background text-sm"
+                    value={filterSiteCategory}
+                    onChange={e => setFilterSiteCategory(e.target.value)}
+                  >
+                    <option value="all">All Categories</option>
+                    {siteCategories.map(c => <option key={c} value={c}>{c}</option>)}
+                  </select>
+                </div>
+              )}
             </div>
           )}
 
@@ -1992,15 +2009,28 @@ export default function Leave() {
                 {(() => {
                   const assigned = hrApprovers.find(h => h.isAssigned) ?? hrApprovers[0];
                   if (!assigned || assigned.id === user?.id) return null;
+                  // Only senior staff (managers, admins, HR) may opt a request out of
+                  // the HR approval step — a regular employee can't skip their own HR
+                  // sign-off, so the box is locked on and greyed out for them. The
+                  // backend enforces this independently of what this checkbox sends.
+                  const canToggleHrApprover = isManager;
                   return (
-                    <label className="flex items-center gap-2 text-xs text-blue-700 bg-blue-50 border border-blue-200 rounded-xl px-3 py-2 mt-2 cursor-pointer">
+                    <label className={`flex items-center gap-2 text-xs rounded-xl px-3 py-2 mt-2 ${
+                      canToggleHrApprover
+                        ? "text-blue-700 bg-blue-50 border border-blue-200 cursor-pointer"
+                        : "text-muted-foreground bg-muted/50 border border-border cursor-not-allowed"
+                    }`}>
                       <input
                         type="checkbox"
-                        className="w-4 h-4 accent-primary shrink-0"
-                        checked={includeHrApprover}
-                        onChange={e => setIncludeHrApprover(e.target.checked)}
+                        className="w-4 h-4 accent-primary shrink-0 disabled:cursor-not-allowed disabled:opacity-60"
+                        checked={canToggleHrApprover ? includeHrApprover : true}
+                        disabled={!canToggleHrApprover}
+                        onChange={e => canToggleHrApprover && setIncludeHrApprover(e.target.checked)}
                       />
-                      <span>Add <span className="font-semibold">{assigned.name}</span> (HR) as the final approver <span className="font-normal">(optional)</span></span>
+                      <span>
+                        Add <span className="font-semibold">{assigned.name}</span> (HR) as the final approver{" "}
+                        <span className="font-normal">{canToggleHrApprover ? "(optional)" : "(required)"}</span>
+                      </span>
                     </label>
                   );
                 })()}

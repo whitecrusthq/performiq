@@ -78,12 +78,18 @@ export default function Goals() {
   const [bulkDeleting, setBulkDeleting] = useState(false);
 
   const [filterSite, setFilterSite] = useState("");
+  const [filterSiteCategory, setFilterSiteCategory] = useState("");
   const [sites, setSites] = useState<any[]>([]);
   useEffect(() => {
     apiFetch("/api/sites").then(r => r.json()).then(d => setSites(Array.isArray(d) ? d : [])).catch(() => {});
   }, []);
 
-  const visibleGoals = (goals ?? []).filter((g: any) => !filterSite || String(g.user?.siteId ?? "") === filterSite);
+  const siteCategories = [...new Set(sites.map((s: any) => s.category).filter(Boolean))] as string[];
+  const siteIdToCategory = new Map(sites.map((s: any) => [String(s.id), s.category ?? null]));
+
+  const visibleGoals = (goals ?? [])
+    .filter((g: any) => !filterSite || String(g.user?.siteId ?? "") === filterSite)
+    .filter((g: any) => !filterSiteCategory || siteIdToCategory.get(String(g.user?.siteId ?? "")) === filterSiteCategory);
 
   const toggleSelect = (id: number) => setSelectedIds(prev => {
     const next = new Set(prev);
@@ -116,7 +122,7 @@ export default function Goals() {
       </PageHeader>
 
       {sites.length > 0 && (
-        <div className="mb-4">
+        <div className="mb-4 flex flex-wrap gap-3">
           <select
             className="px-3 py-2 rounded-xl border border-border bg-card text-sm cursor-pointer focus:outline-none focus:ring-2 focus:ring-primary/20"
             value={filterSite}
@@ -125,6 +131,16 @@ export default function Goals() {
             <option value="">All Sites</option>
             {sites.map((s: any) => <option key={s.id} value={String(s.id)}>{s.name}</option>)}
           </select>
+          {siteCategories.length > 0 && (
+            <select
+              className="px-3 py-2 rounded-xl border border-border bg-card text-sm cursor-pointer focus:outline-none focus:ring-2 focus:ring-primary/20"
+              value={filterSiteCategory}
+              onChange={e => setFilterSiteCategory(e.target.value)}
+            >
+              <option value="">All Categories</option>
+              {siteCategories.map(c => <option key={c} value={c}>{c}</option>)}
+            </select>
+          )}
         </div>
       )}
 

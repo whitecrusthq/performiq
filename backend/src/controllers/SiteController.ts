@@ -5,7 +5,7 @@ export default class SiteController {
     return Site.findAll({ order: [["name", "ASC"]] });
   }
 
-  static async create(data: { name: string; address?: string; city?: string; region?: string; country?: string; description?: string; require2Fa?: boolean }) {
+  static async create(data: { name: string; address?: string; city?: string; region?: string; country?: string; description?: string; category?: string; require2Fa?: boolean }) {
     return Site.create({
       name: data.name.trim(),
       address: data.address,
@@ -13,13 +13,15 @@ export default class SiteController {
       region: data.region,
       country: data.country,
       description: data.description,
+      category: data.category?.trim() || null,
       require2Fa: !!data.require2Fa,
     });
   }
 
-  static async update(id: number, data: { name: string; address?: string; city?: string; region?: string; country?: string; description?: string; require2Fa?: boolean }) {
+  static async update(id: number, data: { name: string; address?: string; city?: string; region?: string; country?: string; description?: string; category?: string; require2Fa?: boolean }) {
     const updates: Record<string, any> = {
       name: data.name.trim(), address: data.address, city: data.city, region: data.region, country: data.country, description: data.description,
+      category: data.category?.trim() || null,
     };
     if (typeof data.require2Fa === "boolean") updates.require2Fa = data.require2Fa;
     const [count, rows] = await Site.update(updates, { where: { id }, returning: true });
@@ -62,6 +64,7 @@ export default class SiteController {
           region: r.region?.trim() || null,
           country: r.country?.trim() || null,
           description: r.description?.trim() || null,
+          category: r.category?.trim() || null,
           require2Fa,
         });
         existingNames.add(key);
