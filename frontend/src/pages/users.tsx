@@ -682,7 +682,7 @@ export default function Users() {
                   >
                     <option value="">— Select site —</option>
                     {sites.map(s => (
-                      <option key={s.id} value={s.id}>{s.name}{s.city ? ` (${s.city})` : ""}</option>
+                      <option key={s.id} value={s.id}>{s.name}{s.category ? ` · ${s.category}` : ""}{s.city ? ` (${s.city})` : ""}</option>
                     ))}
                   </select>
                 )}
