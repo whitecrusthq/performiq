@@ -4,6 +4,7 @@ import { useGetAppraisal, useUpdateAppraisal } from "../lib";
 import { useQueryClient } from "@tanstack/react-query";
 import { PageHeader, Card, StatusBadge, Button, Label } from "@/components/shared";
 import { useAuth } from "@/hooks/use-auth";
+import { useToast } from "@/hooks/use-toast";
 import { CheckCircle2, User, Star, FileText, ShieldCheck, ThumbsUp, ArrowRight, Users, MessageSquare, ArrowLeft, RotateCcw, Target, Pencil, Trash2, Plus, X } from "lucide-react";
 import { format } from "date-fns";
 import { apiFetch } from "@/lib/utils";
@@ -19,8 +20,18 @@ export default function AppraisalDetail() {
   const [, navigate] = useLocation();
   const appraisalId = params?.id ? parseInt(params.id) : 0;
   const { user } = useAuth();
+  const { toast } = useToast();
   const queryClient = useQueryClient();
   const headers = { Authorization: `Bearer ${localStorage.getItem('token')}` };
+
+  // Every mutation on this page was previously silent on failure — a network
+  // error, a 403, a timeout all looked identical to the user: the button just
+  // stopped loading and nothing else happened. This surfaces whatever went
+  // wrong so a failed submit is never indistinguishable from a no-op.
+  const showMutationError = (err: unknown) => {
+    const message = err instanceof Error ? err.message : "Something went wrong. Please try again.";
+    toast({ title: "Couldn't save", description: message, variant: "destructive" });
+  };
 
   const { data: appraisal, isLoading } = useGetAppraisal(appraisalId, {
     request: { headers },
@@ -111,26 +122,28 @@ export default function AppraisalDetail() {
       if (v && Number(v) > 0) vals[Number(k)] = Number(v);
     }
     try {
-      await apiFetch(`/api/appraisals/${appraisalId}`, {
+      const r = await apiFetch(`/api/appraisals/${appraisalId}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action: "update_actuals", adminActualValues: vals }),
       });
+      if (!r.ok) { const d = await r.json().catch(() => ({})); throw new Error(d.error || "Failed to save actual values"); }
       queryClient.invalidateQueries({ queryKey: [`/api/appraisals/${appraisalId}`] });
       setShowAdminActuals(false);
-    } catch {}
+    } catch (err) { showMutationError(err); }
     setSavingAdminActuals(false);
   };
 
   const handleAcceptValue = async (appraisalId: number, criterionId: number, accepted: "admin" | "employee") => {
     try {
-      await apiFetch(`/api/appraisals/${appraisalId}`, {
+      const r = await apiFetch(`/api/appraisals/${appraisalId}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action: "accept_value", criterionId, accepted }),
       });
+      if (!r.ok) { const d = await r.json().catch(() => ({})); throw new Error(d.error || "Failed to accept value"); }
       queryClient.invalidateQueries({ queryKey: [`/api/appraisals/${appraisalId}`] });
-    } catch {}
+    } catch (err) { showMutationError(err); }
   };
 
   const handleSubmit = (action: 'save' | 'submit') => {
@@ -150,7 +163,8 @@ export default function AppraisalDetail() {
         onSuccess: () => {
           setFormInitialized(false);
           queryClient.invalidateQueries({ queryKey: [`/api/appraisals/${appraisalId}`] });
-        }
+        },
+        onError: showMutationError,
       }
     );
   };
@@ -382,9 +396,12 @@ export default function AppraisalDetail() {
                           className="text-xs text-destructive hover:underline"
                           onClick={async () => {
                             if (!confirm(`Remove ${r.name} as reviewer?`)) return;
-                            await apiFetch(`/api/appraisals/${appraisalId}/reviewers/${r.id}`, { method: "DELETE" });
-                            queryClient.invalidateQueries({ queryKey: [`/api/appraisals/${appraisalId}`] });
-                            setFormInitialized(false);
+                            try {
+                              const resp = await apiFetch(`/api/appraisals/${appraisalId}/reviewers/${r.id}`, { method: "DELETE" });
+                              if (!resp.ok) { const d = await resp.json().catch(() => ({})); throw new Error(d.error || "Failed to remove reviewer"); }
+                              queryClient.invalidateQueries({ queryKey: [`/api/appraisals/${appraisalId}`] });
+                              setFormInitialized(false);
+                            } catch (err) { showMutationError(err); }
                           }}
                         >
                           Remove
@@ -421,14 +438,17 @@ export default function AppraisalDetail() {
                               ))}
                           </select>
                           <Button size="sm" disabled={!newReviewerId} onClick={async () => {
-                            await apiFetch(`/api/appraisals/${appraisalId}/reviewers`, {
-                              method: "POST",
-                              body: JSON.stringify({ reviewerId: Number(newReviewerId) }),
-                            });
-                            setNewReviewerId("");
-                            setEditingReviewer(false);
-                            setFormInitialized(false);
-                            queryClient.invalidateQueries({ queryKey: [`/api/appraisals/${appraisalId}`] });
+                            try {
+                              const resp = await apiFetch(`/api/appraisals/${appraisalId}/reviewers`, {
+                                method: "POST",
+                                body: JSON.stringify({ reviewerId: Number(newReviewerId) }),
+                              });
+                              if (!resp.ok) { const d = await resp.json().catch(() => ({})); throw new Error(d.error || "Failed to add reviewer"); }
+                              setNewReviewerId("");
+                              setEditingReviewer(false);
+                              setFormInitialized(false);
+                              queryClient.invalidateQueries({ queryKey: [`/api/appraisals/${appraisalId}`] });
+                            } catch (err) { showMutationError(err); }
                           }}>
                             Add
                           </Button>
@@ -469,15 +489,16 @@ export default function AppraisalDetail() {
                           if (v && Number(v) > 0) budgetValues[Number(k)] = Number(v);
                         }
                         if (Object.keys(budgetValues).length > 0) {
-                          await apiFetch(`/api/appraisals/${appraisalId}`, {
+                          const r = await apiFetch(`/api/appraisals/${appraisalId}`, {
                             method: "PUT",
                             body: JSON.stringify({ action: "update_budgets", budgetValues }),
                           });
+                          if (!r.ok) { const d = await r.json().catch(() => ({})); throw new Error(d.error || "Failed to save budgets"); }
                         }
                         setFormInitialized(false);
                         queryClient.invalidateQueries({ queryKey: [`/api/appraisals/${appraisalId}`] });
                         setShowEditPanel(false);
-                      } catch {}
+                      } catch (err) { showMutationError(err); }
                       setSavingEdit(false);
                     }}
                   >
@@ -1028,7 +1049,10 @@ export default function AppraisalDetail() {
                 if (confirm('Approve this appraisal? This will mark it as completed.')) {
                   updateMutation.mutate(
                     { id: appraisalId, data: { action: 'submit' } as any },
-                    { onSuccess: () => queryClient.invalidateQueries({ queryKey: [`/api/appraisals/${appraisalId}`] }) }
+                    {
+                      onSuccess: () => queryClient.invalidateQueries({ queryKey: [`/api/appraisals/${appraisalId}`] }),
+                      onError: showMutationError,
+                    }
                   );
                 }
               }}
@@ -1160,7 +1184,10 @@ export default function AppraisalDetail() {
                 if (confirm('Resend this appraisal for review? This will reset all reviewer scores and return it to self-review status.')) {
                   updateMutation.mutate(
                     { id: appraisalId, data: { action: 'resend_review' } as any },
-                    { onSuccess: () => queryClient.invalidateQueries({ queryKey: [`/api/appraisals/${appraisalId}`] }) }
+                    {
+                      onSuccess: () => queryClient.invalidateQueries({ queryKey: [`/api/appraisals/${appraisalId}`] }),
+                      onError: showMutationError,
+                    }
                   );
                 }
               }}
@@ -1192,7 +1219,10 @@ export default function AppraisalDetail() {
                 if (confirm('Request readjustment? This will return the appraisal to self-review status so you can make changes. All reviewer scores will be reset.')) {
                   updateMutation.mutate(
                     { id: appraisalId, data: { action: 'resend_review' } as any },
-                    { onSuccess: () => queryClient.invalidateQueries({ queryKey: [`/api/appraisals/${appraisalId}`] }) }
+                    {
+                      onSuccess: () => queryClient.invalidateQueries({ queryKey: [`/api/appraisals/${appraisalId}`] }),
+                      onError: showMutationError,
+                    }
                   );
                 }
               }}
