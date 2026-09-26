@@ -508,16 +508,27 @@ export default function Leave() {
   const handleReview = async () => {
     if (!reviewDialog) return;
     setSubmitting(true);
-    await apiFetch(`/api/leave-requests/${reviewDialog.request.id}`, {
-      method: "PUT", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ status: reviewDialog.action, reviewNote }),
-    });
-    setReviewDialog(null);
-    setReviewNote("");
+    setMutationError(null);
+    try {
+      const r = await apiFetch(`/api/leave-requests/${reviewDialog.request.id}`, {
+        method: "PUT", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: reviewDialog.action, reviewNote }),
+      });
+      if (!r.ok) {
+        const d = await r.json().catch(() => ({}));
+        setMutationError(d.error || "Failed to submit review");
+        setSubmitting(false);
+        return;
+      }
+      setReviewDialog(null);
+      setReviewNote("");
+      load();
+      loadBalances();
+      if (isManager) loadTeamBalances();
+    } catch {
+      setMutationError("Network error");
+    }
     setSubmitting(false);
-    load();
-    loadBalances();
-    if (isManager) loadTeamBalances();
   };
 
   const handleSavePolicy = async (e: React.FormEvent) => {
@@ -2137,8 +2148,9 @@ export default function Leave() {
                 onChange={e => setReviewNote(e.target.value)}
               />
             </div>
+            {mutationError && <p className="text-sm text-red-600 mb-3">{mutationError}</p>}
             <div className="flex gap-3">
-              <Button variant="outline" className="flex-1" onClick={() => setReviewDialog(null)}>Cancel</Button>
+              <Button variant="outline" className="flex-1" onClick={() => { setReviewDialog(null); setMutationError(null); }}>Cancel</Button>
               <Button
                 className={`flex-1 ${reviewDialog.action === "approved" ? "bg-green-600 hover:bg-green-700 text-white" : ""}`}
                 variant={reviewDialog.action === "rejected" ? "destructive" : undefined}
