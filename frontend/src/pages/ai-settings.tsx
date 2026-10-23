@@ -22,7 +22,7 @@ export default function AiSettings() {
   const [error, setError] = useState<string | null>(null);
 
   const [provider, setProvider] = useState("gemini");
-  const [model, setModel] = useState("gemini-2.5-flash");
+  const [model, setModel] = useState("gemini-3.8-flash");
   const [apiKey, setApiKey] = useState("");
   const [showKey, setShowKey] = useState(false);
   const [editingKey, setEditingKey] = useState(false);
@@ -127,7 +127,7 @@ export default function AiSettings() {
                   {data.geminiModels.map(m => <option key={m} value={m}>{m}</option>)}
                 </select>
                 <p className="text-xs text-muted-foreground mt-1">
-                  <code>gemini-2.5-flash</code> is fast and cheap; <code>gemini-2.5-pro</code> is more capable.
+                  <code>gemini-3.8-flash</code> is fast and cheap; <code>gemini-2.5-pro</code> is more capable.
                 </p>
               </div>
 
@@ -216,7 +216,7 @@ export default function AiSettings() {
           <Card>
             <h3 className="font-semibold mb-2">Pricing & limits</h3>
             <p className="text-sm text-muted-foreground">
-              Costs are billed by Google to the account that owns the API key. <code>gemini-2.5-flash</code> is the cheapest option; switch to <code>gemini-2.5-pro</code> if you need higher-quality questions.
+              Costs are billed by Google to the account that owns the API key. <code>gemini-3.8-flash</code> is the cheapest option; switch to <code>gemini-2.5-pro</code> if you need higher-quality questions.
             </p>
           </Card>
         </div>
