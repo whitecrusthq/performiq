@@ -14,7 +14,7 @@ AiSettings.init(
     id: { type: DataTypes.INTEGER, primaryKey: true, defaultValue: 1 },
     provider: { type: DataTypes.TEXT, allowNull: false, defaultValue: "gemini" },
     apiKey: { type: DataTypes.TEXT, allowNull: false, defaultValue: "", field: "api_key" },
-    model: { type: DataTypes.TEXT, allowNull: false, defaultValue: "gemini-2.5-flash" },
+    model: { type: DataTypes.TEXT, allowNull: false, defaultValue: "gemini-3.8-flash" },
     updatedAt: { type: DataTypes.DATE, allowNull: false, defaultValue: DataTypes.NOW, field: "updated_at" },
   },
   { sequelize, tableName: "ai_settings", timestamps: false }
