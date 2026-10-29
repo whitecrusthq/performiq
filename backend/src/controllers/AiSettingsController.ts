@@ -1,7 +1,15 @@
 import AiSettings from "../models/AiSettings.js";
 
 const SUPPORTED_PROVIDERS = ["gemini"];
-const GEMINI_MODELS = ["gemini-2.5-flash", "gemini-2.5-pro", "gemini-2.0-flash", "gemini-1.5-flash", "gemini-1.5-pro"];
+const GEMINI_MODELS = ["gemini-3.8-flash", "gemini-2.5-pro"];
+const DEFAULT_GEMINI_MODEL = "gemini-3.8-flash";
+
+/** Saved settings may reference a model Google has since retired; fall back to the default. */
+function resolveModel(provider: string, model: string | null | undefined): string {
+  const m = model || process.env.GEMINI_MODEL || DEFAULT_GEMINI_MODEL;
+  if (provider === "gemini" && !GEMINI_MODELS.includes(m)) return DEFAULT_GEMINI_MODEL;
+  return m;
+}
 
 function maskKey(k: string): string {
   if (!k) return "";
@@ -17,11 +25,11 @@ export default class AiSettingsController {
   static async getSettings() {
     let row = await AiSettings.findByPk(1);
     if (!row) {
-      row = await AiSettings.create({ id: 1, provider: "gemini", apiKey: "", model: "gemini-2.5-flash" });
+      row = await AiSettings.create({ id: 1, provider: "gemini", apiKey: "", model: DEFAULT_GEMINI_MODEL });
     }
     return {
       provider: row.provider,
-      model: row.model,
+      model: resolveModel(row.provider, row.model),
       hasKey: !!row.apiKey,
       maskedKey: maskKey(row.apiKey),
       updatedAt: row.updatedAt,
@@ -32,20 +40,20 @@ export default class AiSettingsController {
   static async getActiveConfig(): Promise<{ provider: string; apiKey: string; model: string }> {
     let row = await AiSettings.findByPk(1);
     if (!row) {
-      row = await AiSettings.create({ id: 1, provider: "gemini", apiKey: "", model: "gemini-2.5-flash" });
+      row = await AiSettings.create({ id: 1, provider: "gemini", apiKey: "", model: DEFAULT_GEMINI_MODEL });
     }
     const envFallback = process.env.GEMINI_API_KEY ?? "";
     return {
       provider: row.provider || "gemini",
       apiKey: row.apiKey || envFallback,
-      model: row.model || process.env.GEMINI_MODEL || "gemini-2.5-flash",
+      model: resolveModel(row.provider || "gemini", row.model),
     };
   }
 
   static async updateSettings(data: any) {
     let row = await AiSettings.findByPk(1);
     if (!row) {
-      row = await AiSettings.create({ id: 1, provider: "gemini", apiKey: "", model: "gemini-2.5-flash" });
+      row = await AiSettings.create({ id: 1, provider: "gemini", apiKey: "", model: DEFAULT_GEMINI_MODEL });
     }
     const updates: any = { updatedAt: new Date() };
     if (data?.provider !== undefined) {
