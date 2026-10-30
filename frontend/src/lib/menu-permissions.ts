@@ -22,6 +22,7 @@ export const MENU_KEY_PATHS: { key: string; path: string }[] = [
   { key: "hr-support-dashboard", path: "/hr-support-dashboard" },
   { key: "hr-knowledge-base", path: "/hr-knowledge-base" },
   { key: "anniversaries", path: "/anniversaries" },
+  { key: "staff-emails", path: "/staff-emails" },
   { key: "reports", path: "/reports" },
   { key: "users", path: "/users" },
   { key: "account-recovery", path: "/account-recovery" },
