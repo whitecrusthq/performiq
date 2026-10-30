@@ -3,9 +3,9 @@ import { AuthRequest } from "../../middlewares/auth.js";
 import StaffEmailController from "../../controllers/StaffEmailController.js";
 
 export class GetStaffEmailOptionsAction {
-  static async handle(_req: AuthRequest, res: Response) {
+  static async handle(req: AuthRequest, res: Response) {
     try {
-      res.json(await StaffEmailController.options());
+      res.json(await StaffEmailController.options((req as any).staffEmailActor?.role));
     } catch (err) {
       console.error(err);
       res.status(500).json({ error: "Server error" });

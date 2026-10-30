@@ -1,5 +1,6 @@
 import { Op } from "sequelize";
 import { User, Site, EmployeeGrade, CustomRole, AppSettings, StaffEmailCampaign } from "../models/index.js";
+import { protectedWhere } from "../utils/protectedUsers.js";
 import { resolveEmailProvider, sendEmailVia, sendMailgunBatch, type EmailProvider } from "../lib/email.js";
 
 export interface StaffEmailFilters {
@@ -117,10 +118,10 @@ const distinct = (rows: any[], key: string) =>
 
 export default class StaffEmailController {
   /** Filter choices, built from current data so every option matches at least one active staff member. */
-  static async options() {
+  static async options(viewerRole?: string | null) {
     const [users, sites, grades, customRoles] = await Promise.all([
       User.findAll({
-        where: { isActive: true },
+        where: { isActive: true, ...protectedWhere(viewerRole) },
         attributes: ["department", "jobTitle", "gender", "probationStatus", "shiftType", "role"],
         raw: true,
       }),
@@ -144,9 +145,12 @@ export default class StaffEmailController {
     };
   }
 
-  /** Active staff with an email address matching every selected filter (no filters = all staff). */
-  static async findRecipients(filters: StaffEmailFilters) {
-    const where: any = { isActive: true, email: { [Op.ne]: "" } };
+  /**
+   * Active staff with an email address matching every selected filter (no filters = all staff).
+   * Protected accounts are only reachable by super admins, as everywhere else.
+   */
+  static async findRecipients(filters: StaffEmailFilters, viewerRole?: string | null) {
+    const where: any = { isActive: true, email: { [Op.ne]: "" }, ...protectedWhere(viewerRole) };
     if (filters.departments) where.department = { [Op.in]: filters.departments };
     if (filters.roles) where.role = { [Op.in]: filters.roles };
     if (filters.customRoleIds) where.customRoleId = { [Op.in]: filters.customRoleIds };
@@ -177,8 +181,8 @@ export default class StaffEmailController {
     return (users as any[]).map(u => ({ ...u, siteName: u.siteId ? siteNames.get(u.siteId) ?? null : null }));
   }
 
-  static async preview(rawFilters: any) {
-    const recipients = await StaffEmailController.findRecipients(normalizeFilters(rawFilters));
+  static async preview(rawFilters: any, viewerRole?: string | null) {
+    const recipients = await StaffEmailController.findRecipients(normalizeFilters(rawFilters), viewerRole);
     return { count: recipients.length, recipients };
   }
 
@@ -187,8 +191,10 @@ export default class StaffEmailController {
    * `userIds` narrows the filtered audience to the people the sender kept ticked;
    * IDs outside the filtered set are ignored so the filters remain authoritative.
    */
-  static async send(actorId: number, data: any) {
-    const subject = String(data?.subject ?? "").trim();
+  static async send(actor: { id: number; role?: string | null }, data: any) {
+    const actorId = actor.id;
+    // Line breaks have no place in a subject header.
+    const subject = String(data?.subject ?? "").replace(/[\r\n]+/g, " ").trim();
     const body = String(data?.body ?? "").trim();
     if (!subject) return { error: "Subject is required", status: 400 };
     if (!body) return { error: "Message is required", status: 400 };
@@ -201,7 +207,7 @@ export default class StaffEmailController {
     }
 
     const filters = normalizeFilters(data?.filters);
-    let recipients = await StaffEmailController.findRecipients(filters);
+    let recipients = await StaffEmailController.findRecipients(filters, actor.role);
     if (Array.isArray(data?.userIds)) {
       const keep = new Set(intList(data.userIds));
       recipients = recipients.filter(r => keep.has(r.id));
@@ -280,14 +286,26 @@ export default class StaffEmailController {
     }
   }
 
-  static async history() {
+  static async history(viewerRole?: string | null) {
     const rows = await StaffEmailCampaign.findAll({ order: [["createdAt", "DESC"]], limit: 50 });
+    // A super admin's send can include protected accounts; keep their addresses out of other viewers' failure lists.
+    const hiddenEmails = new Set<string>();
+    if (viewerRole !== "super_admin") {
+      const prot = await User.findAll({ where: { isProtected: true }, attributes: ["email"], raw: true });
+      (prot as any[]).forEach(u => hiddenEmails.add(String(u.email).toLowerCase()));
+    }
     const senderIds = [...new Set(rows.map(r => r.sentById).filter(Boolean))] as number[];
     const senders = senderIds.length
       ? await User.findAll({ where: { id: { [Op.in]: senderIds } }, attributes: ["id", "name"], raw: true })
       : [];
     const names = new Map((senders as any[]).map(s => [s.id, s.name]));
-    return rows.map(r => StaffEmailController.serialize(r, r.sentById ? names.get(r.sentById) ?? null : null));
+    return rows.map(r => {
+      const out = StaffEmailController.serialize(r, r.sentById ? names.get(r.sentById) ?? null : null);
+      if (hiddenEmails.size) {
+        out.failures = (out.failures ?? []).filter(f => !hiddenEmails.has(String(f.email).toLowerCase()));
+      }
+      return out;
+    });
   }
 
   private static serialize(r: StaffEmailCampaign, sentByName: string | null) {

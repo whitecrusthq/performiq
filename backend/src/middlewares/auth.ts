@@ -351,6 +351,8 @@ export async function requireStaffEmailAccess(req: AuthRequest, res: Response, n
       res.status(403).json({ error: "Forbidden" });
       return;
     }
+    // Downstream handlers use the current database role, not the JWT claim.
+    (req as any).staffEmailActor = { id: actor.id, role: actor.role };
     if (actor.role === "admin" || actor.role === "super_admin") { next(); return; }
     if (actor.customRoleId) {
       const customRole: any = await CustomRole.findByPk(actor.customRoleId, {

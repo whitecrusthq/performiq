@@ -5,7 +5,7 @@ import StaffEmailController from "../../controllers/StaffEmailController.js";
 export class SendStaffEmailAction {
   static async handle(req: AuthRequest, res: Response) {
     try {
-      const result = await StaffEmailController.send(req.user!.id, req.body);
+      const result = await StaffEmailController.send((req as any).staffEmailActor ?? { id: req.user!.id }, req.body);
       if ("error" in result) {
         res.status(result.status ?? 400).json({ error: result.error });
         return;

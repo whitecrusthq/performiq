@@ -162,10 +162,12 @@ export default function StaffEmails() {
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [expandedId, setExpandedId] = useState<number | null>(null);
 
-  const { data: options } = useQuery<Options>({
+  const { data: options, error: optionsError } = useQuery<Options>({
     queryKey: ["staff-email-options"],
     queryFn: () => apiFetchJson("/api/staff-emails/options"),
+    retry: false,
   });
+  const noAccess = optionsError?.message === "Forbidden";
 
   const apiFilters = useMemo(() => ({
     departments: filters.departments,
@@ -183,11 +185,15 @@ export default function StaffEmails() {
   const { data: preview, isFetching: previewLoading, error: previewError } = useQuery<{ count: number; recipients: Recipient[] }>({
     queryKey: ["staff-email-preview", apiFilters],
     queryFn: () => apiFetchJson("/api/staff-emails/preview", { method: "POST", body: JSON.stringify({ filters: apiFilters }) }),
+    enabled: !noAccess,
+    retry: false,
   });
 
   const { data: history = [] } = useQuery<Campaign[]>({
     queryKey: ["staff-email-history"],
     queryFn: () => apiFetchJson("/api/staff-emails/history"),
+    enabled: !noAccess,
+    retry: false,
     refetchInterval: q => (Array.isArray(q.state.data) && q.state.data.some((c: Campaign) => c.status === "sending") ? 3000 : false),
   });
 
@@ -247,6 +253,17 @@ export default function StaffEmails() {
     return f.selectedOnly ? `${base} (hand-picked)` : base;
   };
 
+  if (noAccess) {
+    return (
+      <div className="space-y-6">
+        <PageHeader title="Staff Emails" />
+        <Card className="p-8 text-center text-muted-foreground">
+          You don't have access to Staff Emails. Ask an administrator if you need to send emails to staff.
+        </Card>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6">
       <PageHeader title="Staff Emails" description="Send an email to all staff or to groups picked by department, site, role, grade and more." />
@@ -298,6 +315,8 @@ export default function StaffEmails() {
                   <MultiSelect label="Shift type" value={filters.shiftTypes} onChange={setFilter("shiftTypes")}
                     options={options.shiftTypes.map(s => ({ value: s, label: pretty(s) }))} />
                 </div>
+              ) : optionsError ? (
+                <p className="text-sm text-destructive">Couldn't load filters: {optionsError.message}</p>
               ) : (
                 <p className="text-sm text-muted-foreground">Loading filters…</p>
               )}
