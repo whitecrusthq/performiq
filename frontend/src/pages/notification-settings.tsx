@@ -27,6 +27,7 @@ function authHeader() {
 const PLATFORM_META: Record<string, { icon: any; color: string; description: string; category: string }> = {
   mailgun: { icon: Mail, color: "#F06B59", description: "Transactional email through Mailgun API or SMTP", category: "Email" },
   smtp: { icon: Mail, color: "#3B82F6", description: "Send emails through any SMTP server", category: "Email" },
+  gmail: { icon: Mail, color: "#EA4335", description: "Send email from a Gmail or Google Workspace account", category: "Email" },
   twilio: { icon: Phone, color: "#F22F46", description: "Send SMS notifications via Twilio", category: "SMS" },
   slack: { icon: MessageSquare, color: "#4A154B", description: "Post notifications to Slack channels", category: "Chat" },
   teams: { icon: MessageSquare, color: "#6264A7", description: "Send notifications to Microsoft Teams", category: "Chat" },
@@ -43,7 +44,20 @@ const FIELD_LABELS: Record<string, string> = {
   webhookUrl: "Webhook URL", channel: "Channel", botToken: "Bot Token",
   chatId: "Chat ID", serviceAccountJson: "Service Account JSON", projectId: "Project ID",
   url: "Webhook URL", method: "HTTP Method", headers: "Headers (JSON)", secret: "Signing Secret",
+  region: "Region", fromName: "Sender Name",
 };
+
+// Labels that differ for a specific platform.
+const PLATFORM_FIELD_LABELS: Record<string, Record<string, string>> = {
+  gmail: { username: "Gmail Address", password: "App Password", fromName: "Sender Name (optional)" },
+};
+
+// Mirrors the backend's provider priority in lib/email.ts.
+const EMAIL_PROVIDER_PRIORITY: { key: string; label: string }[] = [
+  { key: "smtp", label: "SMTP" },
+  { key: "gmail", label: "Gmail" },
+  { key: "mailgun", label: "Mailgun" },
+];
 
 const SENSITIVE_FIELDS = ["apiKey", "authToken", "password", "botToken", "secret", "serviceAccountJson"];
 
@@ -154,6 +168,8 @@ export default function NotificationSettings() {
   const editMeta = editPlatform ? PLATFORM_META[editPlatform] : null;
 
   const categories = ["Email", "SMS", "Chat", "Messaging", "Push", "Integration"];
+  const enabledEmailProviders = EMAIL_PROVIDER_PRIORITY.filter(p => settings.data?.[p.key]?.enabled);
+  const labelFor = (field: string) => PLATFORM_FIELD_LABELS[editPlatform ?? ""]?.[field] || FIELD_LABELS[field] || field;
   const filteredRecipients = (administrativeRecipients.data ?? []).filter(recipient => {
     const term = recipientSearch.trim().toLowerCase();
     return !term || recipient.name.toLowerCase().includes(term) || recipient.email.toLowerCase().includes(term);
@@ -292,6 +308,20 @@ export default function NotificationSettings() {
         </Card>
       )}
 
+      {settings.data && (
+        <div className={`flex items-start gap-2 rounded-lg border px-4 py-3 text-sm ${enabledEmailProviders.length ? "bg-muted/40" : "border-amber-300 bg-amber-50 text-amber-900"}`}>
+          <Mail className="h-4 w-4 mt-0.5 shrink-0" />
+          {enabledEmailProviders.length === 0 ? (
+            <span>No email service is enabled, so staff emails and email notifications won't be sent. Enable Mailgun, Gmail or SMTP below.</span>
+          ) : (
+            <span>
+              Emails are sent through <strong>{enabledEmailProviders[0].label}</strong>.
+              {enabledEmailProviders.length > 1 && ` ${enabledEmailProviders.slice(1).map(p => p.label).join(" and ")} ${enabledEmailProviders.length > 2 ? "are" : "is"} also enabled but won't be used while ${enabledEmailProviders[0].label} is on.`}
+            </span>
+          )}
+        </div>
+      )}
+
       {categories.map(cat => {
         const catPlatforms = platforms.data?.filter(p => PLATFORM_META[p.key]?.category === cat) || [];
         if (catPlatforms.length === 0) return null;
@@ -377,11 +407,44 @@ export default function NotificationSettings() {
                 <span className="text-sm font-medium">Connection Details</span>
               </div>
 
+              {editPlatform === "gmail" && (
+                <div className="rounded-lg border bg-muted/40 p-3 text-xs text-muted-foreground space-y-1.5">
+                  <p className="font-medium text-foreground">How to connect Gmail</p>
+                  <ol className="list-decimal pl-4 space-y-0.5">
+                    <li>Turn on 2-Step Verification for the Google account.</li>
+                    <li>
+                      Create an app password at{" "}
+                      <a href="https://myaccount.google.com/apppasswords" target="_blank" rel="noreferrer" className="text-primary underline">myaccount.google.com/apppasswords</a>{" "}
+                      and paste the 16-character code below.
+                    </li>
+                    <li>Save, then click Test to confirm the connection.</li>
+                  </ol>
+                  <p>Google limits sending to about 500 recipients a day for Gmail and 2,000 for Google Workspace. Use Mailgun for larger staff emails. Workspace admins can also block app passwords.</p>
+                </div>
+              )}
               {editPlatformDef?.fields.map(field => {
                 if (editPlatform === "mailgun") {
                   const authMode = formValues.authMode || "api";
                   if (authMode === "api" && ["username", "password", "host", "port", "encryption"].includes(field)) return null;
                   if (authMode === "smtp" && field === "apiKey") return null;
+                }
+                if (field === "region") {
+                  return (
+                    <div key={field} className="space-y-1.5">
+                      <Label className="text-sm">{labelFor(field)}</Label>
+                      <Select
+                        value={formValues[field] || "us"}
+                        onValueChange={val => setFormValues(prev => ({ ...prev, [field]: val }))}
+                      >
+                        <SelectTrigger><SelectValue /></SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="us">US (api.mailgun.net)</SelectItem>
+                          <SelectItem value="eu">EU (api.eu.mailgun.net)</SelectItem>
+                        </SelectContent>
+                      </Select>
+                      <p className="text-[11px] text-muted-foreground">Match the region your Mailgun domain was created in.</p>
+                    </div>
+                  );
                 }
                 const isSensitive = SENSITIVE_FIELDS.includes(field);
                 const isLargeField = field === "serviceAccountJson" || field === "headers";
@@ -389,7 +452,7 @@ export default function NotificationSettings() {
                 if (field === "authMode") {
                   return (
                     <div key={field} className="space-y-1.5">
-                      <Label className="text-sm">{FIELD_LABELS[field]}</Label>
+                      <Label className="text-sm">{labelFor(field)}</Label>
                       <Select
                         value={formValues[field] || "api"}
                         onValueChange={val => setFormValues(prev => ({ ...prev, [field]: val }))}
@@ -407,7 +470,7 @@ export default function NotificationSettings() {
                 if (field === "encryption") {
                   return (
                     <div key={field} className="space-y-1.5">
-                      <Label className="text-sm">{FIELD_LABELS[field] || field}</Label>
+                      <Label className="text-sm">{labelFor(field)}</Label>
                       <Select
                         value={formValues[field] || "tls"}
                         onValueChange={val => setFormValues(prev => ({ ...prev, [field]: val }))}
@@ -427,7 +490,7 @@ export default function NotificationSettings() {
                 if (field === "method") {
                   return (
                     <div key={field} className="space-y-1.5">
-                      <Label className="text-sm">{FIELD_LABELS[field] || field}</Label>
+                      <Label className="text-sm">{labelFor(field)}</Label>
                       <Select
                         value={formValues[field] || "POST"}
                         onValueChange={val => setFormValues(prev => ({ ...prev, [field]: val }))}
@@ -446,7 +509,7 @@ export default function NotificationSettings() {
                 if (isLargeField) {
                   return (
                     <div key={field} className="space-y-1.5">
-                      <Label className="text-sm">{FIELD_LABELS[field] || field}</Label>
+                      <Label className="text-sm">{labelFor(field)}</Label>
                       <Textarea
                         value={formValues[field] || ""}
                         onChange={e => setFormValues(prev => ({ ...prev, [field]: e.target.value }))}
@@ -460,12 +523,12 @@ export default function NotificationSettings() {
 
                 return (
                   <div key={field} className="space-y-1.5">
-                    <Label className="text-sm">{FIELD_LABELS[field] || field}</Label>
+                    <Label className="text-sm">{labelFor(field)}</Label>
                     <Input
                       type={isSensitive ? "password" : "text"}
                       value={formValues[field] || ""}
                       onChange={e => setFormValues(prev => ({ ...prev, [field]: e.target.value }))}
-                      placeholder={FIELD_LABELS[field] || field}
+                      placeholder={editPlatform === "gmail" && field === "username" ? "hr@yourcompany.com" : labelFor(field)}
                     />
                     {isSensitive && (
                       <p className="text-[11px] text-muted-foreground flex items-center gap-1">

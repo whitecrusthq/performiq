@@ -57,6 +57,7 @@ import LeaveHrApprover from "./LeaveHrApprover.js";
 import RecoveryRequest from "./RecoveryRequest.js";
 import RecoveryAuditLog from "./RecoveryAuditLog.js";
 import NotificationAdminRecipient from "./NotificationAdminRecipient.js";
+import StaffEmailCampaign from "./StaffEmailCampaign.js";
 
 export {
   sequelize,
@@ -118,4 +119,5 @@ export {
   RecoveryRequest,
   RecoveryAuditLog,
   NotificationAdminRecipient,
+  StaffEmailCampaign,
 };

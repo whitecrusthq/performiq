@@ -334,3 +334,34 @@ export function verifyTermsPendingToken(token: string): { id: number; email: str
     return null;
   }
 }
+
+/**
+ * Bulk staff email is limited to HR administrators: admin/super_admin, custom
+ * roles that explicitly include the "staff-emails" menu key, and the HR
+ * Manager custom role when it inherits defaults. Base managers are excluded.
+ */
+export async function requireStaffEmailAccess(req: AuthRequest, res: Response, next: NextFunction) {
+  if (!req.user) { res.status(403).json({ error: "Forbidden" }); return; }
+  try {
+    const { User, CustomRole } = await import("../models/index.js");
+    const actor: any = await User.findByPk(req.user.id, {
+      attributes: ["id", "role", "customRoleId", "isActive"],
+    });
+    if (!actor || actor.isActive === false) {
+      res.status(403).json({ error: "Forbidden" });
+      return;
+    }
+    if (actor.role === "admin" || actor.role === "super_admin") { next(); return; }
+    if (actor.customRoleId) {
+      const customRole: any = await CustomRole.findByPk(actor.customRoleId, {
+        attributes: ["name", "menuPermissions"],
+      });
+      let permissions: unknown = [];
+      try { permissions = JSON.parse(customRole?.menuPermissions ?? "[]"); } catch {}
+      const isHrManager = String(customRole?.name ?? "").toLowerCase() === "hr manager";
+      if (Array.isArray(permissions) && permissions.includes("staff-emails")) { next(); return; }
+      if (Array.isArray(permissions) && permissions.length === 0 && isHrManager) { next(); return; }
+    }
+  } catch {}
+  res.status(403).json({ error: "Forbidden" });
+}

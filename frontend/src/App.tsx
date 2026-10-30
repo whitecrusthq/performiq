@@ -38,6 +38,7 @@ import AuditLog from "@/pages/audit-log";
 import Appearance from "@/pages/appearance";
 import Transfers from "@/pages/transfers";
 import Anniversaries from "@/pages/anniversaries";
+import StaffEmails from "@/pages/staff-emails";
 import Recruitment from "@/pages/recruitment";
 import NotificationSettingsPage from "@/pages/notification-settings";
 import Careers from "@/pages/careers";
@@ -160,6 +161,9 @@ function Router() {
       </Route>
       <Route path="/anniversaries">
         <AppLayout><ProtectedRoute component={Anniversaries} /></AppLayout>
+      </Route>
+      <Route path="/staff-emails">
+        <AppLayout><ProtectedRoute component={StaffEmails} /></AppLayout>
       </Route>
       <Route path="/recruitment">
         <AppLayout><ProtectedRoute component={Recruitment} /></AppLayout>

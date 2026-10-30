@@ -1,8 +1,9 @@
 import { NotificationSettings } from "../models/index.js";
-import { buildSmtpTransport } from "../lib/email.js";
+import { buildSmtpTransport, gmailProviderFromConfig, mailgunClient } from "../lib/email.js";
 
 const PLATFORMS = [
-  { key: "mailgun", label: "Mailgun", fields: ["authMode", "apiKey", "domain", "username", "password", "host", "port", "fromEmail", "encryption"] },
+  { key: "mailgun", label: "Mailgun", fields: ["authMode", "region", "apiKey", "domain", "username", "password", "host", "port", "fromEmail", "encryption"] },
+  { key: "gmail", label: "Gmail", fields: ["username", "password", "fromName"] },
   { key: "smtp", label: "SMTP / Email", fields: ["host", "port", "username", "password", "fromEmail", "encryption"] },
   { key: "twilio", label: "Twilio (SMS)", fields: ["accountSid", "authToken", "fromNumber"] },
   { key: "slack", label: "Slack", fields: ["webhookUrl", "channel", "botToken"] },
@@ -85,7 +86,7 @@ export default class NotificationSettingsController {
           try {
             const transporter = buildSmtpTransport({
               kind: "smtp",
-              host: config.host || "smtp.mailgun.org",
+              host: config.host || (String(config.region).toLowerCase() === "eu" ? "smtp.eu.mailgun.org" : "smtp.mailgun.org"),
               port: Number(config.port || 587),
               username: config.username,
               password: config.password,
@@ -99,7 +100,34 @@ export default class NotificationSettingsController {
           }
         }
         if (!config.apiKey || !config.domain) return { error: "Mailgun API Key and Domain are required", status: 400 };
-        return { data: { success: true, message: "Mailgun API configuration looks complete." } };
+        const isEu = String(config.region).toLowerCase() === "eu";
+        try {
+          const domain: any = await mailgunClient(config.apiKey, config.region).domains.get(config.domain);
+          const state = domain?.state ? ` (domain status: ${domain.state})` : "";
+          return { data: { success: true, message: `Mailgun API key verified for ${config.domain}${state}.` } };
+        } catch (err: any) {
+          const status = err?.status ?? err?.statusCode;
+          const hint = status === 401
+            ? ` Check the API key${isEu ? "" : ", and set Region to EU if your Mailgun domain was created in the EU"}.`
+            : status === 404
+              ? ` The domain wasn't found in this Mailgun account${isEu ? " (or it's a US-region domain)" : ""}.`
+              : "";
+          return { error: `Mailgun API check failed: ${err?.message || err}.${hint}`, status: 400 };
+        }
+      }
+      case "gmail": {
+        const provider = gmailProviderFromConfig(config);
+        if (!provider) return { error: "Gmail address and app password are required", status: 400 };
+        try {
+          await buildSmtpTransport(provider).verify();
+          return { data: { success: true, message: `Signed in to Gmail as ${provider.username}. Staff and notification emails will be sent from this account.` } };
+        } catch (err: any) {
+          const authFailed = /535|534|auth|credentials/i.test(String(err?.message ?? ""));
+          const hint = authFailed
+            ? " Use a 16-character app password (not your normal password); the account needs 2-Step Verification turned on."
+            : "";
+          return { error: `Gmail connection failed: ${err?.message || err}.${hint}`, status: 400 };
+        }
       }
       case "smtp": {
         if (!config.host || !config.port) return { error: "Host and Port are required", status: 400 };
