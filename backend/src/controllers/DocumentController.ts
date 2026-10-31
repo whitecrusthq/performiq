@@ -83,7 +83,11 @@ export default class DocumentController {
     const row = await Document.findByPk(id);
     if (!row) return { error: "Not found", status: 404 };
     const updates: any = { updatedAt: new Date() };
-    if (data?.title !== undefined) updates.title = String(data.title).slice(0, 200);
+    if (data?.title !== undefined) {
+      const title = String(data.title).trim();
+      if (!title) return { error: "Title is required", status: 400 };
+      updates.title = title.slice(0, 200);
+    }
     if (data?.description !== undefined) updates.description = data.description ? String(data.description).slice(0, 2000) : null;
     if (data?.category !== undefined) updates.category = normalizeCategory(data.category);
     if (data?.quizSourceText !== undefined) updates.quizSourceText = data.quizSourceText ? String(data.quizSourceText).slice(0, 50000) : null;

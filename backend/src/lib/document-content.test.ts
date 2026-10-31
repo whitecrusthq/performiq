@@ -66,3 +66,27 @@ test("plain text is read; legacy, damaged and unknown files give clear errors", 
   await assert.rejects(extractDocumentContent(Buffer.from("not a zip"), null, "broken.docx"), /damaged or password-protected/);
   await assert.rejects(extractDocumentContent(Buffer.from("x"), "application/zip", "a.zip"), UnsupportedDocumentError);
 });
+
+test("older uploads with no saved type are identified from their contents", async () => {
+  const pdf: any = await extractDocumentContent(Buffer.from("%PDF-1.4\n..."), null, null);
+  assert.equal(pdf.kind, "inline");
+  assert.equal(pdf.mimeType, "application/pdf");
+
+  const docx = await zipOf({ "word/document.xml": "<w:p><w:r><w:t>Code of conduct applies to all staff.</w:t></w:r></w:p>" });
+  const fromDocx: any = await extractDocumentContent(docx, "application/octet-stream", null);
+  assert.equal(fromDocx.text, "Code of conduct applies to all staff.");
+
+  const pptx = await zipOf({ "ppt/presentation.xml": "<p/>", "ppt/slides/slide1.xml": "<a:p><a:r><a:t>Welcome</a:t></a:r></a:p>" });
+  assert.equal(((await extractDocumentContent(pptx, "", "")) as any).text, "Slide 1:\nWelcome");
+
+  const png: any = await extractDocumentContent(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a]), null, null);
+  assert.equal(png.mimeType, "image/png");
+
+  // UTF-8 text whose 4 KB sample ends mid-character is still recognised as text.
+  const text = Buffer.from("é".repeat(3000));
+  assert.equal(((await extractDocumentContent(text, null, null)) as any).kind, "text");
+
+  const ole = Buffer.from([0xd0, 0xcf, 0x11, 0xe0, 0xa1, 0xb1, 0x1a, 0xe1, 0, 0]);
+  await assert.rejects(extractDocumentContent(ole, null, null), /Save the file as PDF or \.docx/);
+  await assert.rejects(extractDocumentContent(Buffer.from([0, 1, 2, 3, 255, 254, 0, 9]), null, null), UnsupportedDocumentError);
+});

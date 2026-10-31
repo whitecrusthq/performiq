@@ -44,6 +44,34 @@ export function detectDocumentType(mimeType?: string | null, filename?: string |
   return "unknown";
 }
 
+/**
+ * Works out the type from the file's bytes, for older uploads saved without a
+ * usable MIME type or file extension.
+ */
+export async function sniffDocumentType(buffer: Buffer): Promise<string> {
+  if (buffer.subarray(0, 5).toString("latin1") === "%PDF-") return "pdf";
+  if (buffer[0] === 0x89 && buffer.subarray(1, 4).toString("latin1") === "PNG") return "image";
+  if (buffer[0] === 0xff && buffer[1] === 0xd8 && buffer[2] === 0xff) return "image";
+  if (buffer.subarray(0, 4).toString("latin1") === "PK\x03\x04") {
+    try {
+      const zip = await JSZip.loadAsync(buffer);
+      if (zip.file("word/document.xml")) return "docx";
+      if (zip.file("ppt/presentation.xml")) return "pptx";
+      if (zip.file("xl/workbook.xml")) return "xlsx";
+    } catch {}
+    return "unknown";
+  }
+  // Old binary Office files (.doc/.xls/.ppt) share the OLE2 signature.
+  if (buffer.subarray(0, 8).equals(Buffer.from([0xd0, 0xcf, 0x11, 0xe0, 0xa1, 0xb1, 0x1a, 0xe1]))) return "legacy-office";
+  // The cut at 4 KB can split a multi-byte character; ignore that trailing fragment.
+  const sample = buffer.subarray(0, 4096).toString("utf8").replace(/�+$/, "");
+  const printable = sample.replace(/[^\x09\x0a\x0d\x20-\x7e\u00a0-\uffff]/g, "").length;
+  if (sample.length > 0 && !sample.includes("\ufffd") && printable / sample.length > 0.95) return "text";
+  return "unknown";
+}
+
+const IMAGE_MIME_BY_MAGIC = (buffer: Buffer) => (buffer[0] === 0x89 ? "image/png" : "image/jpeg");
+
 export function decodeXmlEntities(s: string): string {
   return s
     .replace(/&#x([0-9a-f]+);/gi, (_, h) => String.fromCodePoint(parseInt(h, 16)))
@@ -115,14 +143,24 @@ async function officeText(buffer: Buffer, type: "docx" | "pptx" | "xlsx"): Promi
 }
 
 export async function extractDocumentContent(buffer: Buffer, mimeType?: string | null, filename?: string | null): Promise<DocumentContent> {
-  const type = detectDocumentType(mimeType, filename);
+  let type = detectDocumentType(mimeType, filename);
+  let sniffed = false;
+  // Only guess from the bytes when no specific type was recorded; a file labelled
+  // as something unsupported (e.g. application/zip) stays unsupported.
+  const recorded = String(mimeType ?? "").toLowerCase().split(";")[0].trim();
+  if (type === "unknown" && (!recorded || recorded === "application/octet-stream" || recorded === "binary/octet-stream")) {
+    type = await sniffDocumentType(buffer);
+    sniffed = true;
+  }
   switch (type) {
     case "pdf":
     case "image": {
       if (buffer.length > MAX_INLINE_BYTES) {
         throw new UnsupportedDocumentError(`The file is over ${MAX_INLINE_BYTES / (1024 * 1024)} MB, which is too large to send to the AI.`);
       }
-      const mime = type === "pdf" ? "application/pdf" : String(mimeType).toLowerCase();
+      const mime = type === "pdf" ? "application/pdf"
+        : sniffed ? IMAGE_MIME_BY_MAGIC(buffer)
+        : String(mimeType).toLowerCase();
       return { kind: "inline", mimeType: mime, data: buffer.toString("base64") };
     }
     case "docx":

@@ -330,6 +330,19 @@ function FilePicker({ file, onChange }: { file: File | null; onChange: (f: File 
   );
 }
 
+/** Uploads a file to storage and returns the document fields that describe it. */
+async function uploadDocumentFile(file: File) {
+  const r1 = await apiFetch("/api/storage/uploads/request-url", { method: "POST" });
+  if (!r1.ok) throw new Error((await r1.json().catch(() => ({}))).error ?? "Could not get upload URL");
+  const { uploadURL, objectPath } = await r1.json();
+  const put = await fetch(resolveUploadUrl(uploadURL), { method: "PUT", body: file, headers: { "Content-Type": file.type || "application/octet-stream" } });
+  if (!put.ok) {
+    const body = await put.json().catch(() => null as any);
+    throw new Error(body?.error ? `Upload failed: ${body.error}` : `Upload failed: ${put.status}`);
+  }
+  return { objectPath, mimeType: file.type || null, fileSize: file.size, originalFilename: file.name };
+}
+
 function UploadDialog({
   categories, onClose, onSaved,
 }: { categories: string[]; onClose: () => void; onSaved: () => void }) {
@@ -347,26 +360,14 @@ function UploadDialog({
     if (!file) { setErr("Choose a file to upload"); return; }
     setBusy(true);
     try {
-      const r1 = await apiFetch("/api/storage/uploads/request-url", { method: "POST" });
-      if (!r1.ok) { setErr((await r1.json()).error ?? "Could not get upload URL"); setBusy(false); return; }
-      const { uploadURL, objectPath } = await r1.json();
-      const put = await fetch(resolveUploadUrl(uploadURL), { method: "PUT", body: file, headers: { "Content-Type": file.type || "application/octet-stream" } });
-      if (!put.ok) {
-        const body = await put.json().catch(() => null as any);
-        setErr(body?.error ? `Upload failed: ${body.error}` : `Upload failed: ${put.status}`);
-        setBusy(false);
-        return;
-      }
+      const uploaded = await uploadDocumentFile(file);
       const r2 = await apiFetch("/api/documents", {
         method: "POST",
         body: JSON.stringify({
           title: title.trim(),
           description: description.trim() || null,
           category,
-          objectPath,
-          mimeType: file.type || null,
-          fileSize: file.size,
-          originalFilename: file.name,
+          ...uploaded,
           quizSourceText: quizSourceText.trim() || null,
         }),
       });
@@ -419,18 +420,28 @@ function EditDialog({
   const [description, setDescription] = useState(doc.description ?? "");
   const [category, setCategory] = useState(doc.category);
   const [quizSourceText, setQuizSourceText] = useState(doc.quizSourceText ?? "");
+  const [replacement, setReplacement] = useState<File | null>(null);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
   async function save() {
-    setBusy(true); setErr(null);
-    const r = await apiFetch(`/api/documents/${doc.id}`, {
-      method: "PATCH",
-      body: JSON.stringify({ title, description: description || null, category, quizSourceText: quizSourceText || null }),
-    });
-    setBusy(false);
-    if (!r.ok) { setErr((await r.json()).error ?? "Save failed"); return; }
-    onSaved();
+    setErr(null);
+    if (!title.trim()) { setErr("Title is required"); return; }
+    setBusy(true);
+    try {
+      // Only upload when a replacement was chosen; otherwise the current file is kept.
+      const fileFields = replacement ? await uploadDocumentFile(replacement) : {};
+      const r = await apiFetch(`/api/documents/${doc.id}`, {
+        method: "PATCH",
+        body: JSON.stringify({ title: title.trim(), description: description || null, category, quizSourceText: quizSourceText || null, ...fileFields }),
+      });
+      if (!r.ok) { setErr((await r.json().catch(() => ({}))).error ?? "Save failed"); return; }
+      onSaved();
+    } catch (e: any) {
+      setErr(e?.message ?? "Save failed");
+    } finally {
+      setBusy(false);
+    }
   }
 
   return (
@@ -442,8 +453,15 @@ function EditDialog({
             {categories.map(c => <option key={c} value={c}>{c}</option>)}
           </select>
         </Field>
-        <Field label="Description">
+        <Field label="Description (optional)">
           <textarea className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm min-h-[70px]" value={description} onChange={e => setDescription(e.target.value)} />
+        </Field>
+        <Field label="Replace file (optional)">
+          <p className="text-xs text-muted-foreground mb-1.5">
+            Current file: <span className="font-medium text-foreground">{doc.originalFilename || "uploaded document"}</span>
+            {doc.fileSize ? ` (${formatBytes(doc.fileSize)})` : ""}. Leave this empty to keep it. Existing quiz questions are kept either way.
+          </p>
+          <FilePicker file={replacement} onChange={setReplacement} />
         </Field>
         <Field label="Quiz focus (optional)">
           <textarea
@@ -456,7 +474,7 @@ function EditDialog({
         {err && <p className="text-sm text-destructive">{err}</p>}
         <div className="flex justify-end gap-2 pt-2">
           <Button variant="outline" onClick={onClose} disabled={busy}>Cancel</Button>
-          <Button onClick={save} disabled={busy}>{busy ? "Saving…" : "Save"}</Button>
+          <Button onClick={save} disabled={busy}>{busy ? (replacement ? "Uploading…" : "Saving…") : "Save"}</Button>
         </div>
       </div>
     </Modal>
