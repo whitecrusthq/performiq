@@ -80,6 +80,8 @@ export default function NotificationSettings() {
   const [editPlatform, setEditPlatform] = useState<string | null>(null);
   const [formValues, setFormValues] = useState<Record<string, string>>({});
   const [formEnabled, setFormEnabled] = useState(false);
+  // Secrets the server has stored for the platform being edited (values are never sent back).
+  const [savedSecrets, setSavedSecrets] = useState<string[]>([]);
   const [recipientSearch, setRecipientSearch] = useState("");
   const [selectedRecipientIds, setSelectedRecipientIds] = useState<Set<number>>(new Set());
 
@@ -147,6 +149,7 @@ export default function NotificationSettings() {
     const current = settings.data?.[platformKey];
     const config = (current?.config || {}) as Record<string, string>;
     setFormValues({ ...config });
+    setSavedSecrets(Array.isArray(current?.secretsSet) ? current.secretsSet : []);
     setFormEnabled(current?.enabled || false);
     setEditPlatform(platformKey);
   };
@@ -513,7 +516,9 @@ export default function NotificationSettings() {
                       <Textarea
                         value={formValues[field] || ""}
                         onChange={e => setFormValues(prev => ({ ...prev, [field]: e.target.value }))}
-                        placeholder={field === "headers" ? '{"Authorization": "Bearer ..."}' : "Paste JSON here..."}
+                        placeholder={field === "headers" ? '{"Authorization": "Bearer ..."}'
+                          : savedSecrets.includes(field) ? "Saved and hidden. Leave blank to keep it, or paste new JSON to replace it."
+                          : "Paste JSON here..."}
                         rows={4}
                         className="font-mono text-xs"
                       />
@@ -528,11 +533,19 @@ export default function NotificationSettings() {
                       type={isSensitive ? "password" : "text"}
                       value={formValues[field] || ""}
                       onChange={e => setFormValues(prev => ({ ...prev, [field]: e.target.value }))}
-                      placeholder={editPlatform === "gmail" && field === "username" ? "hr@yourcompany.com" : labelFor(field)}
+                      placeholder={
+                        isSensitive && savedSecrets.includes(field) ? "•••••••• (saved)"
+                          : editPlatform === "gmail" && field === "username" ? "hr@yourcompany.com"
+                          : labelFor(field)
+                      }
+                      autoComplete={isSensitive ? "new-password" : undefined}
                     />
                     {isSensitive && (
                       <p className="text-[11px] text-muted-foreground flex items-center gap-1">
-                        <Shield className="h-3 w-3" /> Stored securely. Leave blank to keep existing value.
+                        <Shield className="h-3 w-3" />
+                        {savedSecrets.includes(field)
+                          ? "Saved and hidden. Leave blank to keep the current value, or type a new one to replace it."
+                          : "Stored securely and never shown again after saving."}
                       </p>
                     )}
                   </div>

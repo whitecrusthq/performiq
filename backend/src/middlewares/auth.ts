@@ -367,3 +367,20 @@ export async function requireStaffEmailAccess(req: AuthRequest, res: Response, n
   } catch {}
   res.status(403).json({ error: "Forbidden" });
 }
+
+/**
+ * Admin-only gate that reloads the account, so a demoted or deactivated
+ * admin loses access immediately instead of when their token expires.
+ */
+export async function requireCurrentAdmin(req: AuthRequest, res: Response, next: NextFunction) {
+  if (!req.user) { res.status(403).json({ error: "Forbidden" }); return; }
+  try {
+    const { User } = await import("../models/index.js");
+    const actor: any = await User.findByPk(req.user.id, { attributes: ["id", "role", "isActive"] });
+    if (actor && actor.isActive !== false && (actor.role === "admin" || actor.role === "super_admin")) {
+      next();
+      return;
+    }
+  } catch {}
+  res.status(403).json({ error: "Forbidden" });
+}
