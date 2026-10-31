@@ -46,6 +46,7 @@ import {
   Scale,
   KeyRound,
   LockOpen,
+  Mail,
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { User } from "@/lib";
@@ -105,6 +106,7 @@ const NAV_STRUCTURE: NavEntry[] = [
       { name: "HR Support Dashboard", path: "/hr-support-dashboard", icon: BarChart3, roles: ["super_admin", "admin"], customRoles: ["hr manager"] },
       { name: "HR Knowledge Base", path: "/hr-knowledge-base", icon: BookOpen, roles: ["super_admin", "admin"], customRoles: ["hr manager"] },
       { name: "Anniversaries", path: "/anniversaries", icon: Award, roles: ["super_admin", "admin", "manager"] },
+      { name: "Staff Emails", path: "/staff-emails", icon: Mail, roles: ["super_admin", "admin"], customRoles: ["hr manager"] },
     ],
   },
   { name: "Reports", path: "/reports", icon: BarChart3, roles: ["super_admin", "admin"] },

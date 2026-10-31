@@ -1,8 +1,9 @@
 import { NotificationSettings } from "../models/index.js";
-import { buildSmtpTransport } from "../lib/email.js";
+import { buildSmtpTransport, gmailProviderFromConfig, mailgunClient } from "../lib/email.js";
 
 const PLATFORMS = [
-  { key: "mailgun", label: "Mailgun", fields: ["authMode", "apiKey", "domain", "username", "password", "host", "port", "fromEmail", "encryption"] },
+  { key: "mailgun", label: "Mailgun", fields: ["authMode", "region", "apiKey", "domain", "username", "password", "host", "port", "fromEmail", "encryption"] },
+  { key: "gmail", label: "Gmail", fields: ["username", "password", "fromName"] },
   { key: "smtp", label: "SMTP / Email", fields: ["host", "port", "username", "password", "fromEmail", "encryption"] },
   { key: "twilio", label: "Twilio (SMS)", fields: ["accountSid", "authToken", "fromNumber"] },
   { key: "slack", label: "Slack", fields: ["webhookUrl", "channel", "botToken"] },
@@ -12,6 +13,25 @@ const PLATFORMS = [
   { key: "firebase", label: "Firebase (Push)", fields: ["serviceAccountJson", "projectId"] },
   { key: "webhook", label: "Custom Webhook", fields: ["url", "method", "headers", "secret"] },
 ];
+
+// Credentials are write-only: they are never returned to the browser, and a
+// blank value on save keeps whatever is already stored.
+const SECRET_FIELDS = new Set(["apiKey", "authToken", "password", "botToken", "secret", "serviceAccountJson"]);
+
+/** Strips secret values, reporting only which ones are set. */
+export function redactSettings(row: any) {
+  const plain = typeof row?.get === "function" ? row.get({ plain: true }) : { ...row };
+  const config: Record<string, string> = {};
+  const secretsSet: string[] = [];
+  for (const [k, v] of Object.entries((plain.config ?? {}) as Record<string, string>)) {
+    if (SECRET_FIELDS.has(k)) {
+      if (v) secretsSet.push(k);
+    } else {
+      config[k] = v;
+    }
+  }
+  return { ...plain, config, secretsSet };
+}
 
 export default class NotificationSettingsController {
   static PLATFORMS = PLATFORMS;
@@ -25,7 +45,7 @@ export default class NotificationSettingsController {
     const result: Record<string, any> = {};
     for (const p of PLATFORMS) {
       const existing = rows.find(r => r.platform === p.key);
-      result[p.key] = existing ? existing.get({ plain: true }) : { platform: p.key, enabled: false, config: {} };
+      result[p.key] = existing ? redactSettings(existing) : { platform: p.key, enabled: false, config: {}, secretsSet: [] };
     }
     return result;
   }
@@ -35,16 +55,20 @@ export default class NotificationSettingsController {
     if (!platformDef) return { error: "Unknown platform", status: 400 };
 
     const { enabled, config } = data;
+    const existing = await NotificationSettings.findOne({ where: { platform } });
+    const existingConfig = (existing?.config ?? {}) as Record<string, string>;
+
     const safeConfig: Record<string, string> = {};
-    if (config && typeof config === "object") {
-      for (const field of platformDef.fields) {
-        if (config[field] !== undefined) {
-          safeConfig[field] = String(config[field]);
-        }
+    for (const field of platformDef.fields) {
+      const incoming = config && typeof config === "object" ? config[field] : undefined;
+      if (SECRET_FIELDS.has(field)) {
+        const value = incoming === undefined || incoming === null ? "" : String(incoming);
+        if (value.trim()) safeConfig[field] = value;
+        else if (existingConfig[field]) safeConfig[field] = existingConfig[field];
+      } else if (incoming !== undefined) {
+        safeConfig[field] = String(incoming);
       }
     }
-
-    const existing = await NotificationSettings.findOne({ where: { platform } });
 
     let row;
     if (existing) {
@@ -64,7 +88,7 @@ export default class NotificationSettingsController {
       });
     }
 
-    return { data: row };
+    return { data: redactSettings(row) };
   }
 
   static async testPlatform(platform: string) {
@@ -85,7 +109,7 @@ export default class NotificationSettingsController {
           try {
             const transporter = buildSmtpTransport({
               kind: "smtp",
-              host: config.host || "smtp.mailgun.org",
+              host: config.host || (String(config.region).toLowerCase() === "eu" ? "smtp.eu.mailgun.org" : "smtp.mailgun.org"),
               port: Number(config.port || 587),
               username: config.username,
               password: config.password,
@@ -99,7 +123,34 @@ export default class NotificationSettingsController {
           }
         }
         if (!config.apiKey || !config.domain) return { error: "Mailgun API Key and Domain are required", status: 400 };
-        return { data: { success: true, message: "Mailgun API configuration looks complete." } };
+        const isEu = String(config.region).toLowerCase() === "eu";
+        try {
+          const domain: any = await mailgunClient(config.apiKey, config.region).domains.get(config.domain);
+          const state = domain?.state ? ` (domain status: ${domain.state})` : "";
+          return { data: { success: true, message: `Mailgun API key verified for ${config.domain}${state}.` } };
+        } catch (err: any) {
+          const status = err?.status ?? err?.statusCode;
+          const hint = status === 401
+            ? ` Check the API key${isEu ? "" : ", and set Region to EU if your Mailgun domain was created in the EU"}.`
+            : status === 404
+              ? ` The domain wasn't found in this Mailgun account${isEu ? " (or it's a US-region domain)" : ""}.`
+              : "";
+          return { error: `Mailgun API check failed: ${err?.message || err}.${hint}`, status: 400 };
+        }
+      }
+      case "gmail": {
+        const provider = gmailProviderFromConfig(config);
+        if (!provider) return { error: "Gmail address and app password are required", status: 400 };
+        try {
+          await buildSmtpTransport(provider).verify();
+          return { data: { success: true, message: `Signed in to Gmail as ${provider.username}. Staff and notification emails will be sent from this account.` } };
+        } catch (err: any) {
+          const authFailed = /535|534|auth|credentials/i.test(String(err?.message ?? ""));
+          const hint = authFailed
+            ? " Use a 16-character app password (not your normal password); the account needs 2-Step Verification turned on."
+            : "";
+          return { error: `Gmail connection failed: ${err?.message || err}.${hint}`, status: 400 };
+        }
       }
       case "smtp": {
         if (!config.host || !config.port) return { error: "Host and Port are required", status: 400 };

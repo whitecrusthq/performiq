@@ -33,6 +33,7 @@ import aiSettingsRouter from "./ai-settings";
 import storageProvidersRouter from "./storage-providers";
 import legalRouter from "./legal";
 import cronRouter from "./cron";
+import staffEmailsRouter from "./staff-emails";
 
 const router: IRouter = Router();
 
@@ -70,5 +71,6 @@ router.use(aiSettingsRouter);
 router.use(storageProvidersRouter);
 router.use(legalRouter);
 router.use(cronRouter);
+router.use(staffEmailsRouter);
 
 export default router;
