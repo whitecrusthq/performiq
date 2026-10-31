@@ -178,3 +178,55 @@ export async function serveObject(objectPath: string, res: any) {
 
   await serveFromReplit(entityId, res);
 }
+
+async function streamToBuffer(stream: Readable, maxBytes: number): Promise<Buffer> {
+  const chunks: Buffer[] = [];
+  let total = 0;
+  for await (const chunk of stream) {
+    const buf = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+    total += buf.length;
+    if (total > maxBytes) {
+      stream.destroy();
+      throw new Error(`File is larger than ${Math.round(maxBytes / (1024 * 1024))} MB`);
+    }
+    chunks.push(buf);
+  }
+  return Buffer.concat(chunks);
+}
+
+/**
+ * Reads a stored object into memory, using the same provider lookup as
+ * serveObject. Refuses objects larger than `maxBytes`.
+ */
+export async function readObject(objectPath: string, maxBytes: number): Promise<{ buffer: Buffer; contentType?: string }> {
+  if (!/^\/objects\/uploads\/[A-Za-z0-9-]+$/.test(objectPath)) throw new Error("Invalid object path");
+  const entityId = objectPath.slice("/objects/".length);
+
+  const provider = await StorageProviderController.getActiveUploadProvider();
+  if (provider) {
+    try {
+      const obj = await s3GetObject(provider, entityId);
+      if (obj.contentLength && obj.contentLength > maxBytes) {
+        obj.stream.destroy();
+        throw new Error(`File is larger than ${Math.round(maxBytes / (1024 * 1024))} MB`);
+      }
+      return { buffer: await streamToBuffer(obj.stream, maxBytes), contentType: obj.contentType };
+    } catch (err: any) {
+      if (/larger than/.test(String(err?.message))) throw err;
+      // Object may predate the switch to this provider — fall back to Replit.
+    }
+  }
+
+  let dir = process.env.PRIVATE_OBJECT_DIR || "";
+  if (!dir) throw new Error("Object storage is not configured");
+  if (!dir.endsWith("/")) dir += "/";
+  const { bucketName, objectName } = parseObjectPath(`${dir}${entityId}`);
+  const file = storageClient.bucket(bucketName).file(objectName);
+  const [exists] = await file.exists();
+  if (!exists) throw new Error("File not found in storage");
+  const [metadata] = await file.getMetadata();
+  if (metadata.size && Number(metadata.size) > maxBytes) {
+    throw new Error(`File is larger than ${Math.round(maxBytes / (1024 * 1024))} MB`);
+  }
+  return { buffer: await streamToBuffer(file.createReadStream(), maxBytes), contentType: metadata.contentType as string | undefined };
+}

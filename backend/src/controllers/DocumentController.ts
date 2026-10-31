@@ -3,6 +3,14 @@ import Document from "../models/Document.js";
 import DocumentQuestion from "../models/DocumentQuestion.js";
 import User from "../models/User.js";
 import AiSettingsController from "./AiSettingsController.js";
+import { readObject } from "../lib/storage.js";
+import { extractDocumentContent, UnsupportedDocumentError, type DocumentContent } from "../lib/document-content.js";
+
+// Matches the upload limit; PDFs are further capped by what Gemini accepts inline.
+const MAX_DOCUMENT_BYTES = 50 * 1024 * 1024;
+// Uploads are always stored as /objects/uploads/<uuid>; anything else is refused
+// so a document can't be pointed at another stored file.
+const UPLOAD_PATH = /^\/objects\/uploads\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 const ALLOWED_CATEGORIES = ["HR", "IT", "ESG", "Finance", "Operations", "Compliance", "Health & Safety", "Other"];
 
@@ -55,6 +63,7 @@ export default class DocumentController {
     const objectPath = String(data?.objectPath ?? "").trim();
     if (!title) return { error: "Title is required", status: 400 };
     if (!objectPath) return { error: "Upload the document file first", status: 400 };
+    if (!UPLOAD_PATH.test(objectPath)) return { error: "Invalid file reference. Upload the document again.", status: 400 };
 
     const row = await Document.create({
       title: title.slice(0, 200),
@@ -78,7 +87,11 @@ export default class DocumentController {
     if (data?.description !== undefined) updates.description = data.description ? String(data.description).slice(0, 2000) : null;
     if (data?.category !== undefined) updates.category = normalizeCategory(data.category);
     if (data?.quizSourceText !== undefined) updates.quizSourceText = data.quizSourceText ? String(data.quizSourceText).slice(0, 50000) : null;
-    if (data?.objectPath !== undefined && String(data.objectPath).trim()) updates.objectPath = String(data.objectPath).trim();
+    if (data?.objectPath !== undefined && String(data.objectPath).trim()) {
+      const objectPath = String(data.objectPath).trim();
+      if (!UPLOAD_PATH.test(objectPath)) return { error: "Invalid file reference. Upload the document again.", status: 400 };
+      updates.objectPath = objectPath;
+    }
     if (data?.mimeType !== undefined) updates.mimeType = data.mimeType ? String(data.mimeType).slice(0, 120) : null;
     if (data?.fileSize !== undefined) updates.fileSize = Number.isFinite(Number(data.fileSize)) ? Number(data.fileSize) : null;
     if (data?.originalFilename !== undefined) updates.originalFilename = data.originalFilename ? String(data.originalFilename).slice(0, 255) : null;
@@ -140,29 +153,60 @@ export default class DocumentController {
         status: 400,
       };
     }
-    const source = doc.quizSourceText && doc.quizSourceText.trim().length > 0
-      ? doc.quizSourceText
-      : (doc.description ?? "");
-    if (!source || source.trim().length < 50) {
-      return {
-        error: "Add quiz reference text (a paragraph or two from the document) on the document before generating questions.",
-        status: 400,
-      };
-    }
     const n = Math.min(Math.max(Number(count) || 5, 1), 15);
     const apiKey = cfg.apiKey;
     const model = cfg.model;
 
+    // Primary source: the uploaded file itself. Quiz reference text, when present,
+    // steers the questions; it is also the fallback when the file can't be read.
+    let fileContent: DocumentContent | null = null;
+    let fileProblem: string | null = null;
+    try {
+      const { buffer, contentType } = await readObject(doc.objectPath, MAX_DOCUMENT_BYTES);
+      fileContent = await extractDocumentContent(buffer, doc.mimeType || contentType, doc.originalFilename);
+      if (fileContent.kind === "text" && fileContent.text.trim().length < 50) {
+        fileContent = null;
+        fileProblem = "The uploaded file has little or no readable text.";
+      }
+    } catch (err: any) {
+      fileProblem = err instanceof UnsupportedDocumentError
+        ? err.message
+        : `The uploaded file couldn't be read (${err?.message ?? "unknown error"}).`;
+    }
+
+    const referenceText = (doc.quizSourceText ?? "").trim() || (doc.description ?? "").trim();
+    if (!fileContent && referenceText.length < 50) {
+      return {
+        error: `${fileProblem ?? "The uploaded file couldn't be read."} Edit the document and add a paragraph or two from it under "Quiz focus", or upload a readable copy (PDF or .docx), then try again.`,
+        status: 400,
+      };
+    }
+
+    const existing = await DocumentQuestion.findAll({ where: { documentId }, attributes: ["question"], limit: 100 });
+    const avoid = existing.length
+      ? `\n\nThese questions already exist for this document. Do not repeat them or ask the same thing in other words:\n${existing.map(q => `- ${q.question}`).join("\n")}`
+      : "";
+    const instructions = `You are an HR training assistant. Write ${n} multiple-choice quiz questions that test whether an employee understood the document "${doc.title}". Base every question and answer only on what the document says. Each question must have 4 plausible choices and exactly one correct answer. Cover different sections rather than repeating one topic.\n\nReturn ONLY a JSON array, no prose. Each item: {"question": "...", "choices": ["...","...","...","..."], "correctIndex": 0}`;
+
+    const parts: any[] = [];
+    if (fileContent?.kind === "inline") {
+      parts.push({ inline_data: { mime_type: fileContent.mimeType, data: fileContent.data } });
+      parts.push({ text: instructions + (referenceText ? `\n\nThe HR team asked you to focus on:\n"""\n${referenceText.slice(0, 4000)}\n"""` : "") + avoid });
+    } else if (fileContent?.kind === "text") {
+      parts.push({ text: `${instructions}${referenceText ? `\n\nThe HR team asked you to focus on:\n"""\n${referenceText.slice(0, 4000)}\n"""` : ""}${avoid}\n\nDocument text:\n"""\n${fileContent.text}\n"""` });
+    } else {
+      parts.push({ text: `${instructions}${avoid}\n\nPolicy text:\n"""\n${referenceText.slice(0, 8000)}\n"""` });
+    }
+
     let parsed: any[] = [];
     try {
-      const prompt = `You are an HR training assistant. Read the following policy text and write ${n} multiple-choice quiz questions that test whether an employee understood it. Each question must have 4 plausible choices and exactly one correct answer.\n\nReturn ONLY a JSON array, no prose. Each item: {"question": "...", "choices": ["...","...","...","..."], "correctIndex": 0}\n\nPolicy text:\n"""\n${source.slice(0, 8000)}\n"""`;
       const r = await fetch(
         `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(apiKey)}`,
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            contents: [{ role: "user", parts: [{ text: prompt }] }],
+            contents: [{ role: "user", parts }],
             generationConfig: {
               temperature: 0.4,
               responseMimeType: "application/json",
@@ -199,7 +243,15 @@ export default class DocumentController {
       });
       created.push(row.toJSON());
     }
-    return { data: { created, count: created.length } };
+    return {
+      data: {
+        created,
+        count: created.length,
+        source: fileContent ? "document" : "reference_text",
+        // Explains a fallback to reference text so the UI can tell the admin.
+        notice: fileContent ? null : fileProblem,
+      },
+    };
   }
 
   // ---- Quiz: random sampling for end users ----
