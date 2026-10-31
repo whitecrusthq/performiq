@@ -88,3 +88,30 @@ test("documents can only reference an uploaded file path", async () => {
     (Document.update as any) = originals.update;
   }
 });
+
+test("editing keeps the file unless a valid replacement is given, and requires a title", async () => {
+  const originals = { find: Document.findByPk, update: Document.update, get: DocumentController.getDocument };
+  let updates: any = null;
+  try {
+    (Document.findByPk as any) = async () => ({ id: 1 });
+    (Document.update as any) = async (u: any) => { updates = u; return [1]; };
+    (DocumentController as any).getDocument = async () => ({ id: 1 });
+
+    await DocumentController.updateDocument(1, { title: "Handbook", quizSourceText: null });
+    assert.equal("objectPath" in updates, false, "file untouched when no replacement");
+
+    const id = "3f1c2b7a-9d4e-4c1b-8a2f-0e9d8c7b6a51";
+    await DocumentController.updateDocument(1, { title: "Handbook", objectPath: `/objects/uploads/${id}`, mimeType: "application/pdf", fileSize: 1200, originalFilename: "new.pdf" });
+    assert.equal(updates.objectPath, `/objects/uploads/${id}`);
+    assert.equal(updates.originalFilename, "new.pdf");
+
+    updates = null;
+    const blank: any = await DocumentController.updateDocument(1, { title: "   " });
+    assert.equal(blank.status, 400);
+    assert.equal(updates, null);
+  } finally {
+    (Document.findByPk as any) = originals.find;
+    (Document.update as any) = originals.update;
+    (DocumentController as any).getDocument = originals.get;
+  }
+});
