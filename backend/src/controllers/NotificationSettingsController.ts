@@ -14,6 +14,25 @@ const PLATFORMS = [
   { key: "webhook", label: "Custom Webhook", fields: ["url", "method", "headers", "secret"] },
 ];
 
+// Credentials are write-only: they are never returned to the browser, and a
+// blank value on save keeps whatever is already stored.
+const SECRET_FIELDS = new Set(["apiKey", "authToken", "password", "botToken", "secret", "serviceAccountJson"]);
+
+/** Strips secret values, reporting only which ones are set. */
+export function redactSettings(row: any) {
+  const plain = typeof row?.get === "function" ? row.get({ plain: true }) : { ...row };
+  const config: Record<string, string> = {};
+  const secretsSet: string[] = [];
+  for (const [k, v] of Object.entries((plain.config ?? {}) as Record<string, string>)) {
+    if (SECRET_FIELDS.has(k)) {
+      if (v) secretsSet.push(k);
+    } else {
+      config[k] = v;
+    }
+  }
+  return { ...plain, config, secretsSet };
+}
+
 export default class NotificationSettingsController {
   static PLATFORMS = PLATFORMS;
 
@@ -26,7 +45,7 @@ export default class NotificationSettingsController {
     const result: Record<string, any> = {};
     for (const p of PLATFORMS) {
       const existing = rows.find(r => r.platform === p.key);
-      result[p.key] = existing ? existing.get({ plain: true }) : { platform: p.key, enabled: false, config: {} };
+      result[p.key] = existing ? redactSettings(existing) : { platform: p.key, enabled: false, config: {}, secretsSet: [] };
     }
     return result;
   }
@@ -36,16 +55,20 @@ export default class NotificationSettingsController {
     if (!platformDef) return { error: "Unknown platform", status: 400 };
 
     const { enabled, config } = data;
+    const existing = await NotificationSettings.findOne({ where: { platform } });
+    const existingConfig = (existing?.config ?? {}) as Record<string, string>;
+
     const safeConfig: Record<string, string> = {};
-    if (config && typeof config === "object") {
-      for (const field of platformDef.fields) {
-        if (config[field] !== undefined) {
-          safeConfig[field] = String(config[field]);
-        }
+    for (const field of platformDef.fields) {
+      const incoming = config && typeof config === "object" ? config[field] : undefined;
+      if (SECRET_FIELDS.has(field)) {
+        const value = incoming === undefined || incoming === null ? "" : String(incoming);
+        if (value.trim()) safeConfig[field] = value;
+        else if (existingConfig[field]) safeConfig[field] = existingConfig[field];
+      } else if (incoming !== undefined) {
+        safeConfig[field] = String(incoming);
       }
     }
-
-    const existing = await NotificationSettings.findOne({ where: { platform } });
 
     let row;
     if (existing) {
@@ -65,7 +88,7 @@ export default class NotificationSettingsController {
       });
     }
 
-    return { data: row };
+    return { data: redactSettings(row) };
   }
 
   static async testPlatform(platform: string) {
