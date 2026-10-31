@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { requireAuth, requireRole, AuthRequest } from "../middlewares/auth.js";
+import { requireAuth, requireCurrentAdmin, AuthRequest } from "../middlewares/auth.js";
 import { Response } from "express";
 import DocumentController from "../controllers/DocumentController.js";
 
@@ -30,7 +30,7 @@ router.get("/documents/:id", requireAuth, async (req: AuthRequest, res: Response
   }
 });
 
-router.post("/documents", requireAuth, requireRole("admin"), async (req: AuthRequest, res: Response) => {
+router.post("/documents", requireAuth, requireCurrentAdmin, async (req: AuthRequest, res: Response) => {
   try {
     const result = await DocumentController.createDocument(req.user!.id, req.body);
     if ("error" in result) { res.status(result.status).json({ error: result.error }); return; }
@@ -41,7 +41,7 @@ router.post("/documents", requireAuth, requireRole("admin"), async (req: AuthReq
   }
 });
 
-router.patch("/documents/:id", requireAuth, requireRole("admin"), async (req: AuthRequest, res: Response) => {
+router.patch("/documents/:id", requireAuth, requireCurrentAdmin, async (req: AuthRequest, res: Response) => {
   try {
     const result = await DocumentController.updateDocument(Number(req.params.id), req.body);
     if ("error" in result) { res.status(result.status).json({ error: result.error }); return; }
@@ -52,7 +52,7 @@ router.patch("/documents/:id", requireAuth, requireRole("admin"), async (req: Au
   }
 });
 
-router.delete("/documents/:id", requireAuth, requireRole("admin"), async (req: AuthRequest, res: Response) => {
+router.delete("/documents/:id", requireAuth, requireCurrentAdmin, async (req: AuthRequest, res: Response) => {
   try {
     const result = await DocumentController.deleteDocument(Number(req.params.id));
     if ("error" in result) { res.status(result.status).json({ error: result.error }); return; }
@@ -63,7 +63,7 @@ router.delete("/documents/:id", requireAuth, requireRole("admin"), async (req: A
   }
 });
 
-router.get("/documents/:id/questions", requireAuth, requireRole("admin"), async (req: AuthRequest, res: Response) => {
+router.get("/documents/:id/questions", requireAuth, requireCurrentAdmin, async (req: AuthRequest, res: Response) => {
   try {
     res.json(await DocumentController.listQuestions(Number(req.params.id)));
   } catch (err: any) {
@@ -72,7 +72,7 @@ router.get("/documents/:id/questions", requireAuth, requireRole("admin"), async 
   }
 });
 
-router.post("/documents/:id/questions", requireAuth, requireRole("admin"), async (req: AuthRequest, res: Response) => {
+router.post("/documents/:id/questions", requireAuth, requireCurrentAdmin, async (req: AuthRequest, res: Response) => {
   try {
     const result = await DocumentController.addQuestion(Number(req.params.id), req.user!.id, req.body);
     if ("error" in result) { res.status(result.status).json({ error: result.error }); return; }
@@ -83,7 +83,7 @@ router.post("/documents/:id/questions", requireAuth, requireRole("admin"), async
   }
 });
 
-router.delete("/documents/:id/questions/:qid", requireAuth, requireRole("admin"), async (req: AuthRequest, res: Response) => {
+router.delete("/documents/:id/questions/:qid", requireAuth, requireCurrentAdmin, async (req: AuthRequest, res: Response) => {
   try {
     const result = await DocumentController.deleteQuestion(Number(req.params.id), Number(req.params.qid));
     if ("error" in result) { res.status(result.status).json({ error: result.error }); return; }
@@ -94,7 +94,7 @@ router.delete("/documents/:id/questions/:qid", requireAuth, requireRole("admin")
   }
 });
 
-router.post("/documents/:id/questions/generate", requireAuth, requireRole("admin"), async (req: AuthRequest, res: Response) => {
+router.post("/documents/:id/questions/generate", requireAuth, requireCurrentAdmin, async (req: AuthRequest, res: Response) => {
   try {
     const count = Number(req.body?.count) || 5;
     const result = await DocumentController.generateQuestionsFromDocument(Number(req.params.id), req.user!.id, count);

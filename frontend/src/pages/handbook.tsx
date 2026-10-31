@@ -394,10 +394,10 @@ function UploadDialog({
         <Field label="File (PDF, DOCX, etc.)">
           <FilePicker file={file} onChange={setFile} />
         </Field>
-        <Field label="Quiz reference text (optional — used by the AI question generator)">
+        <Field label="Quiz focus (optional)">
           <textarea
             className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm min-h-[120px] font-mono"
-            placeholder="Paste a paragraph or two from the document so the AI can generate quiz questions from it."
+            placeholder="The AI reads the uploaded file automatically. Optionally note what the quiz should focus on, e.g. leave entitlements and the sick-leave process."
             value={quizSourceText}
             onChange={e => setQuizSourceText(e.target.value)}
           />
@@ -445,9 +445,10 @@ function EditDialog({
         <Field label="Description">
           <textarea className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm min-h-[70px]" value={description} onChange={e => setDescription(e.target.value)} />
         </Field>
-        <Field label="Quiz reference text">
+        <Field label="Quiz focus (optional)">
           <textarea
             className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm min-h-[120px] font-mono"
+            placeholder="The AI reads the uploaded file automatically. Optionally note what the quiz should focus on."
             value={quizSourceText}
             onChange={e => setQuizSourceText(e.target.value)}
           />
@@ -469,6 +470,8 @@ function ManageQuestionsDialog({ doc, onClose }: { doc: Doc; onClose: () => void
   const [err, setErr] = useState<string | null>(null);
   const [generating, setGenerating] = useState(false);
   const [generateCount, setGenerateCount] = useState(5);
+  const [genErr, setGenErr] = useState<string | null>(null);
+  const [genNotice, setGenNotice] = useState<string | null>(null);
 
   // new question form
   const [qText, setQText] = useState("");
@@ -507,15 +510,30 @@ function ManageQuestionsDialog({ doc, onClose }: { doc: Doc; onClose: () => void
   }
 
   async function generate() {
-    setErr(null);
+    setGenErr(null);
+    setGenNotice(null);
     setGenerating(true);
-    const r = await apiFetch(`/api/documents/${doc.id}/questions/generate`, {
-      method: "POST",
-      body: JSON.stringify({ count: generateCount }),
-    });
-    setGenerating(false);
-    if (!r.ok) { setErr((await r.json()).error ?? "Generation failed"); return; }
-    refresh();
+    try {
+      const r = await apiFetch(`/api/documents/${doc.id}/questions/generate`, {
+        method: "POST",
+        body: JSON.stringify({ count: generateCount }),
+      });
+      const body = await r.json().catch(() => ({}));
+      if (!r.ok) { setGenErr(body.error ?? "Generation failed"); return; }
+      const count = body.count ?? 0;
+      setGenNotice(
+        count === 0
+          ? "The AI didn't return any usable questions. Try again."
+          : body.source === "document"
+            ? `Added ${count} question${count === 1 ? "" : "s"} from the uploaded document.`
+            : `Added ${count} question${count === 1 ? "" : "s"} from the quiz focus text. ${body.notice ?? ""}`.trim(),
+      );
+      refresh();
+    } catch (e: any) {
+      setGenErr(e?.message || "Couldn't reach the server. Please try again.");
+    } finally {
+      setGenerating(false);
+    }
   }
 
   return (
@@ -538,9 +556,13 @@ function ManageQuestionsDialog({ doc, onClose }: { doc: Doc; onClose: () => void
           <Button size="sm" onClick={generate} disabled={generating}>
             {generating ? "Generating…" : "Generate"}
           </Button>
-          <span className="text-xs text-muted-foreground">
-            Uses Google Gemini and the document's "quiz reference text" as the source.
+          <span className="text-xs text-muted-foreground w-full">
+            {generating
+              ? "Reading the document and writing questions. Large files can take up to a minute."
+              : "Google Gemini reads the uploaded file (PDF, Word, PowerPoint, Excel or text) and writes questions from it. Existing questions won't be repeated."}
           </span>
+          {genErr && <p className="text-sm text-destructive w-full">{genErr}</p>}
+          {genNotice && <p className="text-sm text-emerald-700 w-full">{genNotice}</p>}
         </div>
 
         <div className="rounded-md border p-3 space-y-2">
