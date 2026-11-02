@@ -23,6 +23,7 @@ interface MailgunProvider {
   domain: string;
   fromEmail?: string;
   region?: string; // "us" (default) | "eu"
+  replyTo?: string;
   label?: string;
 }
 
@@ -34,6 +35,7 @@ interface SmtpProvider {
   password?: string;
   fromEmail?: string;
   encryption?: string; // "ssl" | "tls"/"starttls" | "none"
+  replyTo?: string;
   label?: string;
 }
 
@@ -65,6 +67,7 @@ export async function resolveEmailProvider(): Promise<EmailProvider | null> {
         password: c.password || undefined,
         fromEmail: c.fromEmail || undefined,
         encryption: (c.encryption || "").toLowerCase() || undefined,
+        replyTo: c.replyTo || undefined,
         label: "SMTP",
       };
     }
@@ -90,11 +93,12 @@ export async function resolveEmailProvider(): Promise<EmailProvider | null> {
         password: c.password,
         fromEmail: c.fromEmail || undefined,
         encryption: (c.encryption || "tls").toLowerCase(),
+        replyTo: c.replyTo || undefined,
         label: "Mailgun (SMTP)",
       };
     }
     if (c.authMode !== "smtp" && c.apiKey && c.domain) {
-      return { kind: "mailgun", apiKey: c.apiKey, domain: c.domain, fromEmail: c.fromEmail || undefined, region: c.region || undefined, label: "Mailgun (API)" };
+      return { kind: "mailgun", apiKey: c.apiKey, domain: c.domain, fromEmail: c.fromEmail || undefined, region: c.region || undefined, replyTo: c.replyTo || undefined, label: "Mailgun (API)" };
     }
     console.log("[email] Mailgun platform enabled but the selected credentials are incomplete; ignoring.");
   }
@@ -110,6 +114,7 @@ export async function resolveEmailProvider(): Promise<EmailProvider | null> {
       password: smtpPassword,
       fromEmail: process.env.MAILGUN_FROM || smtpUsername,
       encryption: (process.env.MAILGUN_SMTP_ENCRYPTION || "tls").toLowerCase(),
+      replyTo: process.env.MAILGUN_REPLY_TO || undefined,
       label: "Mailgun (SMTP)",
     };
   }
@@ -118,7 +123,7 @@ export async function resolveEmailProvider(): Promise<EmailProvider | null> {
   const key = process.env.MAILGUN_API_KEY;
   const domain = process.env.MAILGUN_DOMAIN;
   if (key && domain) {
-    return { kind: "mailgun", apiKey: key, domain, fromEmail: process.env.MAILGUN_FROM || undefined, region: process.env.MAILGUN_REGION || undefined, label: "Mailgun (API)" };
+    return { kind: "mailgun", apiKey: key, domain, fromEmail: process.env.MAILGUN_FROM || undefined, region: process.env.MAILGUN_REGION || undefined, replyTo: process.env.MAILGUN_REPLY_TO || undefined, label: "Mailgun (API)" };
   }
   return null;
 }
@@ -156,6 +161,7 @@ export function gmailProviderFromConfig(c: Record<string, string>): SmtpProvider
     password: appPassword,
     fromEmail: name ? `"${name}" <${address}>` : address,
     encryption: "ssl",
+    replyTo: String(c.replyTo ?? "").trim() || undefined,
     label: "Gmail",
   };
 }
@@ -176,6 +182,7 @@ async function sendViaMailgun(provider: MailgunProvider, msg: EmailMessage): Pro
     subject: msg.subject,
     html: msg.html,
     text: msg.text,
+    ...(provider.replyTo ? { "h:Reply-To": provider.replyTo } : {}),
   });
 }
 
@@ -201,6 +208,7 @@ async function sendViaSmtp(provider: SmtpProvider, msg: EmailMessage): Promise<v
     subject: msg.subject,
     html: msg.html,
     text: msg.text,
+    ...(provider.replyTo ? { replyTo: provider.replyTo } : {}),
   });
 }
 
@@ -252,5 +260,6 @@ export async function sendMailgunBatch(provider: EmailProvider, batch: MailgunBa
     html: batch.html,
     text: batch.text,
     "recipient-variables": JSON.stringify(batch.recipientVariables),
+    ...(provider.replyTo ? { "h:Reply-To": provider.replyTo } : {}),
   });
 }

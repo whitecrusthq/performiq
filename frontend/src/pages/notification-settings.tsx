@@ -44,7 +44,7 @@ const FIELD_LABELS: Record<string, string> = {
   webhookUrl: "Webhook URL", channel: "Channel", botToken: "Bot Token",
   chatId: "Chat ID", serviceAccountJson: "Service Account JSON", projectId: "Project ID",
   url: "Webhook URL", method: "HTTP Method", headers: "Headers (JSON)", secret: "Signing Secret",
-  region: "Region", fromName: "Sender Name",
+  region: "Region", fromName: "Sender Name", replyTo: "Reply-To Email (optional)",
 };
 
 // Labels that differ for a specific platform.
@@ -536,10 +536,16 @@ export default function NotificationSettings() {
                       placeholder={
                         isSensitive && savedSecrets.includes(field) ? "•••••••• (saved)"
                           : editPlatform === "gmail" && field === "username" ? "hr@yourcompany.com"
+                          : field === "replyTo" ? "e.g. hr@yourcompany.com"
                           : labelFor(field)
                       }
                       autoComplete={isSensitive ? "new-password" : undefined}
                     />
+                    {field === "replyTo" && (
+                      <p className="text-[11px] text-muted-foreground">
+                        When staff reply to an email from PerformIQ (including Staff Emails), the reply goes to this address instead of the sending address. Leave empty to use the sending address.
+                      </p>
+                    )}
                     {isSensitive && (
                       <p className="text-[11px] text-muted-foreground flex items-center gap-1">
                         <Shield className="h-3 w-3" />
