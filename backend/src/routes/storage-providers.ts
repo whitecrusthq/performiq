@@ -1,5 +1,5 @@
 import { Router, Response } from "express";
-import { requireAuth, requireRole, AuthRequest } from "../middlewares/auth.js";
+import { requireAuth, requireCurrentAdmin, AuthRequest } from "../middlewares/auth.js";
 import StorageProviderController from "../controllers/StorageProviderController.js";
 
 const router = Router();
@@ -10,7 +10,7 @@ function parseIdParam(raw: unknown): number | null {
   return Number.isFinite(n) ? n : null;
 }
 
-router.get("/storage-providers", requireAuth, requireRole("admin"), async (_req: AuthRequest, res: Response) => {
+router.get("/storage-providers", requireAuth, requireCurrentAdmin, async (_req: AuthRequest, res: Response) => {
   try {
     const [rows, meta] = await Promise.all([
       StorageProviderController.list(),
@@ -23,7 +23,7 @@ router.get("/storage-providers", requireAuth, requireRole("admin"), async (_req:
   }
 });
 
-router.post("/storage-providers", requireAuth, requireRole("admin"), async (req: AuthRequest, res: Response) => {
+router.post("/storage-providers", requireAuth, requireCurrentAdmin, async (req: AuthRequest, res: Response) => {
   try {
     const userId: number | null = req.user?.id ?? null;
     const result = await StorageProviderController.create(req.body, userId);
@@ -35,7 +35,7 @@ router.post("/storage-providers", requireAuth, requireRole("admin"), async (req:
   }
 });
 
-router.put("/storage-providers/:id", requireAuth, requireRole("admin"), async (req: AuthRequest, res: Response) => {
+router.put("/storage-providers/:id", requireAuth, requireCurrentAdmin, async (req: AuthRequest, res: Response) => {
   try {
     const id = parseIdParam(req.params.id);
     if (id === null) { res.status(400).json({ error: "Invalid id" }); return; }
@@ -48,7 +48,7 @@ router.put("/storage-providers/:id", requireAuth, requireRole("admin"), async (r
   }
 });
 
-router.post("/storage-providers/:id/default", requireAuth, requireRole("admin"), async (req: AuthRequest, res: Response) => {
+router.post("/storage-providers/:id/default", requireAuth, requireCurrentAdmin, async (req: AuthRequest, res: Response) => {
   try {
     const id = parseIdParam(req.params.id);
     if (id === null) { res.status(400).json({ error: "Invalid id" }); return; }
@@ -61,7 +61,20 @@ router.post("/storage-providers/:id/default", requireAuth, requireRole("admin"),
   }
 });
 
-router.delete("/storage-providers/:id", requireAuth, requireRole("admin"), async (req: AuthRequest, res: Response) => {
+router.post("/storage-providers/:id/test", requireAuth, requireCurrentAdmin, async (req: AuthRequest, res: Response) => {
+  try {
+    const id = parseIdParam(req.params.id);
+    if (id === null) { res.status(400).json({ error: "Invalid id" }); return; }
+    const result = await StorageProviderController.testConnection(id);
+    if ("error" in result) { res.status(result.status ?? 500).json({ error: result.error }); return; }
+    res.json(result.data);
+  } catch (err: any) {
+    console.error(err);
+    res.status(500).json({ error: "Server error" });
+  }
+});
+
+router.delete("/storage-providers/:id", requireAuth, requireCurrentAdmin, async (req: AuthRequest, res: Response) => {
   try {
     const id = parseIdParam(req.params.id);
     if (id === null) { res.status(400).json({ error: "Invalid id" }); return; }
