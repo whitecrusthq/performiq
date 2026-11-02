@@ -1,3 +1,4 @@
+import { s3TestConnection } from "../lib/s3-storage.js";
 import StorageProvider from "../models/StorageProvider.js";
 import sequelize from "../db/sequelize.js";
 import { encryptSecretIfPresent, isEncryptedSecret, decryptSecret } from "../lib/secret-cipher.js";
@@ -324,5 +325,19 @@ export default class StorageProviderController {
     });
     const fresh = await StorageProvider.findByPk(id);
     return { data: format(fresh!) } as const;
+  }
+
+  /** Live check of an S3-family provider's credentials, bucket and region. */
+  static async testConnection(id: number) {
+    const row = await StorageProvider.findByPk(id);
+    if (!row) return { error: "Not found", status: 404 } as const;
+    if (!["s3", "s3_compatible", "digitalocean_spaces"].includes(row.type)) {
+      return { data: { ok: false, message: "Testing is only available for AWS S3, S3-compatible and DigitalOcean Spaces providers." } } as const;
+    }
+    const provider = StorageProviderController.toDecryptedS3(row);
+    if (!provider) {
+      return { data: { ok: false, message: "The bucket, access key or secret is missing (or the saved secret can't be decrypted). Edit the provider and re-enter them." } } as const;
+    }
+    return { data: await s3TestConnection(provider) } as const;
   }
 }

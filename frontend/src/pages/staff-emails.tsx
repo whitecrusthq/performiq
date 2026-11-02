@@ -18,6 +18,7 @@ async function apiFetchJson(url: string, opts: RequestInit = {}) {
 
 interface Options {
   emailProvider: string | null;
+  emailReplyTo: string | null;
   departments: string[];
   jobTitles: string[];
   genders: string[];
@@ -327,6 +328,9 @@ export default function StaffEmails() {
               {options && (options.emailProvider ? (
                 <p className="text-xs text-muted-foreground">
                   Sending through <span className="font-medium text-foreground">{options.emailProvider}</span>.
+                  {options.emailReplyTo
+                    ? <> Replies go to <span className="font-medium text-foreground">{options.emailReplyTo}</span>.</>
+                    : " Replies go to the sending address; set a Reply-To email under Settings → Notifications to change this."}
                   {options.emailProvider === "Gmail" && " Gmail allows about 500 recipients a day (2,000 on Google Workspace)."}
                 </p>
               ) : (
