@@ -4,7 +4,7 @@ import { useAuth } from "@/hooks/use-auth";
 import { apiFetch, resolveUploadUrl } from "@/lib/utils";
 import {
   BookOpen, Upload, FileText, Trash2, Sparkles, Plus, X, Check, Search,
-  Filter, FolderOpen, ExternalLink, Edit2, HelpCircle,
+  Filter, FolderOpen, ExternalLink, Edit2, HelpCircle, Timer,
 } from "lucide-react";
 
 interface Doc {
@@ -56,6 +56,78 @@ function fileURL(objectPath: string): string {
   if (!objectPath.startsWith("/objects/")) return objectPath;
   const id = objectPath.slice("/objects/uploads/".length);
   return `${base}/api/storage/objects/${id}`;
+}
+
+/** Admin box for how long staff get per quiz question (0 = no limit, all questions on one page). */
+function QuizTimerSettings() {
+  const [saved, setSaved] = useState<number | null>(null);
+  const [value, setValue] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [message, setMessage] = useState<{ ok: boolean; text: string } | null>(null);
+
+  useEffect(() => {
+    apiFetch("/api/quiz/settings").then(async r => {
+      if (!r.ok) return;
+      const j = await r.json();
+      setSaved(j.secondsPerQuestion);
+      setValue(String(j.secondsPerQuestion));
+    }).catch(() => {});
+  }, []);
+
+  async function save(next: string) {
+    setMessage(null);
+    const n = Number(next.trim() === "" ? 0 : next);
+    setSaving(true);
+    try {
+      const r = await apiFetch("/api/quiz/settings", { method: "PUT", body: JSON.stringify({ secondsPerQuestion: n }) });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok) { setMessage({ ok: false, text: j?.error ?? "Could not save the quiz timer" }); return; }
+      setSaved(j.secondsPerQuestion);
+      setValue(String(j.secondsPerQuestion));
+      setMessage({ ok: true, text: j.secondsPerQuestion ? `Saved. Staff get ${j.secondsPerQuestion} seconds per question.` : "Saved. Quizzes have no time limit." });
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  if (saved === null) return null;
+  return (
+    <Card className="mb-6 p-4">
+      <div className="flex flex-col md:flex-row md:items-end gap-3">
+        <div className="flex-1">
+          <p className="font-medium flex items-center gap-2"><Timer className="h-4 w-4 text-primary" /> Quiz timer</p>
+          <p className="text-xs text-muted-foreground mt-1">
+            Seconds staff get to answer each quiz question. With a timer, questions are shown one at a time and the quiz
+            moves to the next one when the time runs out. Use 0 for no time limit.
+          </p>
+        </div>
+        <div className="flex items-end gap-2">
+          <div>
+            <label htmlFor="quiz-seconds" className="block text-xs font-semibold text-foreground mb-1.5">Seconds per question</label>
+            <Input
+              id="quiz-seconds"
+              type="number"
+              min={0}
+              max={600}
+              step={1}
+              className="w-32"
+              value={value}
+              onChange={e => setValue(e.target.value)}
+            />
+          </div>
+          <Button onClick={() => save(value)} disabled={saving || value === String(saved)}>
+            {saving ? "Saving…" : "Save"}
+          </Button>
+          {saved > 0 && (
+            <Button variant="outline" onClick={() => save("0")} disabled={saving}>Turn off</Button>
+          )}
+        </div>
+      </div>
+      {message && (
+        <p className={`text-xs mt-2 ${message.ok ? "text-emerald-600" : "text-destructive"}`}>{message.text}</p>
+      )}
+    </Card>
+  );
 }
 
 export default function Handbook() {
@@ -119,6 +191,8 @@ export default function Handbook() {
           )
         }
       />
+
+      {isAdmin && <QuizTimerSettings />}
 
       <div className="mb-6 flex flex-col sm:flex-row gap-3">
         <div className="relative flex-1 max-w-xl">

@@ -1,5 +1,5 @@
 import { Router, Response } from "express";
-import { requireAuth, AuthRequest } from "../middlewares/auth.js";
+import { requireAuth, requireCurrentAdmin, AuthRequest } from "../middlewares/auth.js";
 import QuizController from "../controllers/QuizController.js";
 
 const router = Router();
@@ -7,6 +7,26 @@ const router = Router();
 router.get("/quiz/overview", requireAuth, async (req: AuthRequest, res: Response) => {
   try {
     res.json(await QuizController.getOverview(req.user!.id));
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Server error" });
+  }
+});
+
+router.get("/quiz/settings", requireAuth, requireCurrentAdmin, async (_req: AuthRequest, res: Response) => {
+  try {
+    res.json(await QuizController.getSettings());
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Server error" });
+  }
+});
+
+router.put("/quiz/settings", requireAuth, requireCurrentAdmin, async (req: AuthRequest, res: Response) => {
+  try {
+    const result = await QuizController.updateSettings(req.body);
+    if ("error" in result) { res.status(result.status!).json({ error: result.error }); return; }
+    res.json(result.data);
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "Server error" });

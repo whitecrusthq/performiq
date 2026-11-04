@@ -4,10 +4,36 @@ import DocumentQuestion from "../models/DocumentQuestion.js";
 import QuizAttempt from "../models/QuizAttempt.js";
 import User from "../models/User.js";
 import Site from "../models/Site.js";
+import AppSettings from "../models/AppSettings.js";
 
 const PASS_THRESHOLD = 70;
+export const MIN_SECONDS_PER_QUESTION = 5;
+export const MAX_SECONDS_PER_QUESTION = 600;
+
+async function secondsPerQuestion(): Promise<number> {
+  const row = await AppSettings.findByPk(1, { attributes: ["id", "quizSecondsPerQuestion"] });
+  return row?.quizSecondsPerQuestion ?? 0;
+}
 
 export default class QuizController {
+  static async getSettings() {
+    return { secondsPerQuestion: await secondsPerQuestion() };
+  }
+
+  /** 0 turns the timer off; otherwise a whole number of seconds within the allowed range. */
+  static async updateSettings(input: any) {
+    const value = input?.secondsPerQuestion;
+    if (typeof value !== "number" || !Number.isInteger(value) || (value !== 0 && (value < MIN_SECONDS_PER_QUESTION || value > MAX_SECONDS_PER_QUESTION))) {
+      return {
+        error: `Seconds per question must be 0 (no limit) or a whole number from ${MIN_SECONDS_PER_QUESTION} to ${MAX_SECONDS_PER_QUESTION}.`,
+        status: 400,
+      };
+    }
+    const [row] = await AppSettings.findOrCreate({ where: { id: 1 }, defaults: { id: 1 } });
+    await row.update({ quizSecondsPerQuestion: value, updatedAt: new Date() });
+    return { data: { secondsPerQuestion: value } };
+  }
+
   /**
    * For the current user: list every document that has at least one question,
    * along with the user's most recent attempt status (if any).
@@ -66,6 +92,7 @@ export default class QuizController {
     return {
       data: {
         document: doc.toJSON(),
+        secondsPerQuestion: await secondsPerQuestion(),
         questions: rows.map(q => ({ id: q.id, question: q.question, choices: q.choices })),
       },
     };

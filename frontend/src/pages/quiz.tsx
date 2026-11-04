@@ -1,9 +1,9 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { PageHeader, Card, Button } from "@/components/shared";
 import { apiFetch } from "@/lib/utils";
 import {
   Brain, Check, X, RotateCcw, Trophy, FileText, Sparkles,
-  CheckCircle2, Circle, ArrowRight, AlertCircle, BookOpen,
+  CheckCircle2, Circle, ArrowRight, AlertCircle, BookOpen, Timer,
 } from "lucide-react";
 
 interface OverviewItem {
@@ -25,6 +25,8 @@ interface OverviewItem {
 interface TakeQuestion { id: number; question: string; choices: string[]; }
 interface TakeData {
   document: { id: number; title: string; category: string };
+  /** 0 = no time limit; otherwise questions are shown one at a time. */
+  secondsPerQuestion?: number;
   questions: TakeQuestion[];
 }
 
@@ -55,6 +57,13 @@ export default function Quiz() {
   const [takeError, setTakeError] = useState<string | null>(null);
 
   const [result, setResult] = useState<ResultData | null>(null);
+
+  // Timed mode: one question at a time, moving on when the time runs out.
+  const [current, setCurrent] = useState(0);
+  const [secondsLeft, setSecondsLeft] = useState(0);
+  const answersRef = useRef(answers);
+  answersRef.current = answers;
+  const timed = mode === "taking" && !!take && (take.secondsPerQuestion ?? 0) > 0;
 
   async function loadOverview() {
     setLoadingOverview(true);
@@ -94,20 +103,25 @@ export default function Quiz() {
       setTakeError(j?.error ?? "Could not load quiz");
       return;
     }
-    setTake(await r.json());
+    const data: TakeData = await r.json();
+    setTake(data);
+    setCurrent(0);
+    setSecondsLeft(data.secondsPerQuestion ?? 0);
     setMode("taking");
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
 
-  async function submitQuiz() {
-    if (!take) return;
-    if (Object.keys(answers).length < take.questions.length) {
+  async function submitQuiz(skipConfirm = false) {
+    if (!take || submitting) return;
+    const finalAnswers = answersRef.current;
+    if (!skipConfirm && Object.keys(finalAnswers).length < take.questions.length) {
       if (!confirm("You haven't answered every question. Submit anyway?")) return;
     }
+    setTakeError(null);
     setSubmitting(true);
     const payload = take.questions.map(q => ({
       questionId: q.id,
-      answerIndex: answers[q.id] ?? -1,
+      answerIndex: finalAnswers[q.id] ?? -1,
     }));
     const r = await apiFetch(`/api/quiz/documents/${take.document.id}/submit`, {
       method: "POST",
@@ -125,6 +139,23 @@ export default function Quiz() {
     loadOverview();
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
+
+  // Moves to the next question, or submits after the last one. Unanswered questions count as wrong.
+  function advance() {
+    if (!take) return;
+    if (current + 1 >= take.questions.length) { submitQuiz(true); return; }
+    setCurrent(current + 1);
+    setSecondsLeft(take.secondsPerQuestion ?? 0);
+  }
+
+  useEffect(() => {
+    // A failed final submit stops the clock; the student retries with "Finish quiz".
+    if (!timed || submitting || takeError) return;
+    if (secondsLeft <= 0) { advance(); return; }
+    const t = setTimeout(() => setSecondsLeft(s => s - 1), 1000);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [timed, secondsLeft, submitting, takeError]);
 
   function backToOverview() {
     setMode("overview");
@@ -268,6 +299,61 @@ export default function Quiz() {
     );
   }
 
+  // -------- Taking (timed, one question at a time) --------
+  if (timed && take) {
+    const q = take.questions[current];
+    const limit = take.secondsPerQuestion ?? 0;
+    const last = current + 1 >= take.questions.length;
+    const low = secondsLeft <= Math.min(5, limit);
+    return (
+      <div>
+        <PageHeader
+          title={take.document.title}
+          description={`${take.document.category} · Question ${current + 1} of ${take.questions.length} · ${limit} seconds per question`}
+          action={<Button variant="outline" onClick={backToOverview} disabled={submitting}>Cancel</Button>}
+        />
+        {takeError && <Card className="mb-3 border-destructive/40"><p className="text-sm text-destructive">{takeError}</p></Card>}
+        <Card>
+          <div className="flex items-center justify-between gap-3 mb-2">
+            <span className="text-xs font-mono text-muted-foreground">Q{current + 1}</span>
+            <span className={`text-sm font-semibold flex items-center gap-1.5 tabular-nums ${low ? "text-rose-600" : "text-muted-foreground"}`} aria-live="polite">
+              <Timer className="h-4 w-4" /> {Math.max(secondsLeft, 0)}s left
+            </span>
+          </div>
+          <div className="h-1.5 bg-muted rounded-full overflow-hidden mb-4">
+            <div
+              className={`h-full transition-all duration-1000 ease-linear ${low ? "bg-rose-500" : "bg-primary"}`}
+              style={{ width: `${limit ? (Math.max(secondsLeft, 0) / limit) * 100 : 0}%` }}
+            />
+          </div>
+          <p className="font-medium mb-3">{q.question}</p>
+          <div className="space-y-1.5">
+            {q.choices.map((c, i) => (
+              <label key={i} className={`flex items-center gap-2 p-2 rounded border cursor-pointer transition-colors ${answers[q.id] === i ? "border-primary bg-primary/5" : "border-input hover:bg-accent"}`}>
+                <input
+                  type="radio"
+                  name={`q-${q.id}`}
+                  checked={answers[q.id] === i}
+                  disabled={submitting}
+                  onChange={() => setAnswers(prev => ({ ...prev, [q.id]: i }))}
+                />
+                <span className="text-sm">{c}</span>
+              </label>
+            ))}
+          </div>
+          <p className="text-xs text-muted-foreground mt-3">
+            When the time runs out the quiz moves on, and an unanswered question counts as wrong. You can't go back to earlier questions.
+          </p>
+        </Card>
+        <div className="mt-6 flex justify-end gap-2">
+          <Button onClick={advance} size="lg" disabled={submitting || answers[q.id] === undefined}>
+            {submitting ? "Submitting…" : last ? "Finish quiz" : <>Next question <ArrowRight className="h-4 w-4 ml-1.5" /></>}
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
   // -------- Taking --------
   if (mode === "taking" && take) {
     const answered = Object.keys(answers).length;
@@ -303,7 +389,7 @@ export default function Quiz() {
           ))}
         </div>
         <div className="mt-6 flex justify-end gap-2 sticky bottom-4">
-          <Button onClick={submitQuiz} size="lg" disabled={submitting}>
+          <Button onClick={() => submitQuiz()} size="lg" disabled={submitting}>
             {submitting ? "Submitting…" : "Submit quiz"}
           </Button>
         </div>
