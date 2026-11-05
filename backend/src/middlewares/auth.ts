@@ -9,6 +9,8 @@ if (!JWT_SECRET) {
 
 export interface AuthRequest extends Request {
   user?: { id: number; role: string; email: string; customRoleName?: string | null };
+  /** Set by requireAdminOrMenu from the reloaded account: true only for real admins, not delegated custom roles. */
+  isFullAdmin?: boolean;
 }
 
 export async function requireAuth(req: AuthRequest, res: Response, next: NextFunction) {
@@ -364,6 +366,31 @@ export async function requireStaffEmailAccess(req: AuthRequest, res: Response, n
     }
   } catch {}
   res.status(403).json({ error: "Forbidden" });
+}
+
+/**
+ * Admins, or anyone whose custom role has this menu ticked on the Roles page. Reloads
+ * the account and role on every request, so a removed tick or demotion applies at once.
+ * Only for admin pages that are safe to delegate (not users, roles, security, email or
+ * storage settings, which could be used to take over other accounts).
+ */
+export function requireAdminOrMenu(menuKey: string) {
+  return async (req: AuthRequest, res: Response, next: NextFunction) => {
+    if (!req.user) { res.status(403).json({ error: "Forbidden" }); return; }
+    try {
+      const { User, CustomRole } = await import("../models/index.js");
+      const actor: any = await User.findByPk(req.user.id, { attributes: ["id", "role", "isActive", "customRoleId"] });
+      if (actor && actor.isActive !== false) {
+        if (actor.role === "admin" || actor.role === "super_admin") { req.isFullAdmin = true; next(); return; }
+        if (actor.customRoleId) {
+          const role: any = await CustomRole.findByPk(actor.customRoleId, { attributes: ["id", "menuPermissions"] });
+          const perms = JSON.parse(role?.menuPermissions ?? "[]");
+          if (Array.isArray(perms) && perms.includes(menuKey)) { next(); return; }
+        }
+      }
+    } catch {}
+    res.status(403).json({ error: "Forbidden" });
+  };
 }
 
 /**

@@ -66,6 +66,15 @@ export function hasMenuAccess(user: any, menuKey: string): boolean {
 }
 
 /**
+ * Whether the user may manage an admin page: admins, or a custom role with that menu
+ * ticked. Only for pages the server also delegates (see requireAdminOrMenu).
+ */
+export function canManageMenu(user: any, menuKey: string): boolean {
+  if (user?.role === "admin" || user?.role === "super_admin") return true;
+  return getCustomMenuPerms(user).includes(menuKey);
+}
+
+/**
  * If `path` belongs to a known menu section, returns its menu key; otherwise
  * null (e.g. /profile, /legal — not governed by menu permissions).
  */

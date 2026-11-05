@@ -7,7 +7,7 @@ export class UpdateSiteAction {
     try {
       const { name, address, city, region, country, description, category, require2Fa } = req.body;
       if (!name?.trim()) { res.status(400).json({ error: "Site name is required" }); return; }
-      const site = await SiteController.update(Number(req.params.id), { name, address, city, region, country, description, category, require2Fa });
+      const site = await SiteController.update(Number(req.params.id), { name, address, city, region, country, description, category, require2Fa: req.isFullAdmin ? require2Fa : undefined });
       if (!site) { res.status(404).json({ error: "Site not found" }); return; }
       res.json(site);
     } catch (err: any) {

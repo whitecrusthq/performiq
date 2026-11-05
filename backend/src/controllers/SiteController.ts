@@ -5,6 +5,10 @@ export default class SiteController {
     return Site.findAll({ order: [["name", "ASC"]] });
   }
 
+  static async find(id: number) {
+    return Site.findByPk(id);
+  }
+
   static async create(data: { name: string; address?: string; city?: string; region?: string; country?: string; description?: string; category?: string; require2Fa?: boolean }) {
     return Site.create({
       name: data.name.trim(),

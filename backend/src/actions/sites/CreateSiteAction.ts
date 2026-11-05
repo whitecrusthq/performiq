@@ -7,7 +7,7 @@ export class CreateSiteAction {
     try {
       const { name, address, city, region, country, description, category, require2Fa } = req.body;
       if (!name?.trim()) { res.status(400).json({ error: "Site name is required" }); return; }
-      const site = await SiteController.create({ name, address, city, region, country, description, category, require2Fa });
+      const site = await SiteController.create({ name, address, city, region, country, description, category, require2Fa: req.isFullAdmin ? require2Fa : undefined });
       res.status(201).json(site);
     } catch (err: any) {
       if (err.name === "SequelizeUniqueConstraintError" || err.original?.code === "23505") res.status(409).json({ error: "A site with this name already exists" });
