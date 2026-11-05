@@ -5,6 +5,7 @@ import { MapPin, Plus, Edit, Trash2, X, AlertCircle, Globe, ShieldCheck, Upload,
 import { BulkActionBar } from "@/components/bulk-action-bar";
 import { useAuth } from "@/hooks/use-auth";
 import { apiFetch } from "@/lib/utils";
+import { canManageMenu } from "@/lib/menu-permissions";
 
 const SITE_IMPORT_HEADERS = ["name", "address", "city", "region", "country", "category", "description", "require2Fa"];
 
@@ -154,7 +155,7 @@ function BulkImportSitesModal({ onClose, onComplete }: { onClose: () => void; on
                 <h4 className="text-sm font-semibold">Need a template?</h4>
                 <p className="text-xs text-muted-foreground">
                   Download a CSV template with all supported columns and two example rows.
-                  Set <code className="bg-muted px-1 rounded">require2Fa</code> to <code className="bg-muted px-1 rounded">true</code> or <code className="bg-muted px-1 rounded">false</code>.
+                  Set <code className="bg-muted px-1 rounded">require2Fa</code> to <code className="bg-muted px-1 rounded">true</code> or <code className="bg-muted px-1 rounded">false</code>. This column only applies when an admin imports.
                 </p>
                 <button onClick={downloadTemplate}
                   className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-border text-xs font-medium hover:bg-muted transition-colors">
@@ -398,7 +399,8 @@ export default function Sites() {
   const handleDelete = async (id: number, name: string) => {
     if (!confirm(`Delete site "${name}"? Users assigned to this site will be unlinked.`)) return;
     try {
-      await apiFetch(`/api/sites/${id}`, { method: "DELETE" });
+      const r = await apiFetch(`/api/sites/${id}`, { method: "DELETE" });
+      if (!r.ok) throw new Error();
       await refresh();
       queryClient.invalidateQueries({ queryKey: ["/api/sites"] });
     } catch {
@@ -423,15 +425,18 @@ export default function Sites() {
   const handleBulkDelete = async () => {
     if (!confirm(`Delete ${selectedIds.size} selected site(s)? Users assigned to them will be unlinked.`)) return;
     setBulkDeleting(true);
-    await Promise.all([...selectedIds].map(id => apiFetch(`/api/sites/${id}`, { method: "DELETE" })));
+    const results = await Promise.all([...selectedIds].map(id => apiFetch(`/api/sites/${id}`, { method: "DELETE" }).catch(() => null)));
+    const failed = results.filter(r => !r?.ok).length;
+    if (failed > 0) alert(`${failed} site(s) could not be deleted. Only an admin can delete a site that requires 2FA.`);
     await refresh();
     queryClient.invalidateQueries({ queryKey: ["/api/sites"] });
     setSelectedIds(new Set());
     setBulkDeleting(false);
   };
 
-  const effectiveLevel = (user as any)?.customRole?.permissionLevel ?? user?.role;
-  if (effectiveLevel !== "admin" && effectiveLevel !== "super_admin") {
+  const isFullAdmin = user?.role === "admin" || user?.role === "super_admin";
+
+  if (!canManageMenu(user, "sites")) {
     return <div className="p-8 text-destructive">Unauthorized</div>;
   }
 
@@ -526,9 +531,11 @@ export default function Sites() {
                     <button onClick={() => openEdit(site)} className="p-1.5 rounded-lg hover:bg-muted text-muted-foreground hover:text-foreground transition-colors">
                       <Edit className="w-3.5 h-3.5" />
                     </button>
-                    <button onClick={() => handleDelete(site.id, site.name)} className="p-1.5 rounded-lg hover:bg-destructive/10 text-muted-foreground hover:text-destructive transition-colors">
-                      <Trash2 className="w-3.5 h-3.5" />
-                    </button>
+                    {(isFullAdmin || !site.require2Fa) && (
+                      <button onClick={() => handleDelete(site.id, site.name)} className="p-1.5 rounded-lg hover:bg-destructive/10 text-muted-foreground hover:text-destructive transition-colors">
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    )}
                   </div>
                 </div>
                 {site.address && <p className="text-sm text-muted-foreground">{site.address}</p>}
@@ -573,16 +580,17 @@ export default function Sites() {
                 </datalist>
               </div>
               <div><Label>Description</Label><Input value={formData.description} onChange={e => setFormData({ ...formData, description: e.target.value })} placeholder="Optional notes" /></div>
-              <label className="flex items-start gap-3 rounded-xl border border-border bg-muted/30 p-3 cursor-pointer hover:bg-muted/50 transition-colors">
+              <label className={`flex items-start gap-3 rounded-xl border border-border bg-muted/30 p-3 transition-colors ${isFullAdmin ? "cursor-pointer hover:bg-muted/50" : "opacity-70"}`}>
                 <input
                   type="checkbox"
-                  className="mt-1 h-4 w-4 rounded border-border accent-primary cursor-pointer"
+                  className="mt-1 h-4 w-4 rounded border-border accent-primary disabled:cursor-not-allowed"
+                  disabled={!isFullAdmin}
                   checked={!!formData.require2Fa}
                   onChange={e => setFormData({ ...formData, require2Fa: e.target.checked })}
                 />
                 <div className="flex-1">
                   <div className="flex items-center gap-1.5 text-sm font-medium"><ShieldCheck className="w-4 h-4 text-primary" /> Require two-factor authentication for users at this site</div>
-                  <div className="text-xs text-muted-foreground mt-0.5">Every user assigned to this site will be forced to set up an authenticator app on their next sign-in.</div>
+                  <div className="text-xs text-muted-foreground mt-0.5">Every user assigned to this site will be forced to set up an authenticator app on their next sign-in.{!isFullAdmin && " Only an admin can change this."}</div>
                 </div>
               </label>
               {error && (

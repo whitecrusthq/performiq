@@ -132,6 +132,7 @@ export default class StaffEmailController {
     const provider = await resolveEmailProvider().catch(() => null);
     return {
       emailProvider: provider ? provider.label ?? (provider.kind === "mailgun" ? "Mailgun (API)" : "SMTP") : null,
+      emailReplyTo: provider?.replyTo ?? null,
       departments: distinct(users, "department"),
       jobTitles: distinct(users, "jobTitle"),
       genders: distinct(users, "gender"),

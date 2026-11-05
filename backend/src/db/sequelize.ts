@@ -73,6 +73,13 @@ export async function connectDatabase(): Promise<void> {
   }
   try {
     await sequelize.query(
+      `ALTER TABLE app_settings ADD COLUMN IF NOT EXISTS quiz_seconds_per_question INTEGER NOT NULL DEFAULT 0;`
+    );
+  } catch (err) {
+    logger.warn({ err }, "quiz timer schema ensure failed (non-fatal)");
+  }
+  try {
+    await sequelize.query(
       `ALTER TABLE users ADD COLUMN IF NOT EXISTS is_protected BOOLEAN NOT NULL DEFAULT FALSE;`
     );
   } catch (err) {

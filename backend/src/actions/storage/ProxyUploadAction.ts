@@ -1,5 +1,6 @@
 import { Request, Response } from "express";
 import StorageController from "../../controllers/StorageController.js";
+import { describeS3Error } from "../../lib/s3-storage.js";
 
 export class ProxyUploadAction {
   static async handle(req: Request, res: Response) {
@@ -20,10 +21,7 @@ export class ProxyUploadAction {
       };
       console.error("Storage proxy upload error:", detail, err);
       if (!res.headersSent) {
-        const summary = [detail.name, detail.code, detail.message]
-          .filter(Boolean)
-          .join(": ");
-        res.status(500).json({ error: summary || "Upload failed", detail });
+        res.status(500).json({ error: describeS3Error(err).message, detail });
       }
     }
   }

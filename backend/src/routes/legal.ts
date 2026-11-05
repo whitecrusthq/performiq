@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { requireAuth, requireRole } from "../middlewares/auth.js";
+import { requireAuth, requireAdminOrMenu } from "../middlewares/auth.js";
 import { GetPrivacyPolicyAction } from "../actions/legal/GetPrivacyPolicyAction.js";
 import { GetTermsAction } from "../actions/legal/GetTermsAction.js";
 import { GetLegalAdminAction } from "../actions/legal/GetLegalAdminAction.js";
@@ -17,8 +17,8 @@ router.get("/legal/terms", GetTermsAction.handle);
 router.get("/legal/my-acceptance", requireAuth, GetMyAcceptanceAction.handle);
 
 // Admin — author/publish content.
-router.get("/legal/admin", requireAuth, requireRole("admin"), GetLegalAdminAction.handle);
-router.put("/legal/privacy", requireAuth, requireRole("admin"), UpdatePrivacyPolicyAction.handle);
-router.put("/legal/terms", requireAuth, requireRole("admin"), UpdateTermsAction.handle);
+router.get("/legal/admin", requireAuth, requireAdminOrMenu("legal"), GetLegalAdminAction.handle);
+router.put("/legal/privacy", requireAuth, requireAdminOrMenu("legal"), UpdatePrivacyPolicyAction.handle);
+router.put("/legal/terms", requireAuth, requireAdminOrMenu("legal"), UpdateTermsAction.handle);
 
 export default router;

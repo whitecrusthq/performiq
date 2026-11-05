@@ -12,6 +12,7 @@ class AppSettings extends Model {
   declare loginSubtext: string;
   declare loginBgFrom: string;
   declare loginBgTo: string;
+  declare quizSecondsPerQuestion: number;
   declare updatedAt: Date;
 }
 
@@ -27,6 +28,8 @@ AppSettings.init(
     loginSubtext: { type: DataTypes.TEXT, allowNull: false, defaultValue: "PerformIQ streamlines appraisals, goals, and feedback into one elegant platform.", field: "login_subtext" },
     loginBgFrom: { type: DataTypes.TEXT, allowNull: false, defaultValue: "", field: "login_bg_from" },
     loginBgTo: { type: DataTypes.TEXT, allowNull: false, defaultValue: "", field: "login_bg_to" },
+    // 0 means no time limit; otherwise the quiz shows one question at a time with this many seconds each.
+    quizSecondsPerQuestion: { type: DataTypes.INTEGER, allowNull: false, defaultValue: 0, field: "quiz_seconds_per_question" },
     updatedAt: { type: DataTypes.DATE, allowNull: false, defaultValue: DataTypes.NOW, field: "updated_at" },
   },
   { sequelize, tableName: "app_settings", timestamps: false }

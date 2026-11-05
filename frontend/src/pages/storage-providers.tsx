@@ -3,8 +3,10 @@ import { PageHeader, Card, Button, Input, Label } from "@/components/shared";
 import { apiFetch } from "@/lib/utils";
 import {
   HardDrive, Plus, Trash2, Edit2, Star, Power, PowerOff, X, Eye, EyeOff,
-  AlertCircle, CheckCircle2,
+  AlertCircle, CheckCircle2, FlaskConical,
 } from "lucide-react";
+
+const TESTABLE_TYPES = new Set(["s3", "s3_compatible", "digitalocean_spaces"]);
 
 type ProviderTypeKey = "s3" | "s3_compatible" | "digitalocean_spaces" | "gcs" | "azure";
 
@@ -69,6 +71,8 @@ export default function StorageProviders() {
   const [error, setError] = useState<string | null>(null);
   const [editing, setEditing] = useState<ProviderRow | null>(null);
   const [creating, setCreating] = useState(false);
+  const [testing, setTesting] = useState<number | null>(null);
+  const [testResults, setTestResults] = useState<Record<number, { ok: boolean; message: string }>>({});
 
   async function refresh() {
     setLoading(true); setError(null);
@@ -95,6 +99,22 @@ export default function StorageProviders() {
     refresh();
   }
 
+  async function testConnection(row: ProviderRow) {
+    setTesting(row.id);
+    try {
+      const r = await apiFetch(`/api/storage-providers/${row.id}/test`, { method: "POST" });
+      const body = await r.json().catch(() => ({}));
+      setTestResults(prev => ({
+        ...prev,
+        [row.id]: r.ok ? { ok: !!body.ok, message: body.message ?? "" } : { ok: false, message: body.error ?? "Test failed" },
+      }));
+    } catch (e: any) {
+      setTestResults(prev => ({ ...prev, [row.id]: { ok: false, message: e?.message || "Couldn't reach the server" } }));
+    } finally {
+      setTesting(null);
+    }
+  }
+
   async function toggleEnabled(row: ProviderRow) {
     const r = await apiFetch(`/api/storage-providers/${row.id}`, {
       method: "PUT",
@@ -108,7 +128,7 @@ export default function StorageProviders() {
     <div>
       <PageHeader
         title="Storage Providers"
-        description="Configure third-party storage destinations (AWS S3, S3-compatible, DigitalOcean Spaces, Google Cloud Storage, Azure Blob). Credentials are stored here for future use — uploads still go to the default Replit Object Storage."
+        description="Configure third-party storage destinations (AWS S3, S3-compatible, DigitalOcean Spaces, Google Cloud Storage, Azure Blob). File uploads go to the provider marked as default (AWS S3, S3-compatible or DigitalOcean Spaces); with no enabled default, they go to Replit Object Storage. Use Test to check a provider before making it the default."
         action={
           <Button onClick={() => setCreating(true)}>
             <Plus className="h-4 w-4 mr-2" /> Add provider
@@ -232,6 +252,11 @@ export default function StorageProviders() {
                     <Star className="h-3 w-3 mr-1" /> Make default
                   </Button>
                 )}
+                {TESTABLE_TYPES.has(row.type) && (
+                  <Button size="sm" variant="outline" onClick={() => testConnection(row)} disabled={testing === row.id}>
+                    <FlaskConical className="h-3 w-3 mr-1" /> {testing === row.id ? "Testing…" : "Test"}
+                  </Button>
+                )}
                 <Button size="sm" variant="outline" onClick={() => setEditing(row)}>
                   <Edit2 className="h-3 w-3 mr-1" /> Edit
                 </Button>
@@ -244,6 +269,14 @@ export default function StorageProviders() {
                 >
                   <Trash2 className="h-3 w-3" /> Delete
                 </button>
+                {testResults[row.id] && (
+                  <p className={`w-full text-xs flex items-start gap-1.5 ${testResults[row.id].ok ? "text-emerald-700" : "text-destructive"}`}>
+                    {testResults[row.id].ok
+                      ? <CheckCircle2 className="h-3.5 w-3.5 shrink-0 mt-px" />
+                      : <AlertCircle className="h-3.5 w-3.5 shrink-0 mt-px" />}
+                    <span>{testResults[row.id].message}</span>
+                  </p>
+                )}
               </div>
             </Card>
           ))}

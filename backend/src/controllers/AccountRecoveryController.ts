@@ -1,26 +1,40 @@
 import bcrypt from "bcryptjs";
 import { Op } from "sequelize";
 import { RecoveryRequest, User, sequelize } from "../models/index.js";
-import { auditRecovery, expirePending, RecoveryRequestContext } from "../lib/account-recovery.js";
+import { auditRecovery, expirePending, recoveryActor, recoveryRoleIds, RecoveryRequestContext } from "../lib/account-recovery.js";
 
-function canRecoverTarget(target: User, actorId: number): boolean {
+type Access = NonNullable<Awaited<ReturnType<typeof recoveryActor>>>;
+
+/**
+ * Custom roles a non-admin recoverer can't act on: staff granted Account Recovery
+ * through a custom role may not recover each other (that would hand over the account).
+ */
+async function blockedRoleIds(access: Access, transaction?: any): Promise<number[]> {
+  return access.isAdmin ? [] : recoveryRoleIds(transaction);
+}
+
+function canRecoverTarget(target: User, actorId: number, blocked: number[] = []): boolean {
   return target.id !== actorId
     && !target.isProtected
-    && (target.role === "employee" || target.role === "manager");
+    && (target.role === "employee" || target.role === "manager")
+    && !(target.customRoleId && blocked.includes(target.customRoleId));
 }
 
 export default class AccountRecoveryController {
   static async list(actorId: number) {
+    const access = await recoveryActor(actorId);
+    if (!access) return [];
+    const blocked = await blockedRoleIds(access);
     const users = await User.findAll({
       where: {
         id: { [Op.ne]: actorId },
         isProtected: false,
         role: { [Op.in]: ["employee", "manager"] },
       },
-      attributes: ["id", "name", "email", "twoFactorEnabled", "isActive"],
+      attributes: ["id", "name", "email", "role", "isProtected", "twoFactorEnabled", "isActive", "customRoleId"],
       order: [["name", "ASC"]],
     });
-    return users.map(u => ({
+    return users.filter(u => canRecoverTarget(u, actorId, blocked)).map(u => ({
       id: u.id,
       name: u.name,
       email: u.email,
@@ -32,11 +46,14 @@ export default class AccountRecoveryController {
   static async setTemporaryPassword(id: number, actorId: number, temporaryPassword: string) {
     const passwordHash = await bcrypt.hash(temporaryPassword, 10);
     return sequelize.transaction(async transaction => {
+      const access = await recoveryActor(actorId, transaction);
+      if (!access) return { error: "Forbidden", status: 403 };
+      const blocked = await blockedRoleIds(access, transaction);
       const target = await User.findByPk(id, {
         transaction,
         lock: transaction.LOCK.UPDATE,
       });
-      if (!target || !canRecoverTarget(target, actorId)) {
+      if (!target || !canRecoverTarget(target, actorId, blocked)) {
         return { error: "User not found", status: 404 };
       }
       await target.update({
@@ -57,11 +74,14 @@ export default class AccountRecoveryController {
 
   static async reset2FA(id: number, actorId: number) {
     return sequelize.transaction(async transaction => {
+      const access = await recoveryActor(actorId, transaction);
+      if (!access) return { error: "Forbidden", status: 403 };
+      const blocked = await blockedRoleIds(access, transaction);
       const target = await User.findByPk(id, {
         transaction,
         lock: transaction.LOCK.UPDATE,
       });
-      if (!target || !canRecoverTarget(target, actorId)) {
+      if (!target || !canRecoverTarget(target, actorId, blocked)) {
         return { error: "User not found", status: 404 };
       }
       await target.update({
@@ -76,10 +96,10 @@ export default class AccountRecoveryController {
   }
 
   static async listRequests(actorId: number, status: string, context: RecoveryRequestContext) {
-    const actor = await User.findByPk(actorId, { attributes: ["id", "role", "isActive"] });
-    if (!actor || actor.isActive === false || !["admin", "super_admin"].includes(actor.role)) {
-      return { error: "Forbidden", status: 403 } as const;
-    }
+    const access = await recoveryActor(actorId);
+    if (!access) return { error: "Forbidden", status: 403 } as const;
+    const { actor } = access;
+    const blocked = await blockedRoleIds(access);
     const pending = await RecoveryRequest.findAll({ where: { status: "pending" } });
     for (const request of pending) await expirePending(request, context);
     const where: any = status === "all" ? {} : { status };
@@ -87,13 +107,14 @@ export default class AccountRecoveryController {
     const requests = await RecoveryRequest.findAll({ where, order: [["createdAt", "DESC"]] });
     const users = await User.findAll({
       where: { id: { [Op.in]: requests.map(request => request.userId) } },
-      attributes: ["id", "name", "email", "role", "isProtected"],
+      attributes: ["id", "name", "email", "role", "isProtected", "customRoleId"],
     });
     const byId = new Map(users.map(user => [user.id, user]));
     return requests.filter(request => {
       const user = byId.get(request.userId);
       return actor.role === "super_admin"
-        || (!request.elevated && !!user && !user.isProtected && !["admin", "super_admin"].includes(user.role));
+        || (!request.elevated && !!user && !user.isProtected && !["admin", "super_admin"].includes(user.role)
+          && !(user.customRoleId && blocked.includes(user.customRoleId)));
     }).map(request => {
       const user = byId.get(request.userId);
       return {
@@ -112,7 +133,7 @@ export default class AccountRecoveryController {
     reason: string | null, context: RecoveryRequestContext,
   ) {
     return sequelize.transaction(async transaction => {
-      const actor = await User.findByPk(actorId, { transaction, attributes: ["id", "role", "isActive"] });
+      const access = await recoveryActor(actorId, transaction);
       // All mutating recovery flows lock User then RecoveryRequest. Read the ID
       // first without a lock solely to establish that ordering.
       const candidate = await RecoveryRequest.findByPk(id, { transaction, attributes: ["id", "userId"] });
@@ -122,10 +143,11 @@ export default class AccountRecoveryController {
       const request = candidate
         ? await RecoveryRequest.findByPk(id, { transaction, lock: transaction.LOCK.UPDATE })
         : null;
-      if (!actor || actor.isActive === false || !["admin", "super_admin"].includes(actor.role)) {
-        return { error: "Forbidden", status: 403 } as const;
-      }
-      const currentlyElevated = !!target && (target.isProtected || ["admin", "super_admin"].includes(target.role));
+      if (!access) return { error: "Forbidden", status: 403 } as const;
+      const { actor } = access;
+      const blocked = await blockedRoleIds(access, transaction);
+      const currentlyElevated = !!target && (target.isProtected || ["admin", "super_admin"].includes(target.role)
+        || (!!target.customRoleId && blocked.includes(target.customRoleId)));
       if (!request || !target || ((request.elevated || currentlyElevated) && actor.role !== "super_admin")) {
         return { error: "Recovery request not found", status: 404 } as const;
       }

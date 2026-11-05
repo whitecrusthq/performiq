@@ -14,7 +14,9 @@ export class BulkImportSitesAction {
         res.status(400).json({ error: "Maximum 500 sites per import" });
         return;
       }
-      const result = await SiteController.bulkImport(rows);
+      // 2FA policy stays with admins, so delegated imports drop the column.
+      const allowed = req.isFullAdmin ? rows : rows.map(({ require2Fa, require2fa, ...rest }: any) => rest);
+      const result = await SiteController.bulkImport(allowed);
       res.json(result);
     } catch (err) {
       console.error("POST /sites/bulk-import error:", err);

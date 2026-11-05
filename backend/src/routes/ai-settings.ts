@@ -1,10 +1,10 @@
 import { Router, Response } from "express";
-import { requireAuth, requireRole, AuthRequest } from "../middlewares/auth.js";
+import { requireAuth, AuthRequest, requireAdminOrMenu } from "../middlewares/auth.js";
 import AiSettingsController from "../controllers/AiSettingsController.js";
 
 const router = Router();
 
-router.get("/ai-settings", requireAuth, requireRole("admin"), async (_req: AuthRequest, res: Response) => {
+router.get("/ai-settings", requireAuth, requireAdminOrMenu("ai-settings"), async (_req: AuthRequest, res: Response) => {
   try {
     const [settings, meta] = await Promise.all([
       AiSettingsController.getSettings(),
@@ -17,7 +17,7 @@ router.get("/ai-settings", requireAuth, requireRole("admin"), async (_req: AuthR
   }
 });
 
-router.put("/ai-settings", requireAuth, requireRole("admin"), async (req: AuthRequest, res: Response) => {
+router.put("/ai-settings", requireAuth, requireAdminOrMenu("ai-settings"), async (req: AuthRequest, res: Response) => {
   try {
     const result = await AiSettingsController.updateSettings(req.body);
     if ("error" in result) { res.status(result.status).json({ error: result.error }); return; }
@@ -28,7 +28,7 @@ router.put("/ai-settings", requireAuth, requireRole("admin"), async (req: AuthRe
   }
 });
 
-router.post("/ai-settings/test", requireAuth, requireRole("admin"), async (_req: AuthRequest, res: Response) => {
+router.post("/ai-settings/test", requireAuth, requireAdminOrMenu("ai-settings"), async (_req: AuthRequest, res: Response) => {
   try {
     res.json(await AiSettingsController.testConnection());
   } catch (err: any) {

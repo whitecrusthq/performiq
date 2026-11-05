@@ -12,6 +12,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
 import { Paintbrush, Type, Check, Image as ImageIcon, Upload, Trash2, LogIn } from "lucide-react";
 import { BrandMark, resolveLogoUrl } from "@/components/brand-mark";
+import { canManageMenu } from "@/lib/menu-permissions";
 
 function authHeader(): HeadersInit {
   const token = localStorage.getItem("token");
@@ -35,7 +36,7 @@ export default function Appearance() {
   const { user } = useAuth();
   const { settings, reload } = useAppSettings();
   const { toast } = useToast();
-  const isAdmin = user?.role === "super_admin" || user?.role === "admin";
+  const isAdmin = canManageMenu(user, "appearance");
 
   const [companyName, setCompanyName] = useState(settings.companyName);
   const [logoLetter, setLogoLetter] = useState(settings.logoLetter);

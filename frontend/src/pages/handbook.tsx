@@ -4,7 +4,7 @@ import { useAuth } from "@/hooks/use-auth";
 import { apiFetch, resolveUploadUrl } from "@/lib/utils";
 import {
   BookOpen, Upload, FileText, Trash2, Sparkles, Plus, X, Check, Search,
-  Filter, FolderOpen, ExternalLink, Edit2, HelpCircle,
+  Filter, FolderOpen, ExternalLink, Edit2, HelpCircle, Timer,
 } from "lucide-react";
 
 interface Doc {
@@ -56,6 +56,78 @@ function fileURL(objectPath: string): string {
   if (!objectPath.startsWith("/objects/")) return objectPath;
   const id = objectPath.slice("/objects/uploads/".length);
   return `${base}/api/storage/objects/${id}`;
+}
+
+/** Admin box for how long staff get per quiz question (0 = no limit, all questions on one page). */
+function QuizTimerSettings() {
+  const [saved, setSaved] = useState<number | null>(null);
+  const [value, setValue] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [message, setMessage] = useState<{ ok: boolean; text: string } | null>(null);
+
+  useEffect(() => {
+    apiFetch("/api/quiz/settings").then(async r => {
+      if (!r.ok) return;
+      const j = await r.json();
+      setSaved(j.secondsPerQuestion);
+      setValue(String(j.secondsPerQuestion));
+    }).catch(() => {});
+  }, []);
+
+  async function save(next: string) {
+    setMessage(null);
+    const n = Number(next.trim() === "" ? 0 : next);
+    setSaving(true);
+    try {
+      const r = await apiFetch("/api/quiz/settings", { method: "PUT", body: JSON.stringify({ secondsPerQuestion: n }) });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok) { setMessage({ ok: false, text: j?.error ?? "Could not save the quiz timer" }); return; }
+      setSaved(j.secondsPerQuestion);
+      setValue(String(j.secondsPerQuestion));
+      setMessage({ ok: true, text: j.secondsPerQuestion ? `Saved. Staff get ${j.secondsPerQuestion} seconds per question.` : "Saved. Quizzes have no time limit." });
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  if (saved === null) return null;
+  return (
+    <Card className="mb-6 p-4">
+      <div className="flex flex-col md:flex-row md:items-end gap-3">
+        <div className="flex-1">
+          <p className="font-medium flex items-center gap-2"><Timer className="h-4 w-4 text-primary" /> Quiz timer</p>
+          <p className="text-xs text-muted-foreground mt-1">
+            Seconds staff get to answer each quiz question. With a timer, questions are shown one at a time and the quiz
+            moves to the next one when the time runs out. Use 0 for no time limit.
+          </p>
+        </div>
+        <div className="flex items-end gap-2">
+          <div>
+            <label htmlFor="quiz-seconds" className="block text-xs font-semibold text-foreground mb-1.5">Seconds per question</label>
+            <Input
+              id="quiz-seconds"
+              type="number"
+              min={0}
+              max={600}
+              step={1}
+              className="w-32"
+              value={value}
+              onChange={e => setValue(e.target.value)}
+            />
+          </div>
+          <Button onClick={() => save(value)} disabled={saving || value === String(saved)}>
+            {saving ? "Saving…" : "Save"}
+          </Button>
+          {saved > 0 && (
+            <Button variant="outline" onClick={() => save("0")} disabled={saving}>Turn off</Button>
+          )}
+        </div>
+      </div>
+      {message && (
+        <p className={`text-xs mt-2 ${message.ok ? "text-emerald-600" : "text-destructive"}`}>{message.text}</p>
+      )}
+    </Card>
+  );
 }
 
 export default function Handbook() {
@@ -119,6 +191,8 @@ export default function Handbook() {
           )
         }
       />
+
+      {isAdmin && <QuizTimerSettings />}
 
       <div className="mb-6 flex flex-col sm:flex-row gap-3">
         <div className="relative flex-1 max-w-xl">
@@ -330,6 +404,19 @@ function FilePicker({ file, onChange }: { file: File | null; onChange: (f: File 
   );
 }
 
+/** Uploads a file to storage and returns the document fields that describe it. */
+async function uploadDocumentFile(file: File) {
+  const r1 = await apiFetch("/api/storage/uploads/request-url", { method: "POST" });
+  if (!r1.ok) throw new Error((await r1.json().catch(() => ({}))).error ?? "Could not get upload URL");
+  const { uploadURL, objectPath } = await r1.json();
+  const put = await fetch(resolveUploadUrl(uploadURL), { method: "PUT", body: file, headers: { "Content-Type": file.type || "application/octet-stream" } });
+  if (!put.ok) {
+    const body = await put.json().catch(() => null as any);
+    throw new Error(body?.error ? `Upload failed: ${body.error}` : `Upload failed: ${put.status}`);
+  }
+  return { objectPath, mimeType: file.type || null, fileSize: file.size, originalFilename: file.name };
+}
+
 function UploadDialog({
   categories, onClose, onSaved,
 }: { categories: string[]; onClose: () => void; onSaved: () => void }) {
@@ -347,26 +434,14 @@ function UploadDialog({
     if (!file) { setErr("Choose a file to upload"); return; }
     setBusy(true);
     try {
-      const r1 = await apiFetch("/api/storage/uploads/request-url", { method: "POST" });
-      if (!r1.ok) { setErr((await r1.json()).error ?? "Could not get upload URL"); setBusy(false); return; }
-      const { uploadURL, objectPath } = await r1.json();
-      const put = await fetch(resolveUploadUrl(uploadURL), { method: "PUT", body: file, headers: { "Content-Type": file.type || "application/octet-stream" } });
-      if (!put.ok) {
-        const body = await put.json().catch(() => null as any);
-        setErr(body?.error ? `Upload failed: ${body.error}` : `Upload failed: ${put.status}`);
-        setBusy(false);
-        return;
-      }
+      const uploaded = await uploadDocumentFile(file);
       const r2 = await apiFetch("/api/documents", {
         method: "POST",
         body: JSON.stringify({
           title: title.trim(),
           description: description.trim() || null,
           category,
-          objectPath,
-          mimeType: file.type || null,
-          fileSize: file.size,
-          originalFilename: file.name,
+          ...uploaded,
           quizSourceText: quizSourceText.trim() || null,
         }),
       });
@@ -394,10 +469,10 @@ function UploadDialog({
         <Field label="File (PDF, DOCX, etc.)">
           <FilePicker file={file} onChange={setFile} />
         </Field>
-        <Field label="Quiz reference text (optional — used by the AI question generator)">
+        <Field label="Quiz focus (optional)">
           <textarea
             className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm min-h-[120px] font-mono"
-            placeholder="Paste a paragraph or two from the document so the AI can generate quiz questions from it."
+            placeholder="The AI reads the uploaded file automatically. Optionally note what the quiz should focus on, e.g. leave entitlements and the sick-leave process."
             value={quizSourceText}
             onChange={e => setQuizSourceText(e.target.value)}
           />
@@ -419,18 +494,28 @@ function EditDialog({
   const [description, setDescription] = useState(doc.description ?? "");
   const [category, setCategory] = useState(doc.category);
   const [quizSourceText, setQuizSourceText] = useState(doc.quizSourceText ?? "");
+  const [replacement, setReplacement] = useState<File | null>(null);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
   async function save() {
-    setBusy(true); setErr(null);
-    const r = await apiFetch(`/api/documents/${doc.id}`, {
-      method: "PATCH",
-      body: JSON.stringify({ title, description: description || null, category, quizSourceText: quizSourceText || null }),
-    });
-    setBusy(false);
-    if (!r.ok) { setErr((await r.json()).error ?? "Save failed"); return; }
-    onSaved();
+    setErr(null);
+    if (!title.trim()) { setErr("Title is required"); return; }
+    setBusy(true);
+    try {
+      // Only upload when a replacement was chosen; otherwise the current file is kept.
+      const fileFields = replacement ? await uploadDocumentFile(replacement) : {};
+      const r = await apiFetch(`/api/documents/${doc.id}`, {
+        method: "PATCH",
+        body: JSON.stringify({ title: title.trim(), description: description || null, category, quizSourceText: quizSourceText || null, ...fileFields }),
+      });
+      if (!r.ok) { setErr((await r.json().catch(() => ({}))).error ?? "Save failed"); return; }
+      onSaved();
+    } catch (e: any) {
+      setErr(e?.message ?? "Save failed");
+    } finally {
+      setBusy(false);
+    }
   }
 
   return (
@@ -442,12 +527,20 @@ function EditDialog({
             {categories.map(c => <option key={c} value={c}>{c}</option>)}
           </select>
         </Field>
-        <Field label="Description">
+        <Field label="Description (optional)">
           <textarea className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm min-h-[70px]" value={description} onChange={e => setDescription(e.target.value)} />
         </Field>
-        <Field label="Quiz reference text">
+        <Field label="Replace file (optional)">
+          <p className="text-xs text-muted-foreground mb-1.5">
+            Current file: <span className="font-medium text-foreground">{doc.originalFilename || "uploaded document"}</span>
+            {doc.fileSize ? ` (${formatBytes(doc.fileSize)})` : ""}. Leave this empty to keep it. Existing quiz questions are kept either way.
+          </p>
+          <FilePicker file={replacement} onChange={setReplacement} />
+        </Field>
+        <Field label="Quiz focus (optional)">
           <textarea
             className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm min-h-[120px] font-mono"
+            placeholder="The AI reads the uploaded file automatically. Optionally note what the quiz should focus on."
             value={quizSourceText}
             onChange={e => setQuizSourceText(e.target.value)}
           />
@@ -455,7 +548,7 @@ function EditDialog({
         {err && <p className="text-sm text-destructive">{err}</p>}
         <div className="flex justify-end gap-2 pt-2">
           <Button variant="outline" onClick={onClose} disabled={busy}>Cancel</Button>
-          <Button onClick={save} disabled={busy}>{busy ? "Saving…" : "Save"}</Button>
+          <Button onClick={save} disabled={busy}>{busy ? (replacement ? "Uploading…" : "Saving…") : "Save"}</Button>
         </div>
       </div>
     </Modal>
@@ -469,6 +562,8 @@ function ManageQuestionsDialog({ doc, onClose }: { doc: Doc; onClose: () => void
   const [err, setErr] = useState<string | null>(null);
   const [generating, setGenerating] = useState(false);
   const [generateCount, setGenerateCount] = useState(5);
+  const [genErr, setGenErr] = useState<string | null>(null);
+  const [genNotice, setGenNotice] = useState<string | null>(null);
 
   // new question form
   const [qText, setQText] = useState("");
@@ -507,15 +602,30 @@ function ManageQuestionsDialog({ doc, onClose }: { doc: Doc; onClose: () => void
   }
 
   async function generate() {
-    setErr(null);
+    setGenErr(null);
+    setGenNotice(null);
     setGenerating(true);
-    const r = await apiFetch(`/api/documents/${doc.id}/questions/generate`, {
-      method: "POST",
-      body: JSON.stringify({ count: generateCount }),
-    });
-    setGenerating(false);
-    if (!r.ok) { setErr((await r.json()).error ?? "Generation failed"); return; }
-    refresh();
+    try {
+      const r = await apiFetch(`/api/documents/${doc.id}/questions/generate`, {
+        method: "POST",
+        body: JSON.stringify({ count: generateCount }),
+      });
+      const body = await r.json().catch(() => ({}));
+      if (!r.ok) { setGenErr(body.error ?? "Generation failed"); return; }
+      const count = body.count ?? 0;
+      setGenNotice(
+        count === 0
+          ? "The AI didn't return any usable questions. Try again."
+          : body.source === "document"
+            ? `Added ${count} question${count === 1 ? "" : "s"} from the uploaded document.`
+            : `Added ${count} question${count === 1 ? "" : "s"} from the quiz focus text. ${body.notice ?? ""}`.trim(),
+      );
+      refresh();
+    } catch (e: any) {
+      setGenErr(e?.message || "Couldn't reach the server. Please try again.");
+    } finally {
+      setGenerating(false);
+    }
   }
 
   return (
@@ -538,9 +648,13 @@ function ManageQuestionsDialog({ doc, onClose }: { doc: Doc; onClose: () => void
           <Button size="sm" onClick={generate} disabled={generating}>
             {generating ? "Generating…" : "Generate"}
           </Button>
-          <span className="text-xs text-muted-foreground">
-            Uses Google Gemini and the document's "quiz reference text" as the source.
+          <span className="text-xs text-muted-foreground w-full">
+            {generating
+              ? "Reading the document and writing questions. Large files can take up to a minute."
+              : "Google Gemini reads the uploaded file (PDF, Word, PowerPoint, Excel or text) and writes questions from it. Existing questions won't be repeated."}
           </span>
+          {genErr && <p className="text-sm text-destructive w-full">{genErr}</p>}
+          {genNotice && <p className="text-sm text-emerald-700 w-full">{genNotice}</p>}
         </div>
 
         <div className="rounded-md border p-3 space-y-2">

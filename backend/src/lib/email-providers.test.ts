@@ -48,7 +48,7 @@ test("provider priority is SMTP, then Gmail, then Mailgun, and Mailgun keeps its
 
 test("settings expose Gmail and the Mailgun region field, and Gmail test requires credentials", async () => {
   const platforms = await NotificationSettingsController.getPlatforms();
-  assert.deepEqual(platforms.find(p => p.key === "gmail")?.fields, ["username", "password", "fromName"]);
+  assert.deepEqual(platforms.find(p => p.key === "gmail")?.fields, ["username", "password", "fromName", "replyTo"]);
   assert.ok(platforms.find(p => p.key === "mailgun")?.fields.includes("region"));
 
   const original = NotificationSettings.findOne;

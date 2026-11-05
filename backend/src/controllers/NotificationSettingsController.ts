@@ -2,9 +2,9 @@ import { NotificationSettings } from "../models/index.js";
 import { buildSmtpTransport, gmailProviderFromConfig, mailgunClient } from "../lib/email.js";
 
 const PLATFORMS = [
-  { key: "mailgun", label: "Mailgun", fields: ["authMode", "region", "apiKey", "domain", "username", "password", "host", "port", "fromEmail", "encryption"] },
-  { key: "gmail", label: "Gmail", fields: ["username", "password", "fromName"] },
-  { key: "smtp", label: "SMTP / Email", fields: ["host", "port", "username", "password", "fromEmail", "encryption"] },
+  { key: "mailgun", label: "Mailgun", fields: ["authMode", "region", "apiKey", "domain", "username", "password", "host", "port", "fromEmail", "replyTo", "encryption"] },
+  { key: "gmail", label: "Gmail", fields: ["username", "password", "fromName", "replyTo"] },
+  { key: "smtp", label: "SMTP / Email", fields: ["host", "port", "username", "password", "fromEmail", "replyTo", "encryption"] },
   { key: "twilio", label: "Twilio (SMS)", fields: ["accountSid", "authToken", "fromNumber"] },
   { key: "slack", label: "Slack", fields: ["webhookUrl", "channel", "botToken"] },
   { key: "teams", label: "Microsoft Teams", fields: ["webhookUrl"] },
@@ -16,6 +16,9 @@ const PLATFORMS = [
 
 // Credentials are write-only: they are never returned to the browser, and a
 // blank value on save keeps whatever is already stored.
+// One plain address; no display names, lists or line breaks (which could inject headers).
+const EMAIL_ADDRESS = /^[^\s@<>,;"]+@[^\s@<>,;"]+\.[^\s@<>,;"]+$/;
+
 const SECRET_FIELDS = new Set(["apiKey", "authToken", "password", "botToken", "secret", "serviceAccountJson"]);
 
 /** Strips secret values, reporting only which ones are set. */
@@ -55,6 +58,11 @@ export default class NotificationSettingsController {
     if (!platformDef) return { error: "Unknown platform", status: 400 };
 
     const { enabled, config } = data;
+    if (config && typeof config === "object" && config.replyTo !== undefined && String(config.replyTo).trim()) {
+      const replyTo = String(config.replyTo).trim();
+      if (!EMAIL_ADDRESS.test(replyTo)) return { error: "Reply-To must be a single valid email address", status: 400 };
+      config.replyTo = replyTo;
+    }
     const existing = await NotificationSettings.findOne({ where: { platform } });
     const existingConfig = (existing?.config ?? {}) as Record<string, string>;
 
