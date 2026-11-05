@@ -4,6 +4,7 @@ import { Building2, Plus, Edit, Trash2, X, Users, Search } from "lucide-react";
 import { BulkActionBar } from "@/components/bulk-action-bar";
 import { useAuth } from "@/hooks/use-auth";
 import { apiFetch } from "@/lib/utils";
+import { canManageMenu } from "@/lib/menu-permissions";
 
 type Department = { id: number; name: string; description: string | null; employeeCount: number; shiftType: string | null; clockOutSlot: string | null };
 
@@ -29,7 +30,7 @@ export default function Departments() {
 
   const slotOptions = formData.shiftType === "night" ? nightSlots : daySlots;
 
-  const isAdmin = user?.role === "admin" || user?.role === "super_admin";
+  const isAdmin = canManageMenu(user, "departments");
 
   const fetchDepartments = () => {
     setLoading(true);

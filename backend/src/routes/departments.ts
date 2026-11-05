@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { requireAuth, requireRole } from "../middlewares/auth.js";
+import { requireAuth, requireAdminOrMenu } from "../middlewares/auth.js";
 import { ListDepartmentsAction } from "../actions/departments/ListDepartmentsAction.js";
 import { CreateDepartmentAction } from "../actions/departments/CreateDepartmentAction.js";
 import { UpdateDepartmentAction } from "../actions/departments/UpdateDepartmentAction.js";
@@ -8,8 +8,8 @@ import { DeleteDepartmentAction } from "../actions/departments/DeleteDepartmentA
 const router = Router();
 
 router.get("/departments", requireAuth, ListDepartmentsAction.handle);
-router.post("/departments", requireAuth, requireRole("admin"), CreateDepartmentAction.handle);
-router.put("/departments/:id", requireAuth, requireRole("admin"), UpdateDepartmentAction.handle);
-router.delete("/departments/:id", requireAuth, requireRole("admin"), DeleteDepartmentAction.handle);
+router.post("/departments", requireAuth, requireAdminOrMenu("departments"), CreateDepartmentAction.handle);
+router.put("/departments/:id", requireAuth, requireAdminOrMenu("departments"), UpdateDepartmentAction.handle);
+router.delete("/departments/:id", requireAuth, requireAdminOrMenu("departments"), DeleteDepartmentAction.handle);
 
 export default router;

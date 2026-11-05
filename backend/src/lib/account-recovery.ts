@@ -1,12 +1,41 @@
 import { Request } from "express";
 import { Op, Transaction } from "sequelize";
-import { RecoveryAuditLog, RecoveryRequest, sequelize } from "../models/index.js";
+import { CustomRole, RecoveryAuditLog, RecoveryRequest, User, sequelize } from "../models/index.js";
 import { logger } from "./logger.js";
 import { sendAdministrativeNotification } from "./administrative-notifications.js";
 
 export interface RecoveryRequestContext {
   ipAddress: string | null;
   userAgent: string | null;
+}
+
+export const ACCOUNT_RECOVERY_MENU_KEY = "account-recovery";
+
+/** IDs of custom roles whose menu permissions include Account Recovery. */
+export async function recoveryRoleIds(transaction?: Transaction): Promise<number[]> {
+  const roles = await CustomRole.findAll({ attributes: ["id", "menuPermissions"], transaction });
+  return roles.filter(role => {
+    try {
+      const perms = JSON.parse(role.menuPermissions ?? "[]");
+      return Array.isArray(perms) && perms.includes(ACCOUNT_RECOVERY_MENU_KEY);
+    } catch { return false; }
+  }).map(role => role.id);
+}
+
+/**
+ * The current, active account if it may use Account Recovery: admins and super admins,
+ * or anyone whose custom role grants the Account Recovery menu. Read from the database
+ * on every call so a removed permission takes effect immediately.
+ */
+export async function recoveryActor(userId: number, transaction?: Transaction) {
+  const actor = await User.findByPk(userId, { transaction, attributes: ["id", "role", "isActive", "customRoleId"] });
+  if (!actor || actor.isActive === false) return null;
+  const isAdmin = actor.role === "admin" || actor.role === "super_admin";
+  if (isAdmin) return { actor, isAdmin };
+  if (actor.customRoleId && (await recoveryRoleIds(transaction)).includes(actor.customRoleId)) {
+    return { actor, isAdmin };
+  }
+  return null;
 }
 
 export function recoveryContext(req: Request): RecoveryRequestContext {

@@ -6,6 +6,7 @@ import { ListChecks, Plus, X, Trash2, Edit2, Layers, ChevronRight, Search } from
 import { BulkActionBar } from "@/components/bulk-action-bar";
 import { useAuth } from "@/hooks/use-auth";
 import { apiFetch } from "@/lib/utils";
+import { canManageMenu } from "@/lib/menu-permissions";
 
 const authHeader = () => ({ Authorization: `Bearer ${localStorage.getItem("token")}` });
 
@@ -88,7 +89,7 @@ export default function Criteria() {
       deleteMutation.mutate({ id }, { onSuccess: () => queryClient.invalidateQueries({ queryKey: ["/api/criteria"] }) });
   };
 
-  const isAdmin = user?.role === 'admin' || user?.role === 'super_admin';
+  const isAdmin = canManageMenu(user, "criteria");
 
   const [selectedCritIds, setSelectedCritIds] = useState<Set<number>>(new Set());
   const [bulkDeleting, setBulkDeleting] = useState(false);
@@ -172,7 +173,7 @@ export default function Criteria() {
     }));
 
   if (isLoading) return <div className="p-8">Loading criteria...</div>;
-  if (user?.role !== "admin" && user?.role !== "super_admin") return <div className="p-8 text-destructive">Unauthorized</div>;
+  if (!isAdmin) return <div className="p-8 text-destructive">Unauthorized</div>;
 
   const matchesSearch = (text: any) => {
     if (!search.trim()) return true;

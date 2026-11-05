@@ -53,7 +53,8 @@ export function getCustomMenuPerms(user: any): string[] {
 /** Whether the user may access the given menu key. */
 export function hasMenuAccess(user: any, menuKey: string): boolean {
   if (menuKey === "account-recovery") {
-    return user?.role === "admin" || user?.role === "super_admin";
+    if (user?.role === "admin" || user?.role === "super_admin") return true;
+    return getCustomMenuPerms(user).includes(menuKey);
   }
   if (menuKey === "account-lock-management") {
     if (user?.role === "super_admin") return true;
@@ -62,6 +63,15 @@ export function hasMenuAccess(user: any, menuKey: string): boolean {
   const perms = getCustomMenuPerms(user);
   if (perms.length === 0) return true; // inherit defaults — base-role rules apply
   return perms.includes(menuKey);
+}
+
+/**
+ * Whether the user may manage an admin page: admins, or a custom role with that menu
+ * ticked. Only for pages the server also delegates (see requireAdminOrMenu).
+ */
+export function canManageMenu(user: any, menuKey: string): boolean {
+  if (user?.role === "admin" || user?.role === "super_admin") return true;
+  return getCustomMenuPerms(user).includes(menuKey);
 }
 
 /**
